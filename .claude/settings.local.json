@@ -31,7 +31,12 @@
       "Bash(curl -s http://localhost:3001/v1/branches)",
       "Bash(curl -s http://localhost:3001/v1/branches -X POST -H \"Content-Type: application/json\" -d \"{}\")",
       "Bash(pnpm --filter @nexor/web type-check)",
-      "Bash(pnpm --filter @nexor/web lint)"
+      "Bash(pnpm --filter @nexor/web lint)",
+      "Bash(pnpm --filter @nexor/api exec prisma migrate status)",
+      "Bash(pnpm --filter:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node -e \":*)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

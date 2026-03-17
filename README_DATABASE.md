@@ -9,9 +9,20 @@
 
 ## Principio fundamental
 
-Todos los datos de todos los clientes (tenants) viven en la misma base de datos. Lo que los separa es el campo `tenant_id` presente en **cada tabla de negocio**. PostgreSQL enforcea este aislamiento a nivel de base de datos mediante Row-Level Security (RLS), lo que significa que aunque un bug de código intente acceder a datos de otro tenant, la DB lo rechaza.
+Todos los datos de todos los clientes (tenants) viven en la misma base de datos. Lo que los separa es el campo `tenant_id` presente en **cada tabla de negocio con relación directa al tenant**. PostgreSQL enforcea este aislamiento a nivel de base de datos mediante Row-Level Security (RLS), lo que significa que aunque un bug de código intente acceder a datos de otro tenant, la DB lo rechaza.
 
-**Regla absoluta:** Ninguna tabla de negocio puede existir sin `tenant_id`. Sin excepción.
+**Regla general:** Toda tabla de negocio con relación directa al tenant debe tener `tenant_id` y su política RLS correspondiente.
+
+**Excepción — tablas hijas:** Las tablas de detalle que solo existen como hijas de una tabla con `tenant_id` no necesitan repetirlo. Su aislamiento se hereda por FK del padre. Estas tablas son:
+
+| Tabla hija | Tabla padre (tiene tenant_id) |
+|------------|-------------------------------|
+| `stocks` | `products` + `branches` |
+| `quote_items` | `quotes` |
+| `purchase_order_items` | `purchase_orders` |
+| `supplier_scores` | `suppliers` |
+
+Estas 4 tablas no tienen RLS propio — nunca se consultan de forma independiente sin pasar primero por la tabla padre, que ya está filtrada por tenant.
 
 ---
 

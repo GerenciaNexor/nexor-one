@@ -1,6 +1,16 @@
 // Prisma schema — NEXOR V1
 // Documentacion completa: README_DATABASE.md
 // Patron multi-tenancy: base de datos compartida + Row-Level Security por tenant_id
+//
+// ─── APROBACION HU-012 ────────────────────────────────────────────────────────
+// Schema revisado y aprobado por el equipo de desarrollo el 2026-03-17.
+// Revision cubre: 24 tablas de negocio + refresh_tokens (auth),
+// tipos de datos, indices, relaciones, cascadas y politicas RLS.
+// Discrepancia resuelta: README_DATABASE.md actualizado para documentar
+// que tablas hijas (stocks, quote_items, purchase_order_items, supplier_scores)
+// heredan aislamiento de tenant via FK — no requieren tenant_id propio.
+// Estado: APROBADO — listo para migracion en HU-013.
+// ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
   provider = "prisma-client-js"
