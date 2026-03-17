@@ -1,0 +1,703 @@
+// Prisma schema — NEXOR V1
+// Documentacion completa: README_DATABASE.md
+// Patron multi-tenancy: base de datos compartida + Row-Level Security por tenant_id
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum Role {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  BRANCH_ADMIN
+  AREA_MANAGER
+  OPERATIVE
+}
+
+enum ModuleName {
+  ARI
+  NIRA
+  KIRA
+  AGENDA
+  VERA
+}
+
+enum Channel {
+  WHATSAPP
+  GMAIL
+}
+
+// =============================================================================
+// CORE — tablas compartidas por todos los modulos
+// =============================================================================
+
+/// Empresa cliente del SaaS. Nodo raiz de toda la jerarquia.
+/// NO tiene tenant_id — es la raiz. Solo el SUPER_ADMIN puede leer todos los registros.
+model Tenant {
+  id        String  @id @default(cuid()) @db.VarChar(30)
+  name      String  @db.VarChar(255)
+  slug      String  @unique @db.VarChar(100)
+  legalName String? @db.VarChar(255) @map("legal_name")
+  taxId     String? @db.VarChar(50) @map("tax_id")
+  isActive  Boolean @default(true) @map("is_active")
+  timezone  String  @default("America/Bogota") @db.VarChar(50)
+  currency  String  @default("COP") @db.VarChar(3)
+  logoUrl   String? @db.VarChar(500) @map("logo_url")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  branches       Branch[]
+  users          User[]
+  featureFlags   FeatureFlag[]
+  integrations   Integration[]
+  agentLogs      AgentLog[]
+  notifications  Notification[]
+  clients        Client[]
+  pipelineStages PipelineStage[]
+  deals          Deal[]
+  interactions   Interaction[]
+  quotes         Quote[]
+  products       Product[]
+  stockMovements StockMovement[]
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  serviceTypes   ServiceType[]
+  availability   Availability[]
+  appointments   Appointment[]
+  transactions   Transaction[]
+
+  @@map("tenants")
+}
+
+/// Sucursal de una empresa. El inventario y las integraciones se asignan por sucursal.
+model Branch {
+  id       String  @id @default(cuid()) @db.VarChar(30)
+  tenantId String  @db.VarChar(30) @map("tenant_id")
+  name     String  @db.VarChar(255)
+  city     String? @db.VarChar(100)
+  address  String? @db.VarChar(500)
+  phone    String? @db.VarChar(20)
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users          User[]
+  integrations   Integration[]
+  clients        Client[]
+  deals          Deal[]
+  stocks         Stock[]
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+  serviceTypes   ServiceType[]
+  availability   Availability[]
+  appointments   Appointment[]
+  transactions   Transaction[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("branches")
+}
+
+/// Usuarios del sistema de todos los roles y tenants.
+/// El email es unico en toda la plataforma.
+model User {
+  id           String     @id @default(cuid()) @db.VarChar(30)
+  tenantId     String     @db.VarChar(30) @map("tenant_id")
+  branchId     String?    @db.VarChar(30) @map("branch_id")
+  email        String     @unique @db.VarChar(255)
+  name         String     @db.VarChar(255)
+  passwordHash String     @db.VarChar(255) @map("password_hash")
+  role         Role
+  module       ModuleName?
+  isActive     Boolean    @default(true) @map("is_active")
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  notifications          Notification[]
+  assignedClients        Client[]        @relation("ClientAssignee")
+  assignedDeals          Deal[]          @relation("DealAssignee")
+  interactions           Interaction[]
+  quotesCreated          Quote[]         @relation("QuoteCreator")
+  purchaseOrdersCreated  PurchaseOrder[] @relation("POCreator")
+  purchaseOrdersApproved PurchaseOrder[] @relation("POApprover")
+  stockMovements         StockMovement[]
+  availabilitySchedules  Availability[]
+  professionalAppointments Appointment[] @relation("AppointmentProfessional")
+  refreshTokens          RefreshToken[]
+
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([branchId])
+  @@map("users")
+}
+
+/// Refresh tokens de sesion. Almacenados como hash SHA-256 del token real.
+/// Se eliminan en logout o cuando expiran. Un usuario puede tener varios tokens activos (multidispositivo).
+model RefreshToken {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  userId    String   @db.VarChar(30) @map("user_id")
+  tokenHash String   @unique @db.VarChar(64) @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Modulos activos por tenant. Se crea un registro por modulo al crear el tenant.
+model FeatureFlag {
+  id       String     @id @default(cuid()) @db.VarChar(30)
+  tenantId String     @db.VarChar(30) @map("tenant_id")
+  module   ModuleName
+  enabled  Boolean    @default(false)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, module])
+  @@map("feature_flags")
+}
+
+/// Tokens y configuracion de integraciones externas (WhatsApp, Gmail).
+/// token_encrypted NUNCA se devuelve en responses de la API.
+model Integration {
+  id             String   @id @default(cuid()) @db.VarChar(30)
+  tenantId       String   @db.VarChar(30) @map("tenant_id")
+  branchId       String?  @db.VarChar(30) @map("branch_id")
+  channel        Channel
+  identifier     String   @db.VarChar(255)
+  tokenEncrypted String?  @db.Text @map("token_encrypted")
+  metadata       Json?    @db.JsonB
+  isActive       Boolean  @default(false) @map("is_active")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@index([channel, identifier])
+  @@map("integrations")
+}
+
+/// Registro INMUTABLE de cada accion tomada por los agentes de IA.
+/// APPEND-ONLY: nunca se actualiza ni elimina un registro.
+model AgentLog {
+  id           String     @id @default(cuid()) @db.VarChar(30)
+  tenantId     String     @db.VarChar(30) @map("tenant_id")
+  module       ModuleName
+  channel      String     @db.VarChar(50)
+  inputMessage String     @db.Text @map("input_message")
+  reply        String?    @db.Text
+  toolsUsed    String[]   @default([]) @map("tools_used")
+  toolDetails  Json       @db.JsonB @map("tool_details")
+  turnCount    Int        @default(1) @map("turn_count")
+  durationMs   Int?       @map("duration_ms")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, module])
+  @@index([createdAt(sort: Desc)])
+  @@map("agent_logs")
+}
+
+/// Notificaciones in-app por usuario. Generadas por el sistema, jobs y agentes de IA.
+model Notification {
+  id       String     @id @default(cuid()) @db.VarChar(30)
+  tenantId String     @db.VarChar(30) @map("tenant_id")
+  userId   String     @db.VarChar(30) @map("user_id")
+  module   ModuleName?
+  type     String     @db.VarChar(50)
+  title    String     @db.VarChar(255)
+  message  String     @db.Text
+  link     String?    @db.VarChar(500)
+  isRead   Boolean    @default(false) @map("is_read")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, isRead])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// =============================================================================
+// MODULO ARI — Ventas y CRM
+// =============================================================================
+
+/// Clientes y prospectos. Puede existir aunque nunca haya comprado (lead).
+model Client {
+  id         String   @id @default(cuid()) @db.VarChar(30)
+  tenantId   String   @db.VarChar(30) @map("tenant_id")
+  name       String   @db.VarChar(255)
+  email      String?  @db.VarChar(255)
+  phone      String?  @db.VarChar(20)
+  whatsappId String?  @db.VarChar(50) @map("whatsapp_id")
+  company    String?  @db.VarChar(255)
+  taxId      String?  @db.VarChar(50) @map("tax_id")
+  address    String?  @db.VarChar(500)
+  city       String?  @db.VarChar(100)
+  source     String?  @db.VarChar(50)
+  tags       String[] @default([])
+  notes      String?  @db.Text
+  assignedTo String?  @db.VarChar(30) @map("assigned_to")
+  branchId   String?  @db.VarChar(30) @map("branch_id")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedUser User?         @relation("ClientAssignee", fields: [assignedTo], references: [id])
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  deals        Deal[]
+  interactions Interaction[]
+  quotes       Quote[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@index([tenantId, assignedTo])
+  @@index([whatsappId])
+  @@index([tenantId, isActive])
+  @@map("clients")
+}
+
+/// Etapas configurables del pipeline de ventas por tenant.
+model PipelineStage {
+  id          String  @id @default(cuid()) @db.VarChar(30)
+  tenantId    String  @db.VarChar(30) @map("tenant_id")
+  name        String  @db.VarChar(100)
+  order       Int
+  color       String? @db.VarChar(7)
+  isFinalWon  Boolean @default(false) @map("is_final_won")
+  isFinalLost Boolean @default(false) @map("is_final_lost")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deals  Deal[]
+
+  @@index([tenantId, order])
+  @@map("pipeline_stages")
+}
+
+/// Oportunidades de venta en el pipeline.
+model Deal {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  tenantId      String    @db.VarChar(30) @map("tenant_id")
+  clientId      String    @db.VarChar(30) @map("client_id")
+  stageId       String    @db.VarChar(30) @map("stage_id")
+  assignedTo    String?   @db.VarChar(30) @map("assigned_to")
+  branchId      String?   @db.VarChar(30) @map("branch_id")
+  title         String    @db.VarChar(255)
+  value         Decimal?  @db.Decimal(15, 2)
+  probability   Int?
+  expectedClose DateTime? @map("expected_close") @db.Date
+  lostReason    String?   @db.Text @map("lost_reason")
+  closedAt      DateTime? @map("closed_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [clientId], references: [id])
+  stage        PipelineStage @relation(fields: [stageId], references: [id])
+  assignedUser User?         @relation("DealAssignee", fields: [assignedTo], references: [id])
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  interactions Interaction[]
+  quotes       Quote[]
+
+  @@index([tenantId, stageId])
+  @@index([tenantId, assignedTo])
+  @@index([clientId])
+  @@map("deals")
+}
+
+/// Historial de comunicaciones con cada cliente.
+model Interaction {
+  id        String  @id @default(cuid()) @db.VarChar(30)
+  tenantId  String  @db.VarChar(30) @map("tenant_id")
+  clientId  String  @db.VarChar(30) @map("client_id")
+  dealId    String? @db.VarChar(30) @map("deal_id")
+  userId    String? @db.VarChar(30) @map("user_id")
+  type      String  @db.VarChar(50)
+  direction String  @db.VarChar(10)
+  content   String  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client Client  @relation(fields: [clientId], references: [id])
+  deal   Deal?   @relation(fields: [dealId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([createdAt(sort: Desc)])
+  @@map("interactions")
+}
+
+/// Cotizaciones generadas para los clientes.
+model Quote {
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  tenantId    String    @db.VarChar(30) @map("tenant_id")
+  clientId    String    @db.VarChar(30) @map("client_id")
+  dealId      String?   @db.VarChar(30) @map("deal_id")
+  createdBy   String    @db.VarChar(30) @map("created_by")
+  quoteNumber String    @db.VarChar(50) @map("quote_number")
+  status      String    @default("draft") @db.VarChar(30)
+  subtotal    Decimal   @default(0) @db.Decimal(15, 2)
+  discount    Decimal   @default(0) @db.Decimal(15, 2)
+  tax         Decimal   @default(0) @db.Decimal(15, 2)
+  total       Decimal   @default(0) @db.Decimal(15, 2)
+  validUntil  DateTime? @map("valid_until") @db.Date
+  notes       String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client  Client      @relation(fields: [clientId], references: [id])
+  deal    Deal?       @relation(fields: [dealId], references: [id])
+  creator User        @relation("QuoteCreator", fields: [createdBy], references: [id])
+  items   QuoteItem[]
+
+  @@unique([tenantId, quoteNumber])
+  @@index([tenantId, clientId])
+  @@index([tenantId, status])
+  @@map("quotes")
+}
+
+/// Lineas de cada cotizacion.
+model QuoteItem {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  quoteId     String   @db.VarChar(30) @map("quote_id")
+  productId   String?  @db.VarChar(30) @map("product_id")
+  description String   @db.VarChar(500)
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(15, 2) @map("unit_price")
+  discountPct Decimal  @default(0) @db.Decimal(5, 2) @map("discount_pct")
+  total       Decimal  @db.Decimal(15, 2)
+
+  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([quoteId])
+  @@map("quote_items")
+}
+
+// =============================================================================
+// MODULO KIRA — Inventario
+// =============================================================================
+
+/// Catalogo global de productos por tenant. El stock es por sucursal.
+model Product {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  tenantId    String   @db.VarChar(30) @map("tenant_id")
+  sku         String   @db.VarChar(100)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  category    String?  @db.VarChar(100)
+  unit        String   @default("unidad") @db.VarChar(50)
+  salePrice   Decimal? @db.Decimal(15, 2) @map("sale_price")
+  costPrice   Decimal? @db.Decimal(15, 2) @map("cost_price")
+  minStock    Int      @default(0) @map("min_stock")
+  maxStock    Int?     @map("max_stock")
+  abcClass    String?  @db.VarChar(1) @map("abc_class")
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stocks             Stock[]
+  stockMovements     StockMovement[]
+  quoteItems         QuoteItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, category])
+  @@index([tenantId, abcClass])
+  @@map("products")
+}
+
+/// Stock actual de cada producto en cada sucursal. Fuente de verdad del inventario.
+/// quantity NUNCA puede ser negativo — validar en la capa de servicio.
+model Stock {
+  id        String  @id @default(cuid()) @db.VarChar(30)
+  productId String  @db.VarChar(30) @map("product_id")
+  branchId  String  @db.VarChar(30) @map("branch_id")
+  quantity  Decimal @default(0) @db.Decimal(10, 2)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@unique([productId, branchId])
+  @@index([branchId])
+  @@map("stocks")
+}
+
+/// Historial INMUTABLE de cada cambio en el inventario.
+/// APPEND-ONLY: nunca se modifica ni elimina un movimiento.
+model StockMovement {
+  id             String    @id @default(cuid()) @db.VarChar(30)
+  tenantId       String    @db.VarChar(30) @map("tenant_id")
+  productId      String    @db.VarChar(30) @map("product_id")
+  branchId       String    @db.VarChar(30) @map("branch_id")
+  userId         String?   @db.VarChar(30) @map("user_id")
+  type           String    @db.VarChar(30)
+  quantity       Decimal   @db.Decimal(10, 2)
+  quantityBefore Decimal   @db.Decimal(10, 2) @map("quantity_before")
+  quantityAfter  Decimal   @db.Decimal(10, 2) @map("quantity_after")
+  referenceType  String?   @db.VarChar(50) @map("reference_type")
+  referenceId    String?   @db.VarChar(30) @map("reference_id")
+  lotNumber      String?   @db.VarChar(100) @map("lot_number")
+  expiryDate     DateTime? @map("expiry_date") @db.Date
+  notes          String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, productId])
+  @@index([branchId])
+  @@index([createdAt(sort: Desc)])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+// =============================================================================
+// MODULO NIRA — Compras
+// =============================================================================
+
+/// Proveedores de la empresa.
+model Supplier {
+  id           String  @id @default(cuid()) @db.VarChar(30)
+  tenantId     String  @db.VarChar(30) @map("tenant_id")
+  name         String  @db.VarChar(255)
+  contactName  String? @db.VarChar(255) @map("contact_name")
+  email        String? @db.VarChar(255)
+  phone        String? @db.VarChar(20)
+  taxId        String? @db.VarChar(50) @map("tax_id")
+  address      String? @db.VarChar(500)
+  city         String? @db.VarChar(100)
+  paymentTerms Int?    @map("payment_terms")
+  notes        String? @db.Text
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  score          SupplierScore?
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("suppliers")
+}
+
+/// Puntuacion calculada automaticamente para cada proveedor (1 a 1 con Supplier).
+model SupplierScore {
+  id               String  @id @default(cuid()) @db.VarChar(30)
+  supplierId       String  @unique @db.VarChar(30) @map("supplier_id")
+  priceScore       Decimal @default(0) @db.Decimal(4, 2) @map("price_score")
+  deliveryScore    Decimal @default(0) @db.Decimal(4, 2) @map("delivery_score")
+  qualityScore     Decimal @default(0) @db.Decimal(4, 2) @map("quality_score")
+  overallScore     Decimal @default(0) @db.Decimal(4, 2) @map("overall_score")
+  totalOrders      Int     @default(0) @map("total_orders")
+  onTimeDeliveries Int     @default(0) @map("on_time_deliveries")
+
+  calculatedAt DateTime @map("calculated_at") @db.Timestamptz(6)
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_scores")
+}
+
+/// Ordenes de compra emitidas a los proveedores.
+model PurchaseOrder {
+  id               String    @id @default(cuid()) @db.VarChar(30)
+  tenantId         String    @db.VarChar(30) @map("tenant_id")
+  supplierId       String    @db.VarChar(30) @map("supplier_id")
+  branchId         String?   @db.VarChar(30) @map("branch_id")
+  createdBy        String    @db.VarChar(30) @map("created_by")
+  approvedBy       String?   @db.VarChar(30) @map("approved_by")
+  orderNumber      String    @db.VarChar(50) @map("order_number")
+  status           String    @default("draft") @db.VarChar(30)
+  subtotal         Decimal   @default(0) @db.Decimal(15, 2)
+  tax              Decimal   @default(0) @db.Decimal(15, 2)
+  total            Decimal   @default(0) @db.Decimal(15, 2)
+  expectedDelivery DateTime? @map("expected_delivery") @db.Date
+  deliveredAt      DateTime? @map("delivered_at") @db.Timestamptz(6)
+  notes            String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier            @relation(fields: [supplierId], references: [id])
+  branch   Branch?             @relation(fields: [branchId], references: [id])
+  creator  User                @relation("POCreator", fields: [createdBy], references: [id])
+  approver User?               @relation("POApprover", fields: [approvedBy], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@map("purchase_orders")
+}
+
+/// Lineas de cada orden de compra.
+model PurchaseOrderItem {
+  id               String  @id @default(cuid()) @db.VarChar(30)
+  purchaseOrderId  String  @db.VarChar(30) @map("purchase_order_id")
+  productId        String  @db.VarChar(30) @map("product_id")
+  quantityOrdered  Decimal @db.Decimal(10, 2) @map("quantity_ordered")
+  quantityReceived Decimal @default(0) @db.Decimal(10, 2) @map("quantity_received")
+  unitCost         Decimal @db.Decimal(15, 2) @map("unit_cost")
+  total            Decimal @db.Decimal(15, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@map("purchase_order_items")
+}
+
+// =============================================================================
+// MODULO AGENDA — Agendamiento
+// =============================================================================
+
+/// Tipos de servicios o citas que ofrece la empresa.
+model ServiceType {
+  id              String   @id @default(cuid()) @db.VarChar(30)
+  tenantId        String   @db.VarChar(30) @map("tenant_id")
+  branchId        String?  @db.VarChar(30) @map("branch_id")
+  name            String   @db.VarChar(255)
+  durationMinutes Int      @default(30) @map("duration_minutes")
+  price           Decimal? @db.Decimal(15, 2)
+  color           String?  @db.VarChar(7)
+  isActive        Boolean  @default(true) @map("is_active")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+  @@map("service_types")
+}
+
+/// Horarios de disponibilidad por sucursal o profesional.
+model Availability {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  tenantId  String   @db.VarChar(30) @map("tenant_id")
+  branchId  String?  @db.VarChar(30) @map("branch_id")
+  userId    String?  @db.VarChar(30) @map("user_id")
+  dayOfWeek Int      @map("day_of_week")
+  startTime DateTime @map("start_time") @db.Time(6)
+  endTime   DateTime @map("end_time") @db.Time(6)
+  isActive  Boolean  @default(true) @map("is_active")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, branchId, dayOfWeek])
+  @@map("availability")
+}
+
+/// Citas agendadas. El agente de IA puede crearlas desde WhatsApp.
+model Appointment {
+  id             String   @id @default(cuid()) @db.VarChar(30)
+  tenantId       String   @db.VarChar(30) @map("tenant_id")
+  branchId       String   @db.VarChar(30) @map("branch_id")
+  clientId       String?  @db.VarChar(30) @map("client_id")
+  serviceTypeId  String?  @db.VarChar(30) @map("service_type_id")
+  professionalId String?  @db.VarChar(30) @map("professional_id")
+  clientName     String   @db.VarChar(255) @map("client_name")
+  clientPhone    String?  @db.VarChar(20) @map("client_phone")
+  startAt        DateTime @map("start_at") @db.Timestamptz(6)
+  endAt          DateTime @map("end_at") @db.Timestamptz(6)
+  status         String   @default("scheduled") @db.VarChar(30)
+  notes          String?  @db.Text
+  channel        String   @default("manual") @db.VarChar(50)
+  reminderSent   Boolean  @default(false) @map("reminder_sent")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
+  serviceType  ServiceType? @relation(fields: [serviceTypeId], references: [id])
+  professional User?        @relation("AppointmentProfessional", fields: [professionalId], references: [id])
+
+  @@index([tenantId, branchId, startAt])
+  @@index([tenantId, status])
+  @@index([professionalId, startAt])
+  @@map("appointments")
+}
+
+// =============================================================================
+// MODULO VERA — Finanzas
+// =============================================================================
+
+/// Registro financiero de movimientos de dinero. Generado por ARI y NIRA.
+/// No se ingresa manualmente — lo crean los modulos automaticamente.
+model Transaction {
+  id            String  @id @default(cuid()) @db.VarChar(30)
+  tenantId      String  @db.VarChar(30) @map("tenant_id")
+  branchId      String? @db.VarChar(30) @map("branch_id")
+  type          String  @db.VarChar(20)
+  amount        Decimal @db.Decimal(15, 2)
+  currency      String  @default("COP") @db.VarChar(3)
+  description   String  @db.VarChar(500)
+  category      String? @db.VarChar(100)
+  referenceType String  @db.VarChar(50) @map("reference_type")
+  referenceId   String  @db.VarChar(30) @map("reference_id")
+  date          DateTime @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId, date(sort: Desc)])
+  @@index([tenantId, type])
+  @@index([referenceType, referenceId])
+  @@map("transactions")
+}

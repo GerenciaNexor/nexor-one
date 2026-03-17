@@ -1,0 +1,44 @@
+# docker-compose.yml — Servicios de infraestructura para desarrollo local
+# Levanta PostgreSQL y Redis sin necesidad de instalarlos en el sistema.
+#
+# USO:
+#   docker-compose up -d        # Levantar en background
+#   docker-compose down         # Apagar (mantiene datos)
+#   docker-compose down -v      # Apagar y eliminar datos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexor_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: nexor_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexor_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexor_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

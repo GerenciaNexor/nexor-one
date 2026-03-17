@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm build:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm --filter @nexor/api exec prisma validate)",
+      "Bash(pnpm exec:*)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(docker --version)",
+      "Bash(docker context:*)",
+      "Bash(where psql:*)",
+      "Read(//c/Program Files/**)",
+      "Bash(powershell.exe -Command \"Start-Process ''''C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe'''' -WindowStyle Hidden\")",
+      "Bash(docker exec:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(node -e \"require\\(''fastify-plugin''\\); console.log\\(''ok''\\)\")",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm --filter @nexor/api type-check)",
+      "Bash(docker-compose up:*)",
+      "Bash(taskkill /F /FI \"PID gt 1\" /FI \"IMAGENAME eq node.exe\")",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -X POST http://localhost:3001/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"admin@demo.nexor.co\"\",\"\"password\"\":\"\"Admin123!\"\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/v1/auth/login -H \"Content-Type: application/json\" --data-raw '{\"\"email\"\":\"\"admin@demo.nexor.co\"\",\"\"password\"\":\"\"Admin123!\"\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/v1/auth/login -H \"Content-Type: application/json\" -d \"{\"\"email\"\":\"\"admin@demo.nexor.co\"\",\"\"password\"\":\"\"Admin123!\"\"}\")",
+      "Bash(pnpm --filter @nexor/api lint)",
+      "Bash(pkill -f \"tsx watch src/app.ts\")",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(curl -s http://localhost:3001/v1/tenants/me)",
+      "Bash(curl -s http://localhost:3001/v1/branches)",
+      "Bash(curl -s http://localhost:3001/v1/branches -X POST -H \"Content-Type: application/json\" -d \"{}\")",
+      "Bash(pnpm --filter @nexor/web type-check)",
+      "Bash(pnpm --filter @nexor/web lint)"
+    ]
+  }
+}

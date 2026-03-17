@@ -1,0 +1,42 @@
+{
+  "name": "@nexor/api",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Backend Fastify de NEXOR",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsup src/app.ts --outDir dist --format cjs --no-splitting",
+    "start": "node dist/app.js",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "db:migrate": "prisma migrate dev",
+    "db:setup": "prisma migrate dev && tsx prisma/setup-rls.ts && prisma db seed",
+    "db:reset": "prisma migrate reset --force && tsx prisma/setup-rls.ts && prisma db seed",
+    "db:seed": "prisma db seed",
+    "db:rls": "tsx prisma/setup-rls.ts",
+    "db:studio": "prisma studio",
+    "prisma:generate": "prisma generate"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "@nexor/shared": "workspace:*",
+    "@prisma/client": "^6.3.0",
+    "bcryptjs": "^2.4.3",
+    "fastify": "^4.29.0",
+    "fastify-plugin": "^4.5.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.0",
+    "prisma": "^6.3.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

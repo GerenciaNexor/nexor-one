@@ -1,0 +1,46 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Variables de entorno (NUNCA commitear)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Carpetas de compilacion
+dist/
+build/
+.next/
+out/
+
+# Turbo
+.turbo/
+
+# Prisma
+apps/api/src/generated/
+
+# Editor y sistema operativo
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Cobertura de tests
+coverage/
+.nyc_output/
+
+# Redis dump
+dump.rdb
+
+# Archivos de entorno especificos de cada app (generados por el desarrollador)
+apps/api/.env
+apps/web/.env
