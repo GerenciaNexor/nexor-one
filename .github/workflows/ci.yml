@@ -25,6 +25,9 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
+      - name: Generar Prisma Client
+        run: pnpm --filter @nexor/api exec prisma generate
+
       - name: Lint
         run: pnpm lint
 
