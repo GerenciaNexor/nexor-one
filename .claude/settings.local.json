@@ -36,7 +36,10 @@
       "Bash(pnpm --filter:*)",
       "Bash(npx prisma:*)",
       "Bash(node -e \":*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx prisma migrate deploy)",
+      "Bash(Test-NetConnection -ComputerName turntable.proxy.rlwy.net -Port 28927)",
+      "Bash(timeout 10 bash -c \"echo > /dev/tcp/turntable.proxy.rlwy.net/28927\")"
     ]
   }
 }
