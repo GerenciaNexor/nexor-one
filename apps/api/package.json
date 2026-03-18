@@ -17,7 +17,8 @@
     "db:studio": "prisma studio",
     "db:backup": "bash ../../scripts/db-backup.sh",
     "db:restore": "bash ../../scripts/db-restore.sh",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "onboarding": "tsx prisma/onboarding.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "exceljs": "^4.4.0",
     "prisma": "^6.3.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.2",

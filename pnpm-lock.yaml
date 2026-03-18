@@ -66,6 +66,9 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.15
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
       prisma:
         specifier: ^6.3.0
         version: 6.19.2(typescript@5.9.3)
