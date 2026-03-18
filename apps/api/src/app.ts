@@ -31,7 +31,7 @@ app.register(fastifyCors, {
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
 
-// ─── Health check (sin autenticacion) ────────────────────────────────────────
+// ─── Health check (sin autenticacion) — CI/CD test ───────────────────────────
 app.get('/health', async (): Promise<ApiResponse<{ version: string; db: string }>> => {
   await prisma.$queryRaw`SELECT 1`
   return {
