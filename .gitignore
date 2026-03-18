@@ -41,6 +41,9 @@ coverage/
 # Redis dump
 dump.rdb
 
+# Backups locales de base de datos (nunca commitear)
+backups/
+
 # Archivos de entorno especificos de cada app (generados por el desarrollador)
 apps/api/.env
 apps/web/.env

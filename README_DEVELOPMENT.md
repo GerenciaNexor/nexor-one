@@ -309,3 +309,113 @@ lsof -i :3001                  # macOS/Linux
 taskkill /PID <PID> /F         # Windows
 kill -9 <PID>                  # macOS/Linux
 ```
+
+---
+
+## 8. Backups y restauración de base de datos
+
+### Política de backups — REGLA INNEGOCIABLE
+
+> **Nunca ejecutar una migración en producción sin haber generado y verificado un backup manual minutos antes.**
+
+Los backups se almacenan en dos ubicaciones distintas para evitar un único punto de falla:
+
+| Nivel | Qué es | Frecuencia | Dónde vive |
+|-------|--------|-----------|-----------|
+| Automático Railway | Snapshot de PostgreSQL gestionado por Railway | Diario | Panel de Railway → Postgres → Backups |
+| Automático externo | `pg_dump` ejecutado por GitHub Actions | Semanal (domingos 02:00 UTC) | GitHub Actions → Artifacts (90 días) |
+| Manual | `pg_dump` generado por el desarrollador | Antes de cada migración a producción | Local / descargado manualmente |
+
+---
+
+### Requisitos del sistema para backup/restore local
+
+`pg_dump` y `pg_restore` deben estar instalados:
+
+```bash
+# macOS
+brew install postgresql
+
+# Ubuntu/Debian
+sudo apt install postgresql-client
+
+# Windows — usar WSL o instalar PostgreSQL
+# https://www.postgresql.org/download/windows/
+```
+
+---
+
+### Generar un backup manual (antes de migrar a producción)
+
+```bash
+# Produccion (Railway)
+DATABASE_URL="postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway" \
+  pnpm --filter @nexor/api db:backup
+
+# Local
+DATABASE_URL="postgresql://postgres:password@localhost:5433/nexor_dev" \
+  pnpm --filter @nexor/api db:backup
+```
+
+El archivo se guarda en `backups/nexor_YYYYMMDD_HHMMSS.dump`.
+
+**Verificar que el backup es válido antes de continuar:**
+
+```bash
+pg_restore --list backups/nexor_YYYYMMDD_HHMMSS.dump | head -30
+# Debe mostrar una lista de tablas y objetos — si está vacío, el backup es inválido
+```
+
+---
+
+### Restaurar desde un backup (emergencia)
+
+> ⚠️ **Este proceso elimina todos los datos actuales. Usar solo ante pérdida real de datos.**
+
+```bash
+# 1. Identificar el backup a restaurar
+ls -lh backups/
+
+# 2. Restaurar (pedirá confirmación escribiendo 'RESTAURAR')
+DATABASE_URL="postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway" \
+  pnpm --filter @nexor/api db:restore backups/nexor_YYYYMMDD_HHMMSS.dump
+
+# 3. Obligatorio: Re-aplicar RLS después de restaurar
+DATABASE_URL="postgresql://..." pnpm --filter @nexor/api db:rls
+
+# 4. Verificar que los datos se restauraron correctamente
+pnpm --filter @nexor/api db:studio
+```
+
+---
+
+### Restaurar desde un backup de Railway
+
+1. Ir a Railway → tu proyecto → servicio **Postgres** → pestaña **Backups**
+2. Seleccionar el backup más reciente y hacer clic en **Restore**
+3. Railway restaura directamente — no se necesita `pg_restore`
+4. Después de restaurar, re-aplicar RLS manualmente (Railway no lo preserva):
+   ```bash
+   DATABASE_URL="postgresql://..." pnpm --filter @nexor/api db:rls
+   ```
+
+---
+
+### Restaurar desde un backup semanal de GitHub Actions
+
+1. Ir a GitHub → Actions → workflow **"Backup semanal DB produccion"**
+2. Seleccionar la ejecución más reciente exitosa
+3. En la sección **Artifacts**, descargar el archivo `.dump`
+4. Seguir los pasos de **Restaurar desde un backup** de arriba
+
+---
+
+### Configuración del backup automático semanal
+
+El workflow `.github/workflows/backup.yml` necesita el secret `DATABASE_URL_PROD` en GitHub:
+
+1. Ir a GitHub → Settings → Secrets and variables → Actions
+2. Crear secret: **`DATABASE_URL_PROD`**
+3. Valor: `postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway`
+
+El workflow corre automáticamente cada domingo a las 02:00 UTC. También puede ejecutarse manualmente desde GitHub Actions → **"Backup semanal DB produccion"** → **Run workflow**.

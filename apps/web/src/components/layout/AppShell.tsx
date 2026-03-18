@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/store/auth'
 import { logoutRequest } from '@/lib/auth-api'
 import { apiClient } from '@/lib/api-client'
+import { SentryUserContext } from '@/components/layout/SentryUserContext'
 
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      <SentryUserContext />
 
       {/* Overlay movil */}
       {sidebarOpen && (
