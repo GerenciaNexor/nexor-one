@@ -15,6 +15,8 @@
     "db:seed": "prisma db seed",
     "db:rls": "tsx prisma/setup-rls.ts",
     "db:studio": "prisma studio",
+    "db:backup": "bash ../../scripts/db-backup.sh",
+    "db:restore": "bash ../../scripts/db-restore.sh",
     "prisma:generate": "prisma generate"
   },
   "prisma": {
