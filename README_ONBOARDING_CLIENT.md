@@ -130,20 +130,28 @@ Antes de ejecutar el seed, el equipo NEXOR valida:
 Una vez validado el Excel, el equipo ejecuta el script de onboarding:
 
 ```bash
-# Desde la raíz del proyecto
-pnpm --filter api onboarding:run --file="ruta/al/archivo.xlsx" --env=production
+# Desde la raíz del proyecto — apuntando a la base de datos de desarrollo
+pnpm --filter @nexor/api onboarding --file="ruta/al/archivo.xlsx"
+
+# Con módulos adicionales (ARI, AGENDA, VERA se activan explícitamente;
+# KIRA y NIRA se auto-detectan si el Excel tiene productos / proveedores)
+pnpm --filter @nexor/api onboarding --file="ruta.xlsx" --modules="ARI,AGENDA,VERA"
+
+# Apuntando directamente a producción (Railway)
+DATABASE_URL="postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway" \
+  pnpm --filter @nexor/api onboarding --file="ruta/al/archivo.xlsx"
 ```
 
 El script hace en este orden:
-1. Crea el `Tenant` en la DB
-2. Crea las `Branches` (sucursales)
-3. Activa los `FeatureFlags` según módulos contratados
-4. Crea los `Users` con contraseñas temporales
-5. Envía emails de invitación a cada usuario con link para crear su contraseña
+1. Valida el Excel completo — si hay errores, los reporta TODOS y no escribe nada
+2. Crea el `Tenant` en la DB
+3. Crea las `Branches` (sucursales)
+4. Activa los `FeatureFlags` según módulos contratados
+5. Crea los `Users` con contraseñas temporales hasheadas con bcrypt (nunca aparecen en consola)
 6. Si KIRA activo: importa `Products`
 7. Si KIRA activo: crea registros de `Stock` por sucursal
 8. Si NIRA activo: importa `Suppliers`
-9. Genera reporte de lo que se creó (para verificación)
+9. Imprime resumen con totales de lo creado
 
 **El script es idempotente:** si se corre dos veces con el mismo Excel, no duplica datos.
 
@@ -248,4 +256,8 @@ Si el script de seed falla a mitad de ejecución:
 4. Si el error es en el tenant o sucursales (pasos 1-2): hacer rollback completo.
 5. Corregir el problema en el Excel o en el script y volver a ejecutar.
 
-El script de seed genera un log detallado en `logs/onboarding-{fecha}.log` con cada operación ejecutada.
+El script imprime en consola un log detallado con cada operación ejecutada. Redirígelo a un archivo si necesitas guardarlo:
+
+```bash
+DATABASE_URL="..." pnpm --filter @nexor/api onboarding --file="ruta.xlsx" 2>&1 | tee onboarding-$(date +%Y%m%d).log
+```

@@ -15,7 +15,10 @@
     "db:seed": "prisma db seed",
     "db:rls": "tsx prisma/setup-rls.ts",
     "db:studio": "prisma studio",
-    "prisma:generate": "prisma generate"
+    "db:backup": "bash ../../scripts/db-backup.sh",
+    "db:restore": "bash ../../scripts/db-restore.sh",
+    "prisma:generate": "prisma generate",
+    "onboarding": "tsx prisma/onboarding.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -26,6 +29,7 @@
     "@fastify/rate-limit": "^9.1.0",
     "@nexor/shared": "workspace:*",
     "@prisma/client": "^6.3.0",
+    "@sentry/node": "^10.44.0",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.29.0",
     "fastify-plugin": "^4.5.1",
@@ -34,6 +38,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "exceljs": "^4.4.0",
     "prisma": "^6.3.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.2",

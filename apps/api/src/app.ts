@@ -1,9 +1,15 @@
+import { initSentry } from './plugins/sentry'
+
+// Sentry debe inicializarse antes que cualquier otro modulo
+initSentry()
+
 import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import type { ApiResponse } from '@nexor/shared'
 import { prisma } from './lib/prisma'
 import jwtPlugin from './plugins/jwt'
 import rateLimitPlugin from './plugins/rate-limit'
+import sentryPlugin from './plugins/sentry'
 import { tenantHook } from './plugins/tenant'
 import authModule from './modules/auth/index'
 import tenantsModule from './modules/tenants/index'
@@ -30,6 +36,7 @@ app.register(fastifyCors, {
 })
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
+app.register(sentryPlugin)
 
 // ─── Health check (sin autenticacion) — CI/CD test ───────────────────────────
 app.get('/health', async (): Promise<ApiResponse<{ version: string; db: string }>> => {

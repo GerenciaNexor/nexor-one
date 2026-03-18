@@ -1,0 +1,54 @@
+name: Backup semanal DB produccion
+
+on:
+  # Todos los domingos a las 02:00 UTC
+  schedule:
+    - cron: '0 2 * * 0'
+  # Permite ejecutar manualmente desde GitHub Actions → Run workflow
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump → GitHub Artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Generar backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+        run: |
+          mkdir -p backups
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          FILENAME="nexor_${TIMESTAMP}.dump"
+          pg_dump \
+            "$DATABASE_URL" \
+            --format=custom \
+            --no-acl \
+            --no-owner \
+            --file="backups/${FILENAME}"
+          echo "BACKUP_FILE=${FILENAME}" >> "$GITHUB_ENV"
+          echo "✅ Backup generado: ${FILENAME} ($(du -sh backups/${FILENAME} | cut -f1))"
+
+      - name: Verificar integridad del backup
+        run: |
+          COUNT=$(pg_restore --list "backups/$BACKUP_FILE" | wc -l)
+          echo "✅ Objetos en el backup: ${COUNT}"
+          if [ "$COUNT" -lt 10 ]; then
+            echo "❌ El backup parece estar vacio o corrupto."
+            exit 1
+          fi
+
+      - name: Subir backup como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ env.BACKUP_FILE }}
+          path: backups/${{ env.BACKUP_FILE }}
+          # Retener 90 dias (maximo en GitHub gratuito)
+          retention-days: 90
+          if-no-files-found: error
