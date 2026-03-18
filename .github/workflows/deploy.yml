@@ -5,18 +5,9 @@ on:
     branches: [main]
 
 jobs:
-  deploy-api:
-    name: Deploy API → Railway
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Deploy a Railway
-        run: npx @railway/cli@latest redeploy --service ${{ secrets.RAILWAY_SERVICE_ID }} --yes
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  # Railway detecta el push a main automáticamente via integración nativa de GitHub.
+  # No se necesita un job aquí — configurar en Railway UI:
+  #   Proyecto → Servicio API → Settings → Source → conectar repo → branch: main
 
   deploy-web:
     name: Deploy Web → Vercel
