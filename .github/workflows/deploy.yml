@@ -5,9 +5,21 @@ on:
     branches: [main]
 
 jobs:
-  # Railway detecta el push a main automáticamente via integración nativa de GitHub.
-  # No se necesita un job aquí — configurar en Railway UI:
-  #   Proyecto → Servicio API → Settings → Source → conectar repo → branch: main
+  deploy-api:
+    name: Deploy API → Railway
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy a Railway
+        run: |
+          curl --silent --show-error --fail \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "mutation { serviceInstanceRedeploy(serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"
+            }' \
+            https://backboard.railway.app/graphql/v2
 
   deploy-web:
     name: Deploy Web → Vercel
