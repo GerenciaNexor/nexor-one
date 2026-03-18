@@ -10,13 +10,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Deploy a Railway
-        run: npx @railway/cli@latest redeploy --service ${{ secrets.RAILWAY_SERVICE_ID }} --yes
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          curl --silent --show-error --fail \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "mutation { serviceInstanceRedeploy(serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\") }"
+            }' \
+            https://backboard.railway.app/graphql/v2
 
   deploy-web:
     name: Deploy Web → Vercel
