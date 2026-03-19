@@ -19,7 +19,10 @@
 
 import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient()
+// Necesita DIRECT_DATABASE_URL (superuser) para poder usar FORCE ROW LEVEL SECURITY
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] } },
+})
 
 /** Tablas de negocio que tienen tenant_id directo y necesitan RLS. */
 const BUSINESS_TABLES = [
@@ -48,25 +51,20 @@ async function setupRLS(): Promise<void> {
   console.log('🔒 Configurando Row-Level Security...\n')
 
   for (const table of BUSINESS_TABLES) {
-    // Habilitar RLS en la tabla
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`
-    )
+    // Habilitar RLS y forzarlo incluso para el owner de la tabla
+    await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`)
+    await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY`)
 
-    // Eliminar politica anterior si existe (para poder re-ejecutar el script)
-    await prisma.$executeRawUnsafe(
-      `DROP POLICY IF EXISTS tenant_isolation ON "${table}"`
-    )
+    // Eliminar politica anterior si existe (permite re-ejecutar el script de forma idempotente)
+    await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "${table}"`)
 
-    // Crear politica de aislamiento por tenant
-    // current_setting con segundo argumento 'true' devuelve NULL en vez de error
-    // cuando la variable no esta definida (ej: en migraciones como superusuario)
+    // Crear politica con USING (lectura) + WITH CHECK (escritura).
+    // NULLIF(..., '') devuelve NULL cuando la variable no esta definida,
+    // lo que hace que la comparacion falle de forma segura (fail-safe: sin contexto = sin filas).
     await prisma.$executeRawUnsafe(`
       CREATE POLICY tenant_isolation ON "${table}"
-        AS PERMISSIVE
-        FOR ALL
-        TO PUBLIC
-        USING (tenant_id = current_setting('app.current_tenant_id', true))
+        USING     (tenant_id::text = NULLIF(current_setting('app.current_tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id::text = NULLIF(current_setting('app.current_tenant_id', TRUE), ''))
     `)
 
     console.log(`  ✅ ${table}`)

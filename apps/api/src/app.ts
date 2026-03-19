@@ -1,4 +1,6 @@
 import { initSentry } from './plugins/sentry'
+import { startAbcScheduler } from './jobs/abc-classification'
+import { startStockAlertsScheduler } from './jobs/stock-alerts'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -17,6 +19,8 @@ import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
+import kiraModule from './modules/kira/index'
+import usersModule from './modules/users/index'
 
 const app = Fastify({
   logger: {
@@ -72,10 +76,10 @@ app.register(
     api.register(tenantsModule,       { prefix: '/tenants' })
     api.register(branchesModule,      { prefix: '/branches' })
     api.register(notificationsModule, { prefix: '/notifications' })
-    // api.register(usersModule,  { prefix: '/users' })   — HU-008
+    api.register(kiraModule,          { prefix: '/kira' })
+    api.register(usersModule,         { prefix: '/users' })
     // api.register(ariModule,    { prefix: '/ari' })     — HU-009+
     // api.register(niraModule,   { prefix: '/nira' })
-    // api.register(kiraModule,   { prefix: '/kira' })
     // api.register(agendaModule, { prefix: '/agenda' })
     // api.register(veraModule,   { prefix: '/vera' })
   },
@@ -88,6 +92,8 @@ const start = async (): Promise<void> => {
 
   try {
     await app.listen({ port, host })
+    startAbcScheduler()
+    startStockAlertsScheduler()
   } catch (err) {
     app.log.error(err)
     process.exit(1)

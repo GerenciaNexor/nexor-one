@@ -1,5 +1,5 @@
-import { ComingSoon } from '@/components/layout/ComingSoon'
+import { redirect } from 'next/navigation'
 
 export default function KiraPage() {
-  return <ComingSoon module="KIRA" description="Inventario en tiempo real, movimientos de stock y alertas de minimos." />
+  redirect('/kira/products')
 }

@@ -24,6 +24,8 @@ interface Notification {
   id: string
   title: string
   message: string
+  type: string
+  module: string | null
   isRead: boolean
   createdAt: string
   link?: string | null
@@ -50,6 +52,34 @@ function MenuIcon() {
   )
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diff / 60_000)
+  if (min < 1) return 'Ahora mismo'
+  if (min < 60) return `Hace ${min} min`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `Hace ${hr} h`
+  return `Hace ${Math.floor(hr / 24)} d`
+}
+
+function ModuleIcon({ module: mod }: { module: string | null }) {
+  const MAP: Record<string, { l: string; bg: string }> = {
+    KIRA:   { l: 'K', bg: 'bg-blue-500' },
+    ARI:    { l: 'A', bg: 'bg-emerald-500' },
+    NIRA:   { l: 'N', bg: 'bg-purple-500' },
+    AGENDA: { l: 'G', bg: 'bg-orange-500' },
+    VERA:   { l: 'V', bg: 'bg-rose-500' },
+  }
+  const { l, bg } = MAP[mod ?? ''] ?? { l: '·', bg: 'bg-slate-400' }
+  return (
+    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${bg}`}>
+      <span className="text-xs font-bold text-white">{l}</span>
+    </div>
+  )
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -72,10 +102,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => {})
   }, [])
 
-  // Polling del conteo de notificaciones no leidas cada 30s
+  // Polling del conteo de notificaciones no leidas cada 30s.
+  // Se pausa cuando la pestaña no es visible (Page Visibility API).
   useEffect(() => {
     let mounted = true
     async function fetchCount() {
+      if (typeof document !== 'undefined' && document.hidden) return
       try {
         const data = await apiClient.get<{ count: number }>('/v1/notifications/unread-count')
         if (mounted) setUnreadCount(data.count)
@@ -85,9 +117,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
     fetchCount()
     const interval = setInterval(fetchCount, 30_000)
+    function onVisibility() {
+      if (!document.hidden) fetchCount()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       mounted = false
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 
@@ -110,10 +147,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   async function handleBellClick() {
     const opening = !notifOpen
     setNotifOpen(opening)
-    if (opening && notifications.length === 0) {
+    if (opening) {
       setNotifLoading(true)
       try {
-        const data = await apiClient.get<{ data: Notification[] }>('/v1/notifications?limit=20')
+        const data = await apiClient.get<{ data: Notification[] }>('/v1/notifications?isRead=false&limit=10')
         setNotifications(data.data)
       } catch {
         // ignore
@@ -123,9 +160,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function handleNotifClick(n: Notification) {
+    // Marcar como leida y quitarla del panel
+    await apiClient.put(`/v1/notifications/${n.id}/read`, {}).catch(() => {})
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id))
+    setUnreadCount((c) => Math.max(0, c - 1))
+    if (n.link) {
+      setNotifOpen(false)
+      router.push(n.link)
+    }
+  }
+
   async function handleMarkAllRead() {
     await apiClient.put('/v1/notifications/read-all', {}).catch(() => {})
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+    setNotifications([])
     setUnreadCount(0)
   }
 
@@ -201,6 +249,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {m.label}
               </Link>
             ))}
+
+            {user?.role === 'TENANT_ADMIN' && (
+              <>
+                <div className="my-2 border-t border-slate-100" />
+                <Link
+                  href="/admin/branches"
+                  className={[
+                    'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                    pathname.startsWith('/admin')
+                      ? 'bg-blue-50 font-semibold text-blue-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  ].join(' ')}
+                >
+                  Administracion
+                </Link>
+              </>
+            )}
           </div>
         </nav>
 
@@ -251,17 +316,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {/* Panel de notificaciones */}
             {notifOpen && (
               <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
+
+                {/* Cabecera */}
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                  <span className="text-sm font-semibold text-slate-900">Notificaciones</span>
+                  <span className="text-sm font-semibold text-slate-900">
+                    Notificaciones
+                    {unreadCount > 0 && (
+                      <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-xs text-red-600">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </span>
                   {unreadCount > 0 && (
-                    <button
-                      onClick={handleMarkAllRead}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Marcar todas como leidas
+                    <button onClick={handleMarkAllRead} className="text-xs text-blue-600 hover:underline">
+                      Marcar todas
                     </button>
                   )}
                 </div>
+
+                {/* Lista */}
                 <div className="max-h-80 overflow-y-auto">
                   {notifLoading ? (
                     <div className="flex items-center justify-center py-10">
@@ -269,32 +342,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                   ) : notifications.length === 0 ? (
                     <p className="py-10 text-center text-sm text-slate-400">
-                      No tienes notificaciones
+                      Sin notificaciones sin leer
                     </p>
                   ) : (
-                    <ul>
+                    <ul className="divide-y divide-slate-50">
                       {notifications.map((n) => (
                         <li
                           key={n.id}
-                          className={[
-                            'border-b border-slate-50 px-4 py-3 last:border-0',
-                            !n.isRead ? 'bg-blue-50/50' : '',
-                          ].join(' ')}
+                          onClick={() => handleNotifClick(n)}
+                          className="flex cursor-pointer gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
                         >
-                          <p className="text-sm font-medium text-slate-900">{n.title}</p>
-                          <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{n.message}</p>
-                          <p className="mt-1.5 text-xs text-slate-400">
-                            {new Date(n.createdAt).toLocaleString('es-CO', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
+                          <ModuleIcon module={n.module} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-900">{n.title}</p>
+                            <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{n.message}</p>
+                            <p className="mt-1 text-xs text-slate-400">{relativeTime(n.createdAt)}</p>
+                          </div>
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                         </li>
                       ))}
                     </ul>
                   )}
+                </div>
+
+                {/* Pie: Ver todas */}
+                <div className="border-t border-slate-100 px-4 py-2.5">
+                  <Link
+                    href="/notifications"
+                    onClick={() => setNotifOpen(false)}
+                    className="block text-center text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Ver todas las notificaciones →
+                  </Link>
                 </div>
               </div>
             )}

@@ -22,7 +22,11 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
+// Los seeds se ejecutan como superuser (DIRECT_DATABASE_URL) para bypass RLS.
+// Si DIRECT_DATABASE_URL no está definida, cae al DATABASE_URL (dev sin RLS activo).
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] } },
+})
 
 async function main(): Promise<void> {
   console.log('🌱 Iniciando seed de datos de prueba...\n')
