@@ -5,36 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  deploy-api:
-    name: Deploy API → Railway
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy a Railway
-        run: |
-          cat > /tmp/query.json << 'EOF'
-          {
-            "query": "mutation deploymentCreate($serviceId: String!, $environmentId: String!) { deploymentCreate(input: { serviceId: $serviceId, environmentId: $environmentId }) { id } }",
-            "variables": {
-              "serviceId": "RAILWAY_SERVICE_ID_PLACEHOLDER",
-              "environmentId": "RAILWAY_ENV_ID_PLACEHOLDER"
-            }
-          }
-          EOF
-
-          sed -i "s/RAILWAY_SERVICE_ID_PLACEHOLDER/$RAILWAY_SERVICE_ID/g" /tmp/query.json
-          sed -i "s/RAILWAY_ENV_ID_PLACEHOLDER/$RAILWAY_ENVIRONMENT_ID/g" /tmp/query.json
-
-          curl --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d @/tmp/query.json \
-            https://backboard.railway.app/graphql/v2
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+  # Railway despliega automáticamente via integración nativa de GitHub (push a main)
 
   deploy-web:
     name: Deploy Web → Vercel
