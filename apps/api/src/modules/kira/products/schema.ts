@@ -32,7 +32,8 @@ export const UpdateProductSchema = z.object({
 export const ProductQuerySchema = z.object({
   search:   z.string().optional(),
   category: z.string().optional(),
-  active:   z.enum(['true', 'false']).optional(), // default: solo activos
+  active:   z.enum(['true', 'false']).optional(),       // default: solo activos
+  abcClass: z.enum(['A', 'B', 'C']).optional(),         // filtro por clasificación ABC
 })
 
 export type CreateProductInput = z.infer<typeof CreateProductSchema>

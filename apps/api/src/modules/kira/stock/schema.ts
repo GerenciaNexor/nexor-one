@@ -28,6 +28,7 @@ export const MovementQuerySchema = z.object({
   productId: z.string().optional(),
   branchId:  z.string().optional(),
   type:      z.enum(['entrada', 'salida', 'ajuste']).optional(),
+  lotNumber: z.string().optional(), // filtro por número de lote (HU-024)
   from:      z.string().optional(), // ISO date
   to:        z.string().optional(), // ISO date
   page:      z.coerce.number().int().positive().default(1),

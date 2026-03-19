@@ -254,6 +254,7 @@ export async function listMovements(tenantId: string, query: MovementQuery) {
     ...(query.productId ? { productId: query.productId } : {}),
     ...(query.branchId  ? { branchId:  query.branchId  } : {}),
     ...(query.type      ? { type:      query.type      } : {}),
+    ...(query.lotNumber ? { lotNumber: query.lotNumber } : {}),
     ...(query.from || query.to
       ? {
           createdAt: {

@@ -39,6 +39,7 @@ export async function listProducts(tenantId: string, query: ProductQuery) {
       tenantId,
       isActive,
       ...(query.category ? { category: query.category } : {}),
+      ...(query.abcClass  ? { abcClass:  query.abcClass  } : {}),
       ...(query.search
         ? {
             OR: [
