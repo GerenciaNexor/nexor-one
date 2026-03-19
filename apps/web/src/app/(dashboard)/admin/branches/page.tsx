@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -192,25 +193,23 @@ export default function AdminBranchesPage() {
 
       {/* Tabla */}
       <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-          </div>
-        ) : branches.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">No hay sucursales</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                <th className="px-5 py-3 text-left font-medium">Nombre</th>
-                <th className="px-5 py-3 text-left font-medium">Ciudad</th>
-                <th className="px-5 py-3 text-left font-medium">Telefono</th>
-                <th className="px-5 py-3 text-left font-medium">Estado</th>
-                <th className="px-5 py-3 text-right font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {branches.map((b) => (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+              <th className="px-5 py-3 text-left font-medium">Nombre</th>
+              <th className="px-5 py-3 text-left font-medium">Ciudad</th>
+              <th className="px-5 py-3 text-left font-medium">Telefono</th>
+              <th className="px-5 py-3 text-left font-medium">Estado</th>
+              <th className="px-5 py-3 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <SkeletonRows rows={4} cols={5} px="px-5" />
+            ) : branches.length === 0 ? (
+              <tr><td colSpan={5} className="py-16 text-center text-sm text-slate-400">No hay sucursales</td></tr>
+            ) : (
+              branches.map((b) => (
                 <tr key={b.id} className={b.isActive ? '' : 'opacity-50'}>
                   <td className="px-5 py-3">
                     <p className="font-medium text-slate-900">{b.name}</p>
@@ -246,10 +245,10 @@ export default function AdminBranchesPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal */}

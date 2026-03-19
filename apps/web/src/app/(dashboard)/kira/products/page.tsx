@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { ProductFormModal } from '@/components/kira/ProductFormModal'
 import type { Product } from '@/components/kira/ProductFormModal'
+import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -27,10 +28,6 @@ function AbcBadge({ cls }: { cls: 'A' | 'B' | 'C' | null }) {
       {cls}
     </span>
   )
-}
-
-function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
 }
 
 // ─── Página ───────────────────────────────────────────────────────────────────
@@ -171,92 +168,77 @@ export default function ProductsPage() {
 
       {/* ── Tabla ───────────────────────────────────────────────────────── */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Spinner />
-          </div>
-        ) : fetchError ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-red-500">{fetchError}</p>
-            <button
-              onClick={() => setSearch((s) => s + ' ')}
-              className="mt-3 text-sm text-blue-600 hover:underline"
-            >
-              Reintentar
-            </button>
-          </div>
-        ) : products.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">
-            No se encontraron productos
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Nombre</th>
-                  <th className="px-4 py-3">Categoría</th>
-                  <th className="px-4 py-3">Unidad</th>
-                  <th className="px-4 py-3 text-right">Precio venta</th>
-                  <th className="px-4 py-3 text-right">Stock mín.</th>
-                  <th className="px-4 py-3 text-center">ABC</th>
-                  <th className="px-4 py-3 text-center">Estado</th>
-                  {canEdit && <th className="px-4 py-3" />}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">SKU</th>
+                <th className="px-4 py-3">Nombre</th>
+                <th className="px-4 py-3">Categoría</th>
+                <th className="px-4 py-3">Unidad</th>
+                <th className="px-4 py-3 text-right">Precio venta</th>
+                <th className="px-4 py-3 text-right">Stock mín.</th>
+                <th className="px-4 py-3 text-center">ABC</th>
+                <th className="px-4 py-3 text-center">Estado</th>
+                {canEdit && <th className="px-4 py-3" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <SkeletonRows rows={8} cols={canEdit ? 9 : 8} />
+              ) : fetchError ? (
+                <tr>
+                  <td colSpan={canEdit ? 9 : 8} className="py-16 text-center">
+                    <p className="text-sm text-red-500">{fetchError}</p>
+                    <button onClick={() => setSearch((s) => s + ' ')} className="mt-3 text-sm text-blue-600 hover:underline">
+                      Reintentar
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {products.map((p) => (
+              ) : products.length === 0 ? (
+                <tr>
+                  <td colSpan={canEdit ? 9 : 8} className="py-16 text-center text-sm text-slate-400">
+                    No se encontraron productos
+                  </td>
+                </tr>
+              ) : (
+                products.map((p) => (
                   <tr
                     key={p.id}
                     onClick={() => router.push(`/kira/products/${p.id}`)}
-                    className={[
-                      'cursor-pointer transition-colors hover:bg-slate-50',
-                      !p.isActive ? 'opacity-50' : '',
-                    ].join(' ')}
+                    className={['cursor-pointer transition-colors hover:bg-slate-50', !p.isActive ? 'opacity-50' : ''].join(' ')}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.sku}</td>
                     <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
                     <td className="px-4 py-3 text-slate-500">{p.category ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{p.unit}</td>
                     <td className="px-4 py-3 text-right text-slate-700">
-                      {p.salePrice != null
-                        ? `$${p.salePrice.toLocaleString('es-CO')}`
-                        : <span className="text-slate-300">—</span>}
+                      {p.salePrice != null ? `$${p.salePrice.toLocaleString('es-CO')}` : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500">{p.minStock}</td>
-                    <td className="px-4 py-3 text-center">
-                      <AbcBadge cls={p.abcClass} />
-                    </td>
+                    <td className="px-4 py-3 text-center"><AbcBadge cls={p.abcClass} /></td>
                     <td className="px-4 py-3 text-center">
                       {p.isActive ? (
                         <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          Activo
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Activo
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                          Inactivo
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />Inactivo
                         </span>
                       )}
                     </td>
                     {canEdit && (
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={(ev) => openEdit(p, ev)}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          Editar
-                        </button>
+                        <button onClick={(ev) => openEdit(p, ev)} className="text-xs text-blue-600 hover:underline">Editar</button>
                       </td>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ── Modal crear / editar ─────────────────────────────────────────── */}

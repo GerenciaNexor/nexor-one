@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { SkeletonList } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -43,10 +44,6 @@ function ModuleIcon({ module: mod }: { module: string | null }) {
       <span className="text-sm font-bold text-white">{l}</span>
     </div>
   )
-}
-
-function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
 }
 
 const PAGE_SIZE = 25
@@ -148,9 +145,7 @@ export default function NotificationsPage() {
       {/* Lista */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner />
-          </div>
+          <ul className="divide-y divide-slate-100"><SkeletonList rows={6} /></ul>
         ) : paginated.length === 0 ? (
           <p className="py-16 text-center text-sm text-slate-400">
             {filter === 'unread' ? 'No tienes notificaciones sin leer' : 'Sin notificaciones'}

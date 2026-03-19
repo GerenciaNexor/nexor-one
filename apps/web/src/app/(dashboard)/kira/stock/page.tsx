@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { MovementModal } from '@/components/kira/MovementModal'
 import type { StockRow } from '@/components/kira/MovementModal'
+import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -24,10 +25,6 @@ function AlertIcon() {
       <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   )
-}
-
-function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
 }
 
 // ─── Página ───────────────────────────────────────────────────────────────────
@@ -155,33 +152,33 @@ export default function StockPage() {
 
       {/* ── Tabla ───────────────────────────────────────────────────────── */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center py-20"><Spinner /></div>
-        ) : fetchError ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-red-500">{fetchError}</p>
-            <button onClick={load} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">
-            {onlyCritical ? 'No hay productos con stock crítico' : 'No se encontraron productos'}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Producto</th>
-                  <th className="px-4 py-3">SKU</th>
-                  {!isOperative && <th className="px-4 py-3">Sucursal</th>}
-                  <th className="px-4 py-3 text-right">Cantidad</th>
-                  <th className="px-4 py-3 text-right">Mínimo</th>
-                  <th className="px-4 py-3 text-center">Estado</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((s) => (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Producto</th>
+                <th className="px-4 py-3">SKU</th>
+                {!isOperative && <th className="px-4 py-3">Sucursal</th>}
+                <th className="px-4 py-3 text-right">Cantidad</th>
+                <th className="px-4 py-3 text-right">Mínimo</th>
+                <th className="px-4 py-3 text-center">Estado</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <SkeletonRows rows={8} cols={isOperative ? 6 : 7} />
+              ) : fetchError ? (
+                <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center">
+                  <p className="text-sm text-red-500">{fetchError}</p>
+                  <button onClick={load} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
+                </td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center text-sm text-slate-400">
+                  {onlyCritical ? 'No hay productos con stock crítico' : 'No se encontraron productos'}
+                </td></tr>
+              ) : (
+                filtered.map((s) => (
                   <tr
                     key={s.id}
                     onClick={() => router.push(`/kira/products/${s.product.id}`)}
@@ -227,11 +224,11 @@ export default function StockPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal */}
