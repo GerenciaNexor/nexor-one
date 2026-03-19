@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
+import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -310,27 +311,25 @@ export default function AdminUsersPage() {
 
       {/* Tabla */}
       <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">
-            {search ? 'Sin resultados' : 'No hay usuarios'}
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                <th className="px-5 py-3 text-left font-medium">Usuario</th>
-                <th className="px-5 py-3 text-left font-medium">Rol</th>
-                <th className="px-5 py-3 text-left font-medium">Sucursal</th>
-                <th className="px-5 py-3 text-left font-medium">Estado</th>
-                <th className="px-5 py-3 text-right font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((u) => {
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+              <th className="px-5 py-3 text-left font-medium">Usuario</th>
+              <th className="px-5 py-3 text-left font-medium">Rol</th>
+              <th className="px-5 py-3 text-left font-medium">Sucursal</th>
+              <th className="px-5 py-3 text-left font-medium">Estado</th>
+              <th className="px-5 py-3 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <SkeletonRows rows={6} cols={5} px="px-5" />
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} className="py-16 text-center text-sm text-slate-400">
+                {search ? 'Sin resultados' : 'No hay usuarios'}
+              </td></tr>
+            ) : (
+              filtered.map((u) => {
                 const isSelf = u.id === me?.id
                 return (
                   <tr key={u.id} className={u.isActive ? '' : 'opacity-50'}>
@@ -371,10 +370,10 @@ export default function AdminUsersPage() {
                     </td>
                   </tr>
                 )
-              })}
-            </tbody>
-          </table>
-        )}
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal */}

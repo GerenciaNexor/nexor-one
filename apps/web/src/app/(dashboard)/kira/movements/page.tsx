@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
+import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -42,10 +43,6 @@ function TypeBadge({ type }: { type: Movement['type'] }) {
       {labels[type]}
     </span>
   )
-}
-
-function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
 }
 
 function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
@@ -181,33 +178,33 @@ export default function MovementsPage() {
 
       {/* ── Tabla ───────────────────────────────────────────────────────── */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center py-20"><Spinner /></div>
-        ) : fetchError ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-red-500">{fetchError}</p>
-            <button onClick={load} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
-          </div>
-        ) : movements.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-400">No se encontraron movimientos</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Producto</th>
-                  {!isOperative && <th className="px-4 py-3">Sucursal</th>}
-                  <th className="px-4 py-3 text-center">Tipo</th>
-                  <th className="px-4 py-3 text-right">Cantidad</th>
-                  <th className="px-4 py-3 text-right">Antes</th>
-                  <th className="px-4 py-3 text-right">Después</th>
-                  <th className="px-4 py-3">Usuario</th>
-                  <th className="px-4 py-3">Notas</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {movements.map((m) => (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Producto</th>
+                {!isOperative && <th className="px-4 py-3">Sucursal</th>}
+                <th className="px-4 py-3 text-center">Tipo</th>
+                <th className="px-4 py-3 text-right">Cantidad</th>
+                <th className="px-4 py-3 text-right">Antes</th>
+                <th className="px-4 py-3 text-right">Después</th>
+                <th className="px-4 py-3">Usuario</th>
+                <th className="px-4 py-3">Notas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <SkeletonRows rows={8} cols={isOperative ? 8 : 9} />
+              ) : fetchError ? (
+                <tr><td colSpan={isOperative ? 8 : 9} className="py-16 text-center">
+                  <p className="text-sm text-red-500">{fetchError}</p>
+                  <button onClick={load} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
+                </td></tr>
+              ) : movements.length === 0 ? (
+                <tr><td colSpan={isOperative ? 8 : 9} className="py-16 text-center text-sm text-slate-400">No se encontraron movimientos</td></tr>
+              ) : (
+                movements.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                       {fmt(m.createdAt)}
@@ -238,11 +235,11 @@ export default function MovementsPage() {
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ── Paginación ──────────────────────────────────────────────────── */}
