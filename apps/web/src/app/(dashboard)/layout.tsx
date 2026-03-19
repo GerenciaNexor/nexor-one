@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
 import { AppShell } from '@/components/layout/AppShell'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
-  const token = useAuthStore((s) => s.token)
+  const router   = useRouter()
+  const pathname = usePathname()
+  const token       = useAuthStore((s) => s.token)
   const hasHydrated = useAuthStore((s) => s._hasHydrated)
 
   useEffect(() => {
@@ -26,5 +27,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!token) return null
 
-  return <AppShell>{children}</AppShell>
+  return (
+    <AppShell>
+      <div key={pathname} className="page-enter">
+        {children}
+      </div>
+    </AppShell>
+  )
 }
