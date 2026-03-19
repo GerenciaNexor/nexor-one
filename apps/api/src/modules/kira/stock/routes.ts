@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify'
-import { StockQuerySchema } from './schema'
-import { listStock, getCrossBranchStock } from './service'
+import { StockQuerySchema, CreateMovementSchema, MovementQuerySchema } from './schema'
+import { listStock, getCrossBranchStock, createMovement, listMovements } from './service'
 import { requireRoleAndModule, requireRole } from '../../../lib/guards'
 
 export async function stockRoutes(app: FastifyInstance): Promise<void> {
+  // ─── HU-022: Consulta de stock ───────────────────────────────────────────────
+
   /**
    * GET /v1/kira/stock
    * Query: ?branchId=xxx&belowMin=true
@@ -33,9 +35,7 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
    * GET /v1/kira/stock/cross-branch/:productId
    * Stock de un producto en TODAS las sucursales del tenant.
    *
-   * Accesible sin restricción de módulo porque ARI también lo usa
-   * para verificar disponibilidad antes de generar una cotización.
-   * Es de solo lectura — no modifica nada.
+   * Sin restricción de módulo — ARI también lo usa antes de cotizar.
    */
   app.get(
     '/cross-branch/:productId',
@@ -51,6 +51,85 @@ export async function stockRoutes(app: FastifyInstance): Promise<void> {
           .code(e.statusCode ?? 500)
           .send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
       }
+    },
+  )
+
+  // ─── HU-023: Movimientos de inventario ───────────────────────────────────────
+
+  /**
+   * POST /v1/kira/stock/movements
+   * Registra una entrada, salida o ajuste de stock.
+   *
+   * OPERATIVE.KIRA → solo puede operar en su propia sucursal
+   * AREA_MANAGER.KIRA → puede operar en cualquier sucursal del tenant
+   */
+  app.post(
+    '/movements',
+    { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') },
+    async (request, reply) => {
+      const parsed = CreateMovementSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: parsed.error.errors[0]?.message ?? 'Datos de entrada inválidos',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      // OPERATIVE solo puede registrar movimientos en su propia sucursal
+      if (
+        request.user.role === 'OPERATIVE' &&
+        parsed.data.branchId !== request.user.branchId
+      ) {
+        return reply.code(403).send({
+          error: 'Solo puedes registrar movimientos en tu propia sucursal',
+          code: 'FORBIDDEN',
+        })
+      }
+
+      try {
+        const movement = await createMovement(
+          request.user.tenantId,
+          request.user.userId,
+          parsed.data,
+        )
+        return reply.code(201).send(movement)
+      } catch (err: unknown) {
+        const e = err as { statusCode?: number; message?: string; code?: string }
+        return reply
+          .code(e.statusCode ?? 500)
+          .send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+      }
+    },
+  )
+
+  /**
+   * GET /v1/kira/stock/movements
+   * Historial de movimientos con filtros y paginación.
+   * Query: ?productId=xxx&branchId=xxx&type=salida&from=2024-01-01&to=2024-12-31&page=1&limit=50
+   *
+   * OPERATIVE.KIRA → historial filtrado a su propia sucursal
+   * AREA_MANAGER.KIRA+ → puede ver movimientos de todas las sucursales
+   */
+  app.get(
+    '/movements',
+    { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') },
+    async (request, reply) => {
+      const parsed = MovementQuerySchema.safeParse(request.query)
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      // OPERATIVE solo puede ver movimientos de su sucursal
+      const query =
+        request.user.role === 'OPERATIVE'
+          ? { ...parsed.data, branchId: request.user.branchId ?? parsed.data.branchId }
+          : parsed.data
+
+      const result = await listMovements(request.user.tenantId, query)
+      return reply.code(200).send(result)
     },
   )
 }
