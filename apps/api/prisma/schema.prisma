@@ -17,8 +17,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL  → nexor_app (non-superuser, subject to RLS) — usado por el servidor Fastify en runtime
+  // DIRECT_DATABASE_URL → postgres (superuser, bypassa RLS) — usado por prisma migrate y seeds
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // =============================================================================
