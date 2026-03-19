@@ -17,6 +17,7 @@ import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
+import kiraModule from './modules/kira/index'
 
 const app = Fastify({
   logger: {
@@ -72,10 +73,10 @@ app.register(
     api.register(tenantsModule,       { prefix: '/tenants' })
     api.register(branchesModule,      { prefix: '/branches' })
     api.register(notificationsModule, { prefix: '/notifications' })
+    api.register(kiraModule,          { prefix: '/kira' })
     // api.register(usersModule,  { prefix: '/users' })   — HU-008
     // api.register(ariModule,    { prefix: '/ari' })     — HU-009+
     // api.register(niraModule,   { prefix: '/nira' })
-    // api.register(kiraModule,   { prefix: '/kira' })
     // api.register(agendaModule, { prefix: '/agenda' })
     // api.register(veraModule,   { prefix: '/vera' })
   },
