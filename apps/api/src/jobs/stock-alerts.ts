@@ -13,7 +13,7 @@
  * En V2 se migrará a BullMQ con reintentos. En V1 usa setInterval.
  */
 
-import { prisma } from '../lib/prisma'
+import { prisma, withTenantContext } from '../lib/prisma'
 
 const ONE_HOUR_MS = 60 * 60 * 1000
 
@@ -22,82 +22,84 @@ const ONE_HOUR_MS = 60 * 60 * 1000
 export async function checkStockAlertsForTenant(
   tenantId: string,
 ): Promise<{ alertsCreated: number }> {
-  // 1. Stocks por debajo del mínimo (minStock > 0 y quantity < minStock)
-  const allStocks = await prisma.stock.findMany({
-    where: { product: { tenantId, isActive: true, minStock: { gt: 0 } } },
-    select: {
-      quantity:  true,
-      productId: true,
-      branchId:  true,
-      product: { select: { name: true, sku: true, minStock: true } },
-      branch:  { select: { name: true } },
-    },
-  })
+  return withTenantContext(tenantId, async (tx) => {
+    // 1. Stocks por debajo del mínimo (minStock > 0 y quantity < minStock)
+    const allStocks = await tx.stock.findMany({
+      where: { product: { tenantId, isActive: true, minStock: { gt: 0 } } },
+      select: {
+        quantity:  true,
+        productId: true,
+        branchId:  true,
+        product: { select: { name: true, sku: true, minStock: true } },
+        branch:  { select: { name: true } },
+      },
+    })
 
-  const criticalStocks = allStocks.filter(
-    (s) => parseFloat(String(s.quantity)) < s.product.minStock,
-  )
+    const criticalStocks = allStocks.filter(
+      (s) => parseFloat(String(s.quantity)) < s.product.minStock,
+    )
 
-  if (criticalStocks.length === 0) return { alertsCreated: 0 }
+    if (criticalStocks.length === 0) return { alertsCreated: 0 }
 
-  // 2. ¿NIRA activo para este tenant?
-  const niraFlag = await prisma.featureFlag.findFirst({
-    where: { tenantId, module: 'NIRA', enabled: true },
-  })
+    // 2. ¿NIRA activo para este tenant?
+    const niraFlag = await tx.featureFlag.findFirst({
+      where: { tenantId, module: 'NIRA', enabled: true },
+    })
 
-  let alertsCreated = 0
+    let alertsCreated = 0
 
-  for (const stock of criticalStocks) {
-    const currentQty = Math.max(0, parseFloat(String(stock.quantity)))
-    const link       = `/kira/products/${stock.productId}?branchId=${stock.branchId}`
-    const title      = `Stock crítico: ${stock.product.sku}`
-    const message    = `${stock.product.name} en ${stock.branch.name} — stock actual: ${currentQty}, mínimo: ${stock.product.minStock}.`
+    for (const stock of criticalStocks) {
+      const currentQty = Math.max(0, parseFloat(String(stock.quantity)))
+      const link       = `/kira/products/${stock.productId}?branchId=${stock.branchId}`
+      const title      = `Stock crítico: ${stock.product.sku}`
+      const message    = `${stock.product.name} en ${stock.branch.name} — stock actual: ${currentQty}, mínimo: ${stock.product.minStock}.`
 
-    // 3. Usuarios a notificar: AREA_MANAGER.KIRA de la sucursal (+ NIRA si aplica)
-    const modules: ('KIRA' | 'NIRA')[] = ['KIRA', ...(niraFlag ? ['NIRA' as const] : [])]
+      // 3. Usuarios a notificar: AREA_MANAGER.KIRA de la sucursal (+ NIRA si aplica)
+      const modules: ('KIRA' | 'NIRA')[] = ['KIRA', ...(niraFlag ? ['NIRA' as const] : [])]
 
-    for (const mod of modules) {
-      const managers = await prisma.user.findMany({
-        where: {
-          tenantId,
-          isActive: true,
-          role:     'AREA_MANAGER',
-          module:   mod,
-          branchId: stock.branchId,
-        },
-        select: { id: true },
-      })
-
-      for (const manager of managers) {
-        // 4. Deduplicación: no crear si ya hay una alerta no leída igual
-        const existing = await prisma.notification.findFirst({
+      for (const mod of modules) {
+        const managers = await tx.user.findMany({
           where: {
-            userId:  manager.id,
             tenantId,
-            type:    'STOCK_CRITICO',
-            link,
-            isRead:  false,
+            isActive: true,
+            role:     'AREA_MANAGER',
+            module:   mod,
+            branchId: stock.branchId,
           },
+          select: { id: true },
         })
-        if (existing) continue
 
-        await prisma.notification.create({
-          data: {
-            tenantId,
-            userId:  manager.id,
-            module:  'KIRA',
-            type:    'STOCK_CRITICO',
-            title,
-            message,
-            link,
-          },
-        })
-        alertsCreated++
+        for (const manager of managers) {
+          // 4. Deduplicación: no crear si ya hay una alerta no leída igual
+          const existing = await tx.notification.findFirst({
+            where: {
+              userId:  manager.id,
+              tenantId,
+              type:    'STOCK_CRITICO',
+              link,
+              isRead:  false,
+            },
+          })
+          if (existing) continue
+
+          await tx.notification.create({
+            data: {
+              tenantId,
+              userId:  manager.id,
+              module:  'KIRA',
+              type:    'STOCK_CRITICO',
+              title,
+              message,
+              link,
+            },
+          })
+          alertsCreated++
+        }
       }
     }
-  }
 
-  return { alertsCreated }
+    return { alertsCreated }
+  })
 }
 
 // ─── Job para todos los tenants ───────────────────────────────────────────────

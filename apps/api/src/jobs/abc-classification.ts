@@ -15,7 +15,7 @@
  * En V1 usa setInterval — adecuado para un servidor único en Railway.
  */
 
-import { prisma } from '../lib/prisma'
+import { prisma, withTenantContext } from '../lib/prisma'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -24,70 +24,61 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 export async function calculateAbcForTenant(
   tenantId: string,
 ): Promise<{ classified: number; cleared: number }> {
-  // 1. Productos activos con precio de costo definido
-  const products = await prisma.product.findMany({
-    where: { tenantId, isActive: true, costPrice: { not: null } },
-    select: { id: true, costPrice: true },
-  })
-
-  // 2. Stock total por producto (suma de todas las sucursales)
-  const stockRows = await prisma.stock.groupBy({
-    by: ['productId'],
-    where: { product: { tenantId } },
-    _sum: { quantity: true },
-  })
-
-  const stockMap = new Map(
-    stockRows.map((s) => [s.productId, parseFloat(String(s._sum.quantity ?? 0))]),
-  )
-
-  // 3. Valor de inventario = qty × costo — solo productos con valor > 0
-  const productValues = products
-    .map((p) => ({
-      id:    p.id,
-      value: (stockMap.get(p.id) ?? 0) * parseFloat(String(p.costPrice)),
-    }))
-    .filter((p) => p.value > 0)
-    .sort((a, b) => b.value - a.value) // mayor valor primero
-
-  const totalValue = productValues.reduce((sum, p) => sum + p.value, 0)
-
-  // 4. Clasificar acumulando porcentaje de valor
-  const classifications: { id: string; abcClass: string }[] = []
-  let cumulative = 0
-
-  for (const p of productValues) {
-    cumulative += totalValue > 0 ? p.value / totalValue : 0
-    classifications.push({
-      id:       p.id,
-      abcClass: cumulative <= 0.80 ? 'A' : cumulative <= 0.95 ? 'B' : 'C',
+  return withTenantContext(tenantId, async (tx) => {
+    // 1. Productos activos con precio de costo definido
+    const products = await tx.product.findMany({
+      where: { tenantId, isActive: true, costPrice: { not: null } },
+      select: { id: true, costPrice: true },
     })
-  }
 
-  // 5. Persistir en una transacción atómica
-  const classifiedIds = new Set(classifications.map((c) => c.id))
-  const cleared = products.length - classifications.length
+    // 2. Stock total por producto (suma de todas las sucursales)
+    const stockRows = await tx.stock.groupBy({
+      by: ['productId'],
+      where: { product: { tenantId } },
+      _sum: { quantity: true },
+    })
 
-  await prisma.$transaction([
-    // Actualizar productos clasificados
-    ...classifications.map((c) =>
-      prisma.product.update({
-        where: { id: c.id },
-        data:  { abcClass: c.abcClass },
-      }),
-    ),
-    // Limpiar abcClass de productos sin valor (sin costo o sin stock)
-    prisma.product.updateMany({
-      where: {
-        tenantId,
-        isActive: true,
-        id:       { notIn: [...classifiedIds] },
-      },
-      data: { abcClass: null },
-    }),
-  ])
+    const stockMap = new Map(
+      stockRows.map((s) => [s.productId, parseFloat(String(s._sum.quantity ?? 0))]),
+    )
 
-  return { classified: classifications.length, cleared }
+    // 3. Valor de inventario = qty × costo — solo productos con valor > 0
+    const productValues = products
+      .map((p) => ({
+        id:    p.id,
+        value: (stockMap.get(p.id) ?? 0) * parseFloat(String(p.costPrice)),
+      }))
+      .filter((p) => p.value > 0)
+      .sort((a, b) => b.value - a.value) // mayor valor primero
+
+    const totalValue = productValues.reduce((sum, p) => sum + p.value, 0)
+
+    // 4. Clasificar acumulando porcentaje de valor
+    const classifications: { id: string; abcClass: string }[] = []
+    let cumulative = 0
+
+    for (const p of productValues) {
+      cumulative += totalValue > 0 ? p.value / totalValue : 0
+      classifications.push({
+        id:       p.id,
+        abcClass: cumulative <= 0.80 ? 'A' : cumulative <= 0.95 ? 'B' : 'C',
+      })
+    }
+
+    // 5. Persistir — ya estamos dentro de withTenantContext (una sola transacción)
+    const classifiedIds = new Set(classifications.map((c) => c.id))
+    const cleared = products.length - classifications.length
+
+    for (const c of classifications) {
+      await tx.product.update({ where: { id: c.id }, data: { abcClass: c.abcClass } })
+    }
+    await tx.product.updateMany({
+      where: { tenantId, isActive: true, id: { notIn: [...classifiedIds] } },
+      data:  { abcClass: null },
+    })
+
+    return { classified: classifications.length, cleared }
+  })
 }
 
 // ─── Job semanal para todos los tenants ──────────────────────────────────────
