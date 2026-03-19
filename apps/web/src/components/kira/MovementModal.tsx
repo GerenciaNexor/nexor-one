@@ -47,12 +47,6 @@ interface Props {
   onSuccess:         () => void
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  entrada: 'Entrada (ingreso)',
-  salida:  'Salida (egreso)',
-  ajuste:  'Ajuste de inventario',
-}
-
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function MovementModal({ stocks, initialProductId, initialBranchId, onClose, onSuccess }: Props) {
