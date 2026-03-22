@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { MovementModal } from '@/components/kira/MovementModal'
 import type { StockRow } from '@/components/kira/MovementModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -34,9 +35,9 @@ export default function StockPage() {
   const user        = useAuthStore((s) => s.user)
   const isOperative = user?.role === 'OPERATIVE'
 
-  const [stocks, setStocks]         = useState<StockRow[]>([])
-  const [total, setTotal]           = useState(0)
-  const [loading, setLoading]       = useState(true)
+  const [stocks, setStocks]         = useState<StockRow[]>(() => getCache<StockRow[]>('stock') ?? [])
+  const [total, setTotal]           = useState(() => getCache<StockRow[]>('stock')?.length ?? 0)
+  const [loading, setLoading]       = useState(!getCache<StockRow[]>('stock'))
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Modal de movimiento
@@ -49,11 +50,11 @@ export default function StockPage() {
   const [branchFilter, setBranch] = useState('')
   const [onlyCritical, setCrit]   = useState(false)
 
-  function load() {
-    setLoading(true)
+  function load(silent = false) {
+    if (!silent) setLoading(true)
     setFetchError(null)
     apiClient.get<StockResponse>('/v1/kira/stock')
-      .then((r) => { setStocks(r.data); setTotal(r.data.length) })
+      .then((r) => { setStocks(r.data); setTotal(r.data.length); setCache('stock', r.data) })
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setFetchError(e.message ?? 'Error al cargar el stock')
@@ -61,7 +62,7 @@ export default function StockPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(!!getCache<StockRow[]>('stock')) }, [])
 
   // Sucursales únicas (para filtro de AREA_MANAGER)
   const branchOptions = [...new Map(
@@ -171,7 +172,7 @@ export default function StockPage() {
               ) : fetchError ? (
                 <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center">
                   <p className="text-sm text-red-500">{fetchError}</p>
-                  <button onClick={load} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
+                  <button onClick={() => load()} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
                 </td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center text-sm text-slate-400">
