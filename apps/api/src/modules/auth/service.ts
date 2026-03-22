@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
-import { prisma } from '../../lib/prisma'
+import { directPrisma as prisma } from '../../lib/prisma'
 
 const INVALID_CREDENTIALS = 'Credenciales incorrectas'
 const INVALID_REFRESH = 'Refresh token invalido o expirado'
