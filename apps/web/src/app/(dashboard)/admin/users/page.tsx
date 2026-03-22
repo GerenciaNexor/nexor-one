@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -247,24 +248,27 @@ function RoleBadge({ role }: { role: UserRole }) {
 
 export default function AdminUsersPage() {
   const { user: me } = useAuthStore()
-  const [users, setUsers]     = useState<User[]>([])
-  const [branches, setBranches] = useState<Branch[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
-  const [modal, setModal]     = useState<{ open: boolean; user: User | null }>({ open: false, user: null })
+  const [users, setUsers]       = useState<User[]>(() => getCache<User[]>('admin-users') ?? [])
+  const [branches, setBranches] = useState<Branch[]>(() => getCache<Branch[]>('branches') ?? [])
+  const [loading, setLoading]   = useState(!getCache<User[]>('admin-users'))
+  const [search, setSearch]     = useState('')
+  const [modal, setModal]       = useState<{ open: boolean; user: User | null }>({ open: false, user: null })
 
-  function load() {
-    setLoading(true)
+  function load(silent = false) {
+    if (!silent) setLoading(true)
     Promise.all([
       apiClient.get<{ data: User[] }>('/v1/users?limit=100'),
       apiClient.get<{ data: Branch[] }>('/v1/branches'),
     ])
-      .then(([u, b]) => { setUsers(u.data); setBranches(b.data) })
+      .then(([u, b]) => {
+        setUsers(u.data); setBranches(b.data)
+        setCache('admin-users', u.data); setCache('branches', b.data)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(!!getCache<User[]>('admin-users')) }, [])
 
   function handleSuccess(saved: User) {
     setUsers((prev) => {

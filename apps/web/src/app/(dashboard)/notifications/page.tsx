@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { SkeletonList } from '@/components/ui/SkeletonRows'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -53,21 +54,21 @@ const PAGE_SIZE = 25
 export default function NotificationsPage() {
   const router = useRouter()
 
-  const [all, setAll]           = useState<Notification[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [all, setAll]               = useState<Notification[]>(() => getCache<Notification[]>('notifications') ?? [])
+  const [loading, setLoading]       = useState(!getCache<Notification[]>('notifications'))
   const [markingAll, setMarkingAll] = useState(false)
-  const [filter, setFilter]     = useState<'all' | 'unread' | 'read'>('all')
-  const [page, setPage]         = useState(1)
+  const [filter, setFilter]         = useState<'all' | 'unread' | 'read'>('all')
+  const [page, setPage]             = useState(1)
 
-  function load() {
-    setLoading(true)
+  function load(silent = false) {
+    if (!silent) setLoading(true)
     apiClient.get<{ data: Notification[] }>('/v1/notifications?limit=100')
-      .then((r) => setAll(r.data))
+      .then((r) => { setAll(r.data); setCache('notifications', r.data) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(!!getCache<Notification[]>('notifications')) }, [])
 
   const filtered = all.filter((n) => {
     if (filter === 'unread') return !n.isRead

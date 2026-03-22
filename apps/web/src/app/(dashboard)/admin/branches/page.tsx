@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -134,20 +135,20 @@ function BranchModal({ branch, onClose, onSuccess }: BranchModalProps) {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export default function AdminBranchesPage() {
-  const [branches, setBranches] = useState<Branch[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [branches, setBranches] = useState<Branch[]>(() => getCache<Branch[]>('branches') ?? [])
+  const [loading, setLoading]   = useState(!getCache<Branch[]>('branches'))
   const [modal, setModal]       = useState<{ open: boolean; branch: Branch | null }>({ open: false, branch: null })
   const [toggling, setToggling] = useState<string | null>(null)
 
-  function load() {
-    setLoading(true)
+  function load(silent = false) {
+    if (!silent) setLoading(true)
     apiClient.get<{ data: Branch[] }>('/v1/branches')
-      .then((r) => setBranches(r.data))
+      .then((r) => { setBranches(r.data); setCache('branches', r.data) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(!!getCache<Branch[]>('branches')) }, [])
 
   function handleSuccess(saved: Branch) {
     setBranches((prev) => {

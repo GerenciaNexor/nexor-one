@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { ProductFormModal } from '@/components/kira/ProductFormModal'
 import type { Product } from '@/components/kira/ProductFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -38,9 +39,9 @@ export default function ProductsPage() {
   const canEdit = user?.role !== 'OPERATIVE'
 
   // Lista
-  const [products, setProducts]   = useState<Product[]>([])
-  const [total, setTotal]         = useState(0)
-  const [loading, setLoading]     = useState(true)
+  const [products, setProducts]   = useState<Product[]>(() => getCache<Product[]>('products') ?? [])
+  const [total, setTotal]         = useState(() => getCache<{ total: number }>('products-meta')?.total ?? 0)
+  const [loading, setLoading]     = useState(!getCache<Product[]>('products'))
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Filtros
@@ -68,8 +69,11 @@ export default function ProductsPage() {
 
   // ── Fetch de productos ────────────────────────────────────────────────────
   useEffect(() => {
-    setLoading(true)
+    const noFilters = !search && !categoryFilter && !abcFilter
+    const cached    = noFilters ? getCache<Product[]>('products') : null
+    if (!cached) setLoading(true)
     setFetchError(null)
+
     const qs = new URLSearchParams()
     if (search)         qs.set('search',   search)
     if (categoryFilter) qs.set('category', categoryFilter)
@@ -77,7 +81,10 @@ export default function ProductsPage() {
     const query = qs.toString()
 
     apiClient.get<ProductsResponse>(`/v1/kira/products${query ? `?${query}` : ''}`)
-      .then((res) => { setProducts(res.data); setTotal(res.total) })
+      .then((res) => {
+        setProducts(res.data); setTotal(res.total)
+        if (noFilters) { setCache('products', res.data); setCache('products-meta', { total: res.total }) }
+      })
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setFetchError(e.message ?? 'Error al cargar productos')

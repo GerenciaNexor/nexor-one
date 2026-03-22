@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { ProductFormModal } from '@/components/kira/ProductFormModal'
 import type { Product } from '@/components/kira/ProductFormModal'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -53,8 +54,36 @@ function AbcBadge({ cls }: { cls: 'A' | 'B' | 'C' | null }) {
   )
 }
 
-function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+// ─── Skeleton de detalle ──────────────────────────────────────────────────────
+
+function ProductDetailSkeleton() {
+  return (
+    <div className="p-6">
+      <div className="mb-4 h-3 w-20 animate-pulse rounded bg-slate-100" />
+      <div className="mb-1 h-6 w-1/2 animate-pulse rounded bg-slate-100" />
+      <div className="mb-6 h-3 w-28 animate-pulse rounded bg-slate-100" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+          <div className="mb-4 h-3.5 w-36 animate-pulse rounded bg-slate-100" />
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="flex justify-between border-b border-slate-50 py-2.5 last:border-0">
+              <div className="h-3 w-24 animate-pulse rounded bg-slate-100" />
+              <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+          <div className="mb-4 h-3.5 w-32 animate-pulse rounded bg-slate-100" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex justify-between border-b border-slate-50 py-2.5 last:border-0">
+              <div className="h-3 w-32 animate-pulse rounded bg-slate-100" />
+              <div className="h-3 w-14 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Página ───────────────────────────────────────────────────────────────────
@@ -65,16 +94,20 @@ export default function ProductDetailPage() {
   const user          = useAuthStore((s) => s.user)
   const canEdit       = user?.role !== 'OPERATIVE'
 
-  const [data, setData]         = useState<CrossBranchResponse | null>(null)
-  const [loading, setLoading]   = useState(true)
+  const cacheKey = `product-${productId}`
+
+  const [data, setData]         = useState<CrossBranchResponse | null>(
+    () => getCache<CrossBranchResponse>(cacheKey) ?? null
+  )
+  const [loading, setLoading]   = useState(!getCache<CrossBranchResponse>(cacheKey))
   const [error, setError]       = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
 
-  function load() {
-    setLoading(true)
+  function load(silent = false) {
+    if (!silent) setLoading(true)
     setError(null)
     apiClient.get<CrossBranchResponse>(`/v1/kira/stock/cross-branch/${productId}`)
-      .then(setData)
+      .then((res) => { setData(res); setCache(cacheKey, res) })
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setError(e.message ?? 'Error al cargar el producto')
@@ -82,7 +115,7 @@ export default function ProductDetailPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [productId])
+  useEffect(() => { load(!!getCache<CrossBranchResponse>(cacheKey)) }, [productId])
 
   function handleEditSuccess(saved: Product) {
     setShowEdit(false)
@@ -91,13 +124,7 @@ export default function ProductDetailPage() {
 
   // ─── Estados de carga ────────────────────────────────────────────────────
 
-  if (loading) {
-    return (
-      <div className="flex h-60 items-center justify-center">
-        <Spinner />
-      </div>
-    )
-  }
+  if (loading) return <ProductDetailSkeleton />
 
   if (error || !data) {
     return (
