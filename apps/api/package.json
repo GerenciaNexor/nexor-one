@@ -9,6 +9,9 @@
     "start": "npx prisma migrate deploy && node dist/app.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:migrate": "prisma migrate dev",
     "db:setup": "prisma migrate dev && tsx prisma/setup-rls.ts && prisma db seed",
     "db:reset": "prisma migrate reset --force && tsx prisma/setup-rls.ts && prisma db seed",
@@ -38,10 +41,12 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "exceljs": "^4.4.0",
     "prisma": "^6.3.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
   }
 }

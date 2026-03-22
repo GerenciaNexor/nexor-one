@@ -5,6 +5,15 @@ import { startStockAlertsScheduler } from './jobs/stock-alerts'
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
 
+// Validar ENCRYPTION_KEY antes de arrancar — falla rapido con mensaje claro
+import { validateEncryptionKey } from './lib/encryption'
+try {
+  validateEncryptionKey()
+} catch (err) {
+  console.error('\n' + (err instanceof Error ? err.message : String(err)) + '\n')
+  process.exit(1)
+}
+
 import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import type { ApiResponse } from '@nexor/shared'
