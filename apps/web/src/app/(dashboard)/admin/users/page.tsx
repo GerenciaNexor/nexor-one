@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { getCache, setCache } from '@/lib/page-cache'
+import { Portal } from '@/components/ui/Portal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -107,7 +108,8 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <Portal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">
@@ -225,6 +227,7 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
         </div>
       </div>
     </div>
+    </Portal>
   )
 }
 
