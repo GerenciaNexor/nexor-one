@@ -5,13 +5,27 @@ import type { Prisma } from '@prisma/client'
  * Singleton de PrismaClient.
  * Importar desde aqui en modulos y servicios — nunca instanciar directamente.
  */
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient; directPrisma?: PrismaClient }
 
 export const prisma: PrismaClient =
   globalForPrisma.prisma ?? new PrismaClient()
 
+/**
+ * Cliente Prisma que conecta como superuser (DIRECT_DATABASE_URL).
+ * Bypasea RLS — usar SOLO en auth (login/refresh/logout) donde aún
+ * no existe contexto de tenant, o en scripts de migración/seed.
+ */
+export const directPrisma: PrismaClient =
+  globalForPrisma.directPrisma ??
+  new PrismaClient({
+    datasources: {
+      db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] },
+    },
+  })
+
 if (process.env['NODE_ENV'] !== 'production') {
   globalForPrisma.prisma = prisma
+  globalForPrisma.directPrisma = directPrisma
 }
 
 /**
