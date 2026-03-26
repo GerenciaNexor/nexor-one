@@ -47,7 +47,8 @@
       "Bash(pnpm db:seed)",
       "Bash(npx tsc:*)",
       "Bash(cmd /c \"taskkill /PID 15292 /F\")",
-      "Bash(cmd /c \"taskkill /PID 15292 /F 2>&1\")"
+      "Bash(cmd /c \"taskkill /PID 15292 /F 2>&1\")",
+      "Bash(railway version:*)"
     ]
   }
 }
