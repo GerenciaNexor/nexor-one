@@ -261,8 +261,8 @@ export default function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {s.score?.overallScore != null ? (
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(s.score.overallScore)}`}>
-                          {s.score.overallScore.toFixed(1)}
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(Number(s.score.overallScore))}`}>
+                          {Number(s.score.overallScore).toFixed(1)}
                         </span>
                       ) : (
                         <span className="text-slate-300">—</span>
@@ -334,8 +334,8 @@ export default function SuppliersPage() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {s.score?.overallScore != null && (
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(s.score.overallScore)}`}>
-                      {s.score.overallScore.toFixed(1)}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(Number(s.score.overallScore))}`}>
+                      {Number(s.score.overallScore).toFixed(1)}
                     </span>
                   )}
                   {s.isActive ? (

@@ -48,7 +48,9 @@
       "Bash(npx tsc:*)",
       "Bash(cmd /c \"taskkill /PID 15292 /F\")",
       "Bash(cmd /c \"taskkill /PID 15292 /F 2>&1\")",
-      "Bash(railway version:*)"
+      "Bash(railway version:*)",
+      "Bash(find c:UsersjeikdOneDriveDocumentosnexor-one -type f \\\\\\(-name *.seed.* -o -path */scripts/* \\\\\\))",
+      "Bash(DIRECT_DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" npx tsx prisma/seed-full-demo.ts)"
     ]
   }
 }
