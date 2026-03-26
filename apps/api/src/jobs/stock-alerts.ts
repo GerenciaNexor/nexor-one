@@ -54,43 +54,48 @@ export async function checkStockAlertsForTenant(
       const title      = `Stock crítico: ${stock.product.sku}`
       const message    = `${stock.product.name} en ${stock.branch.name} — stock actual: ${currentQty}, mínimo: ${stock.product.minStock}.`
 
-      // 3. Usuarios a notificar: AREA_MANAGER.KIRA de la sucursal (+ NIRA si aplica)
-      const modules: ('KIRA' | 'NIRA')[] = ['KIRA', ...(niraFlag ? ['NIRA' as const] : [])]
+      // 3. Notificar a AREA_MANAGER.KIRA de la sucursal
+      const kiraManagers = await tx.user.findMany({
+        where: { tenantId, isActive: true, role: 'AREA_MANAGER', module: 'KIRA', branchId: stock.branchId },
+        select: { id: true },
+      })
 
-      for (const mod of modules) {
-        const managers = await tx.user.findMany({
-          where: {
-            tenantId,
-            isActive: true,
-            role:     'AREA_MANAGER',
-            module:   mod,
-            branchId: stock.branchId,
-          },
+      for (const manager of kiraManagers) {
+        const existing = await tx.notification.findFirst({
+          where: { userId: manager.id, tenantId, type: 'STOCK_CRITICO', link, isRead: false },
+        })
+        if (existing) continue
+        await tx.notification.create({
+          data: { tenantId, userId: manager.id, module: 'KIRA', type: 'STOCK_CRITICO', title, message, link },
+        })
+        alertsCreated++
+      }
+
+      // 4. Si NIRA está activo, notificar también a AREA_MANAGER.NIRA con enlace para crear OC
+      if (niraFlag) {
+        const niraLink    = `/nira/purchase-orders?productId=${stock.productId}&branchId=${stock.branchId}`
+        const niraTitle   = `Reabastecimiento requerido: ${stock.product.sku}`
+        const niraMessage = `${stock.product.name} en ${stock.branch.name} — stock actual: ${currentQty}, mínimo: ${stock.product.minStock}. Crea una orden de compra para reponer el inventario.`
+
+        const niraManagers = await tx.user.findMany({
+          where: { tenantId, isActive: true, role: 'AREA_MANAGER', module: 'NIRA', branchId: stock.branchId },
           select: { id: true },
         })
 
-        for (const manager of managers) {
-          // 4. Deduplicación: no crear si ya hay una alerta no leída igual
+        for (const manager of niraManagers) {
           const existing = await tx.notification.findFirst({
-            where: {
-              userId:  manager.id,
-              tenantId,
-              type:    'STOCK_CRITICO',
-              link,
-              isRead:  false,
-            },
+            where: { userId: manager.id, tenantId, type: 'REABASTECIMIENTO_REQUERIDO', link: niraLink, isRead: false },
           })
           if (existing) continue
-
           await tx.notification.create({
             data: {
               tenantId,
               userId:  manager.id,
-              module:  'KIRA',
-              type:    'STOCK_CRITICO',
-              title,
-              message,
-              link,
+              module:  'NIRA',
+              type:    'REABASTECIMIENTO_REQUERIDO',
+              title:   niraTitle,
+              message: niraMessage,
+              link:    niraLink,
             },
           })
           alertsCreated++

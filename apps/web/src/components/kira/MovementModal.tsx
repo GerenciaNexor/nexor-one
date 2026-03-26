@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
+import { Portal } from '@/components/ui/Portal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -152,7 +153,8 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
   const inpErr = 'w-full rounded-lg border border-red-400 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-red-100'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <Portal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
 
         {/* Header */}
@@ -303,5 +305,6 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
         </div>
       </div>
     </div>
+    </Portal>
   )
 }

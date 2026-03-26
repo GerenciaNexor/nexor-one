@@ -1,5 +1,5 @@
-import { ComingSoon } from '@/components/layout/ComingSoon'
+import { redirect } from 'next/navigation'
 
 export default function NiraPage() {
-  return <ComingSoon module="NIRA" description="Gestion de proveedores, ordenes de compra y evaluacion de desempeno." />
+  redirect('/nira/suppliers')
 }

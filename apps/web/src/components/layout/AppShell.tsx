@@ -250,6 +250,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
 
+            {(user?.role === 'BRANCH_ADMIN' || user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
+              <>
+                <div className="my-2 border-t border-slate-100" />
+                <Link
+                  href="/settings/integrations"
+                  className={[
+                    'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                    pathname.startsWith('/settings')
+                      ? 'bg-blue-50 font-semibold text-blue-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  ].join(' ')}
+                >
+                  Integraciones
+                </Link>
+              </>
+            )}
+
             {user?.role === 'TENANT_ADMIN' && (
               <>
                 <div className="my-2 border-t border-slate-100" />
