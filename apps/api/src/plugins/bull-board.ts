@@ -29,10 +29,8 @@ export async function registerBullBoard(app: FastifyInstance, prefix: string): P
   serverAdapter.setBasePath(prefix)
 
   createBullBoard({
-    queues: [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      new BullMQAdapter(incomingMessagesQueue as any),
-    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    queues: [new BullMQAdapter(incomingMessagesQueue) as any],
     serverAdapter,
   })
 
