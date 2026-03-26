@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
@@ -112,8 +112,8 @@ function ConfirmModal({
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 
-export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }  = use(params)
+export default function PurchaseOrderDetailPage({ params }: { params: { id: string } }) {
+  const { id }  = params
   const router  = useRouter()
   const user    = useAuthStore((s) => s.user)
   const isManager = user?.role === 'AREA_MANAGER' || user?.role === 'BRANCH_ADMIN' ||
