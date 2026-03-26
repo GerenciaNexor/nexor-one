@@ -59,6 +59,7 @@ export async function compareSupplierPrices(tenantId: string, productId: string)
 
   for (const item of items) {
     const supplier   = item.purchaseOrder.supplier
+    if (!supplier) continue   // OC sin proveedor — no aplica al comparador
     const unitCost   = parseFloat(String(item.unitCost))
     const createdAt  = item.purchaseOrder.createdAt
 
