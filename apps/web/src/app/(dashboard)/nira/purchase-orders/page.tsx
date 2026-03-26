@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
-import { useAuthStore } from '@/store/auth'
 import { PurchaseOrderFormModal } from '@/components/nira/PurchaseOrderFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
@@ -67,9 +66,6 @@ function StatusBadge({ status }: { status: PurchaseOrderStatus }) {
 export default function PurchaseOrdersPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  const user         = useAuthStore((s) => s.user)
-  const canEdit      = user?.role !== 'OPERATIVE'
-
   // Params de alerta de reabastecimiento (llegan desde notificación NIRA)
   const alertProductId = searchParams.get('productId')
   const alertBranchId  = searchParams.get('branchId')
