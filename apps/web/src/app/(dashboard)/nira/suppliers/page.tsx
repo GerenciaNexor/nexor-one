@@ -70,7 +70,7 @@ function DeactivateModal({
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 // Helper de color de score — umbral: >= 7 verde, >= 4 ámbar, < 4 rojo
-export function scoreColor(score: number): string {
+function scoreColor(score: number): string {
   return score >= 7 ? 'bg-emerald-100 text-emerald-700'
        : score >= 4 ? 'bg-amber-100 text-amber-700'
        : 'bg-red-100 text-red-600'
