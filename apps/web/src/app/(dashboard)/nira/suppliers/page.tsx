@@ -261,12 +261,7 @@ export default function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {s.score?.overallScore != null ? (
-                        <span className={[
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-                          s.score.overallScore >= 7 ? 'bg-emerald-100 text-emerald-700' :
-                          s.score.overallScore >= 4 ? 'bg-amber-100 text-amber-700' :
-                          'bg-red-100 text-red-600',
-                        ].join(' ')}>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(s.score.overallScore)}`}>
                           {s.score.overallScore.toFixed(1)}
                         </span>
                       ) : (
@@ -339,12 +334,7 @@ export default function SuppliersPage() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {s.score?.overallScore != null && (
-                    <span className={[
-                      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-                      s.score.overallScore >= 7 ? 'bg-emerald-100 text-emerald-700' :
-                      s.score.overallScore >= 4 ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-600',
-                    ].join(' ')}>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${scoreColor(s.score.overallScore)}`}>
                       {s.score.overallScore.toFixed(1)}
                     </span>
                   )}
