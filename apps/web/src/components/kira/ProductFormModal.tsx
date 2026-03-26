@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { Portal } from '@/components/ui/Portal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -124,142 +125,177 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
     }
   }
 
-  const inp = (extra: string) =>
-    `w-full rounded-lg border px-3 py-2 text-sm text-slate-900 outline-none ${extra}`
-  const ok  = 'border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
-  const bad = 'border-red-400 focus:ring-2 focus:ring-red-100'
+  const inp = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+  const inpErr = 'w-full rounded-lg border border-red-400 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-red-100'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
+    <Portal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60">
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">
-            {mode === 'create' ? 'Nuevo producto' : 'Editar producto'}
-          </h2>
+        <div className="flex items-center justify-between px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              {mode === 'create' ? 'Nuevo producto' : 'Editar producto'}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {mode === 'create' ? 'Completa los campos para agregar al catálogo' : `Editando ${product?.sku}`}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
             aria-label="Cerrar"
           >
-            ✕
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         {/* Form */}
         <form id="product-form" onSubmit={handleSubmit}
-          className="max-h-[65vh] overflow-y-auto px-6 py-4"
+          className="max-h-[68vh] overflow-y-auto"
         >
-          <div className="space-y-4">
+          <div className="space-y-5 px-6 pb-2">
 
-            {/* SKU */}
+            {/* ── Identificación ─────────────────────────────────────── */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">SKU *</label>
-              <input
-                type="text"
-                value={form.sku}
-                disabled={mode === 'edit'}
-                onChange={field('sku')}
-                className={inp(mode === 'edit'
-                  ? 'cursor-not-allowed bg-slate-50 text-slate-400 border-slate-200'
-                  : errors.sku ? bad : ok)}
-                placeholder="Ej: PROD-001"
-              />
-              {errors.sku && <p className="mt-1 text-xs text-red-500">{errors.sku}</p>}
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Identificación</p>
+              <div className="grid grid-cols-5 gap-3">
+                <div className="col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">SKU *</label>
+                  <input
+                    type="text"
+                    value={form.sku}
+                    disabled={mode === 'edit'}
+                    onChange={field('sku')}
+                    className={mode === 'edit'
+                      ? 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-400 outline-none cursor-not-allowed'
+                      : `${errors.sku ? inpErr : inp} font-mono`}
+                    placeholder="PROD-001"
+                  />
+                  {errors.sku && <p className="mt-1 text-xs text-red-500">{errors.sku}</p>}
+                </div>
+                <div className="col-span-3">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Nombre *</label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={field('name')}
+                    className={errors.name ? inpErr : inp}
+                    placeholder="Nombre del producto"
+                  />
+                  {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+                </div>
+              </div>
             </div>
 
-            {/* Nombre */}
+            <div className="border-t border-slate-100" />
+
+            {/* ── Clasificación ──────────────────────────────────────── */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Nombre *</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={field('name')}
-                className={inp(errors.name ? bad : ok)}
-                placeholder="Ej: Cemento Portland 50 kg"
-              />
-              {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
-            </div>
-
-            {/* Categoría + Unidad */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Categoría</label>
-                <input
-                  type="text"
-                  value={form.category}
-                  onChange={field('category')}
-                  className={inp(ok)}
-                  placeholder="Ej: Materiales"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Unidad *</label>
-                <input
-                  type="text"
-                  value={form.unit}
-                  onChange={field('unit')}
-                  className={inp(errors.unit ? bad : ok)}
-                  placeholder="Ej: kg, und, caja"
-                />
-                {errors.unit && <p className="mt-1 text-xs text-red-500">{errors.unit}</p>}
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Clasificación</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Categoría</label>
+                  <input
+                    type="text"
+                    value={form.category}
+                    onChange={field('category')}
+                    className={inp}
+                    placeholder="Ej: Analgésicos"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Unidad *</label>
+                  <input
+                    type="text"
+                    value={form.unit}
+                    onChange={field('unit')}
+                    className={errors.unit ? inpErr : inp}
+                    placeholder="caja, frasco, und…"
+                  />
+                  {errors.unit && <p className="mt-1 text-xs text-red-500">{errors.unit}</p>}
+                </div>
               </div>
             </div>
 
-            {/* Precios */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Precio de venta</label>
-                <input type="number" min="0" step="0.01" value={form.salePrice}
-                  onChange={field('salePrice')} className={inp(ok)} placeholder="0.00" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Costo unitario</label>
-                <input type="number" min="0" step="0.01" value={form.costPrice}
-                  onChange={field('costPrice')} className={inp(ok)} placeholder="0.00" />
-              </div>
-            </div>
+            <div className="border-t border-slate-100" />
 
-            {/* Stock mín / máx */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Stock mínimo</label>
-                <input type="number" min="0" step="1" value={form.minStock}
-                  onChange={field('minStock')}
-                  className={inp(errors.minStock ? bad : ok)} />
-                {errors.minStock && <p className="mt-1 text-xs text-red-500">{errors.minStock}</p>}
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Stock máximo</label>
-                <input type="number" min="0" step="1" value={form.maxStock}
-                  onChange={field('maxStock')}
-                  className={inp(errors.maxStock ? bad : ok)} placeholder="Sin límite" />
-                {errors.maxStock && <p className="mt-1 text-xs text-red-500">{errors.maxStock}</p>}
-              </div>
-            </div>
-
-            {/* Descripción */}
+            {/* ── Precios ────────────────────────────────────────────── */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Descripción</label>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Precios</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Precio de venta</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">$</span>
+                    <input type="number" min="0" step="1" value={form.salePrice}
+                      onChange={field('salePrice')}
+                      className={`${inp} pl-7`} placeholder="0" />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Costo unitario</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">$</span>
+                    <input type="number" min="0" step="1" value={form.costPrice}
+                      onChange={field('costPrice')}
+                      className={`${inp} pl-7`} placeholder="0" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* ── Inventario ─────────────────────────────────────────── */}
+            <div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Inventario</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Stock mínimo</label>
+                  <input type="number" min="0" step="1" value={form.minStock}
+                    onChange={field('minStock')}
+                    className={errors.minStock ? inpErr : inp} />
+                  {errors.minStock && <p className="mt-1 text-xs text-red-500">{errors.minStock}</p>}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Stock máximo</label>
+                  <input type="number" min="0" step="1" value={form.maxStock}
+                    onChange={field('maxStock')}
+                    className={errors.maxStock ? inpErr : inp} placeholder="Sin límite" />
+                  {errors.maxStock && <p className="mt-1 text-xs text-red-500">{errors.maxStock}</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* ── Descripción ────────────────────────────────────────── */}
+            <div className="pb-1">
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">Descripción <span className="text-slate-400 font-normal">(opcional)</span></label>
               <textarea
                 value={form.description}
                 onChange={field('description')}
-                rows={3}
-                className={`${inp(ok)} resize-none`}
-                placeholder="Descripción opcional..."
+                rows={2}
+                className={`${inp} resize-none`}
+                placeholder="Notas adicionales sobre el producto…"
               />
             </div>
           </div>
 
           {apiError && (
-            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{apiError}</p>
+            <div className="mx-6 mb-4 rounded-lg bg-red-50 px-3 py-2.5 text-xs text-red-600 flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {apiError}
+            </div>
           )}
         </form>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -271,14 +307,15 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
             type="submit"
             form="product-form"
             disabled={submitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
           >
             {submitting
-              ? 'Guardando...'
+              ? 'Guardando…'
               : mode === 'create' ? 'Crear producto' : 'Guardar cambios'}
           </button>
         </div>
       </div>
     </div>
+    </Portal>
   )
 }

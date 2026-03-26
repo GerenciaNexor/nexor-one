@@ -563,7 +563,7 @@ model SupplierScore {
 model PurchaseOrder {
   id               String    @id @default(cuid()) @db.VarChar(30)
   tenantId         String    @db.VarChar(30) @map("tenant_id")
-  supplierId       String    @db.VarChar(30) @map("supplier_id")
+  supplierId       String?   @db.VarChar(30) @map("supplier_id")
   branchId         String?   @db.VarChar(30) @map("branch_id")
   createdBy        String    @db.VarChar(30) @map("created_by")
   approvedBy       String?   @db.VarChar(30) @map("approved_by")
@@ -580,7 +580,7 @@ model PurchaseOrder {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier Supplier            @relation(fields: [supplierId], references: [id])
+  supplier Supplier?           @relation(fields: [supplierId], references: [id])
   branch   Branch?             @relation(fields: [branchId], references: [id])
   creator  User                @relation("POCreator", fields: [createdBy], references: [id])
   approver User?               @relation("POApprover", fields: [approvedBy], references: [id])

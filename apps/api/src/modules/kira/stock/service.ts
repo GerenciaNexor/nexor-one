@@ -113,13 +113,19 @@ export async function getCrossBranchStock(tenantId: string, productId: string) {
   const product = await prisma.product.findFirst({
     where: { id: productId, tenantId },
     select: {
-      id:       true,
-      sku:      true,
-      name:     true,
-      unit:     true,
-      minStock: true,
-      maxStock: true,
-      isActive: true,
+      id:          true,
+      sku:         true,
+      name:        true,
+      description: true,
+      category:    true,
+      unit:        true,
+      salePrice:   true,
+      costPrice:   true,
+      minStock:    true,
+      maxStock:    true,
+      abcClass:    true,
+      isActive:    true,
+      createdAt:   true,
     },
   })
   if (!product) throw { statusCode: 404, message: 'Producto no encontrado', code: 'NOT_FOUND' }
