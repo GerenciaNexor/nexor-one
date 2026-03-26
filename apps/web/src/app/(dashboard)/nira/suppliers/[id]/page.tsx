@@ -392,7 +392,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           supplier={supplier}
           onClose={() => setShowEdit(false)}
           onSuccess={(saved) => {
-            setSupplier((prev) => prev ? { ...prev, ...saved } : prev)
+            setSupplier((prev) => prev ? { ...prev, ...saved, score: prev.score } : prev)
             setShowEdit(false)
           }}
         />
