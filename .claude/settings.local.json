@@ -45,7 +45,9 @@
       "Bash(pnpm add:*)",
       "Bash(node scripts/generate-onboarding-template.mjs)",
       "Bash(pnpm db:seed)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(cmd /c \"taskkill /PID 15292 /F\")",
+      "Bash(cmd /c \"taskkill /PID 15292 /F 2>&1\")"
     ]
   }
 }
