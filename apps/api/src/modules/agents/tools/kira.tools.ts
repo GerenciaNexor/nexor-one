@@ -1,5 +1,6 @@
 /**
  * Tools del agente KIRA — Inventario
+ * HU-051: consultar_stock, registrar_movimiento, alertar_equipo + helpers.
  */
 
 import { prisma } from '../../../lib/prisma'
@@ -10,13 +11,13 @@ import type { AgentTool } from '../types'
 const consultarStock: AgentTool = {
   definition: {
     name:        'consultar_stock',
-    description: 'Consulta el stock actual de un producto en una o todas las sucursales del tenant.',
+    description: 'Returns the current stock for a product across all branches (or a specific branch). Use productName OR productId.',
     input_schema: {
       type: 'object',
       properties: {
-        productName: { type: 'string', description: 'Nombre o parte del nombre del producto' },
-        productId:   { type: 'string', description: 'ID exacto del producto (opcional si usas productName)' },
-        branchId:    { type: 'string', description: 'ID de la sucursal. Omitir para ver todas.' },
+        productName: { type: 'string', description: 'Product name or partial name to search' },
+        productId:   { type: 'string', description: 'Exact product ID (alternative to productName)' },
+        branchId:    { type: 'string', description: 'Branch ID to filter results (omit to see all branches)' },
       },
     },
   },
@@ -29,11 +30,11 @@ const consultarStock: AgentTool = {
         where:  { tenantId, name: { contains: productName as string, mode: 'insensitive' } },
         select: { id: true, name: true },
       })
-      if (!product) return { error: `No se encontró ningún producto con nombre "${productName}"` }
+      if (!product) return { error: `No product found matching "${productName}"` }
       resolvedProductId = product.id
     }
 
-    if (!resolvedProductId) return { error: 'Debes proporcionar productName o productId' }
+    if (!resolvedProductId) return { error: 'Provide productName or productId' }
 
     const stocks = await prisma.stock.findMany({
       where: {
@@ -47,7 +48,7 @@ const consultarStock: AgentTool = {
       },
     })
 
-    if (stocks.length === 0) return { message: 'No hay registros de stock para este producto.' }
+    if (stocks.length === 0) return { message: 'No stock records found for this product.' }
 
     return stocks.map((s) => ({
       producto: s.product.name,
@@ -66,7 +67,7 @@ const consultarStock: AgentTool = {
 const listarAlertasActivas: AgentTool = {
   definition: {
     name:        'listar_alertas_activas',
-    description: 'Lista todos los productos por debajo de su stock mínimo en cualquier sucursal.',
+    description: 'Lists all products below their minimum stock level across all branches. Use this to get a full low-stock report.',
     input_schema: { type: 'object', properties: {} },
   },
 
@@ -83,7 +84,7 @@ const listarAlertasActivas: AgentTool = {
       (s) => s.product.minStock != null && Number(s.quantity) < s.product.minStock,
     )
 
-    if (alertas.length === 0) return { message: 'No hay productos bajo el mínimo actualmente.' }
+    if (alertas.length === 0) return { message: 'No products are below their minimum stock.' }
 
     return alertas.map((s) => ({
       producto: s.product.name,
@@ -97,41 +98,66 @@ const listarAlertasActivas: AgentTool = {
   },
 }
 
-// ─── registrar_entrada ────────────────────────────────────────────────────────
+// ─── registrar_movimiento ─────────────────────────────────────────────────────
 
-const registrarEntrada: AgentTool = {
+const registrarMovimiento: AgentTool = {
   definition: {
-    name:        'registrar_entrada',
-    description: 'Registra una entrada de stock para un producto en una sucursal.',
+    name:        'registrar_movimiento',
+    description: 'Records a stock movement (ENTRADA=add, SALIDA=subtract, AJUSTE=delta adjustment). Stock can never go below zero — returns an error if it would.',
     input_schema: {
       type: 'object',
       properties: {
-        productId: { type: 'string', description: 'ID del producto' },
-        branchId:  { type: 'string', description: 'ID de la sucursal' },
-        quantity:  { type: 'number', description: 'Cantidad a ingresar (positivo)' },
-        notes:     { type: 'string', description: 'Nota opcional' },
+        productId: { type: 'string', description: 'Product ID' },
+        branchId:  { type: 'string', description: 'Branch ID' },
+        tipo:      { type: 'string', enum: ['ENTRADA', 'SALIDA', 'AJUSTE'], description: 'Movement type' },
+        cantidad:  { type: 'number', description: 'Units to add or subtract (positive for ENTRADA/AJUSTE-up, negative for AJUSTE-down, always positive for SALIDA)' },
+        notas:     { type: 'string', description: 'Optional reason or note' },
       },
-      required: ['productId', 'branchId', 'quantity'],
+      required: ['productId', 'branchId', 'tipo', 'cantidad'],
     },
   },
 
-  async execute({ productId, branchId, quantity, notes }, tenantId) {
-    const qty = Number(quantity)
-    if (qty <= 0) return { error: 'La cantidad debe ser mayor que cero.' }
+  async execute({ productId, branchId, tipo, cantidad, notas }, tenantId) {
+    const qty     = Number(cantidad)
+    const tipo_   = (tipo as string).toUpperCase()
 
+    if (tipo_ === 'SALIDA' && qty <= 0)
+      return { error: 'SALIDA requires a positive quantity.' }
+    if (tipo_ === 'ENTRADA' && qty <= 0)
+      return { error: 'ENTRADA requires a positive quantity.' }
+
+    // Validate product belongs to tenant
     const product = await prisma.product.findFirst({
       where:  { id: productId as string, tenantId },
       select: { id: true, name: true },
     })
-    if (!product) return { error: 'Producto no encontrado en este tenant.' }
+    if (!product) return { error: 'Product not found in this tenant.' }
 
-    // Stock actual (para quantityBefore / quantityAfter)
+    // Current stock (required for quantityBefore / quantityAfter)
     const currentStock = await prisma.stock.findUnique({
       where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
       select: { quantity: true },
     })
     const before = Number(currentStock?.quantity ?? 0)
-    const after  = before + qty
+
+    // Calculate after based on type
+    let after: number
+    if (tipo_ === 'ENTRADA') {
+      after = before + qty
+    } else if (tipo_ === 'SALIDA') {
+      if (before < qty) {
+        return { error: `Insufficient stock. Current: ${before}. Requested: ${qty}.` }
+      }
+      after = before - qty
+    } else {
+      // AJUSTE — qty can be negative for downward adjustment
+      after = before + qty
+      if (after < 0) {
+        return { error: `Adjustment would leave stock at ${after}. Stock cannot be negative.` }
+      }
+    }
+
+    const absQty = Math.abs(qty)
 
     await prisma.$transaction([
       prisma.stockMovement.create({
@@ -139,83 +165,102 @@ const registrarEntrada: AgentTool = {
           tenantId,
           productId:      productId as string,
           branchId:       branchId as string,
-          type:           'ENTRADA',
-          quantity:       qty,
+          type:           tipo_,
+          quantity:       absQty,
           quantityBefore: before,
           quantityAfter:  after,
-          notes:          notes as string | undefined,
+          notes:          notas as string | undefined,
         },
       }),
-      prisma.stock.upsert({
-        where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-        create: { productId: productId as string, branchId: branchId as string, quantity: qty },
-        update: { quantity: { increment: qty } },
-      }),
+      tipo_ === 'SALIDA'
+        ? prisma.stock.update({
+            where: { productId_branchId: { productId: productId as string, branchId: branchId as string } },
+            data:  { quantity: { decrement: absQty } },
+          })
+        : prisma.stock.upsert({
+            where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
+            create: { productId: productId as string, branchId: branchId as string, quantity: after },
+            update: { quantity: after },
+          }),
     ])
 
-    return { success: true, producto: product.name, cantidad: qty, tipo: 'ENTRADA', stockNuevo: after }
+    // Notificar al equipo de KIRA sobre la acción del agente.
+    // La notificación es independiente de la transacción: si falla, el movimiento ya quedó registrado.
+    try {
+      const recipients = await prisma.user.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { role: 'AREA_MANAGER', module: 'KIRA' },
+            { role: 'TENANT_ADMIN' },
+          ],
+        },
+        select: { id: true },
+      })
+
+      const tipoLabel: Record<string, string> = { ENTRADA: 'entrada', SALIDA: 'salida', AJUSTE: 'ajuste' }
+      const notesText = notas ? ` Nota: ${String(notas).slice(0, 100)}.` : ''
+
+      await prisma.notification.createMany({
+        data: recipients.map((u) => ({
+          tenantId,
+          userId:  u.id,
+          module:  'KIRA' as const,
+          type:    'agente_accion',
+          title:   `KIRA registró ${tipoLabel[tipo_] ?? tipo_} — ${product.name}`,
+          message: `El agente registró ${absQty} unidades (${tipoLabel[tipo_] ?? tipo_}). Stock nuevo: ${after}.${notesText}`,
+          link:    `/kira/stock`,
+        })),
+      })
+    } catch {
+      // La falla en notificaciones nunca revierte el movimiento de stock
+    }
+
+    return {
+      success:    true,
+      producto:   product.name,
+      tipo:       tipo_,
+      cantidad:   absQty,
+      stockAntes: before,
+      stockNuevo: after,
+    }
   },
 }
 
-// ─── registrar_salida ─────────────────────────────────────────────────────────
+// ─── alertar_equipo ───────────────────────────────────────────────────────────
 
-const registrarSalida: AgentTool = {
+const alertarEquipo: AgentTool = {
   definition: {
-    name:        'registrar_salida',
-    description: 'Registra una salida de stock. El stock NUNCA puede quedar negativo.',
+    name:        'alertar_equipo',
+    description: 'Sends an in-app notification to all AREA_MANAGERs and admins of the tenant. Use this when you detect a critical situation or cannot complete a task automatically.',
     input_schema: {
       type: 'object',
       properties: {
-        productId: { type: 'string', description: 'ID del producto' },
-        branchId:  { type: 'string', description: 'ID de la sucursal' },
-        quantity:  { type: 'number', description: 'Cantidad a retirar (positivo)' },
-        notes:     { type: 'string', description: 'Motivo de la salida' },
+        title:   { type: 'string', description: 'Short notification title' },
+        message: { type: 'string', description: 'Notification body' },
       },
-      required: ['productId', 'branchId', 'quantity'],
+      required: ['title', 'message'],
     },
   },
 
-  async execute({ productId, branchId, quantity, notes }, tenantId) {
-    const qty = Number(quantity)
-    if (qty <= 0) return { error: 'La cantidad debe ser mayor que cero.' }
-
-    const product = await prisma.product.findFirst({
-      where:  { id: productId as string, tenantId },
-      select: { id: true, name: true },
-    })
-    if (!product) return { error: 'Producto no encontrado en este tenant.' }
-
-    const stock = await prisma.stock.findUnique({
-      where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-      select: { quantity: true },
+  async execute({ title, message }, tenantId) {
+    const recipients = await prisma.user.findMany({
+      where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
+      select: { id: true },
     })
 
-    const before = Number(stock?.quantity ?? 0)
-    if (before < qty) {
-      return { error: `Stock insuficiente. Stock actual: ${before}. Solicitado: ${qty}.` }
-    }
-    const after = before - qty
+    await prisma.notification.createMany({
+      data: recipients.map((u) => ({
+        tenantId,
+        userId:  u.id,
+        module:  'KIRA' as const,
+        type:    'agente_alerta',
+        title:   title as string,
+        message: message as string,
+      })),
+    })
 
-    await prisma.$transaction([
-      prisma.stockMovement.create({
-        data: {
-          tenantId,
-          productId:      productId as string,
-          branchId:       branchId as string,
-          type:           'SALIDA',
-          quantity:       qty,
-          quantityBefore: before,
-          quantityAfter:  after,
-          notes:          notes as string | undefined,
-        },
-      }),
-      prisma.stock.update({
-        where: { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-        data:  { quantity: { decrement: qty } },
-      }),
-    ])
-
-    return { success: true, producto: product.name, cantidad: qty, tipo: 'SALIDA', stockRestante: after }
+    return { success: true, notificados: recipients.length }
   },
 }
 
@@ -224,12 +269,12 @@ const registrarSalida: AgentTool = {
 const crearSolicitudCompra: AgentTool = {
   definition: {
     name:        'crear_solicitud_compra',
-    description: 'Crea una notificación urgente en NIRA para que el equipo de compras reabastezca un producto.',
+    description: 'Creates an urgent purchase request notification in NIRA so the purchasing team can restock a product.',
     input_schema: {
       type: 'object',
       properties: {
-        productName: { type: 'string', description: 'Nombre del producto a reabastecer' },
-        quantity:    { type: 'number', description: 'Cantidad sugerida a comprar' },
+        productName: { type: 'string', description: 'Name of the product to restock' },
+        quantity:    { type: 'number', description: 'Suggested quantity to purchase' },
       },
       required: ['productName', 'quantity'],
     },
@@ -247,8 +292,8 @@ const crearSolicitudCompra: AgentTool = {
         userId:  u.id,
         module:  'NIRA' as const,
         type:    'stock_critico',
-        title:   `Solicitud de compra: ${productName}`,
-        message: `KIRA detectó stock crítico. Se sugiere comprar ${quantity} unidades de ${productName}.`,
+        title:   `Purchase request: ${productName}`,
+        message: `KIRA detected critical stock. Suggested purchase: ${quantity} units of ${productName}.`,
         link:    '/nira/purchase-orders',
       })),
     })
@@ -257,51 +302,12 @@ const crearSolicitudCompra: AgentTool = {
   },
 }
 
-// ─── notificar_equipo ─────────────────────────────────────────────────────────
-
-const notificarEquipo: AgentTool = {
-  definition: {
-    name:        'notificar_equipo',
-    description: 'Envía una notificación in-app al equipo del módulo indicado.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        title:   { type: 'string', description: 'Título corto' },
-        message: { type: 'string', description: 'Contenido de la notificación' },
-        module:  { type: 'string', description: 'Módulo: KIRA o NIRA' },
-      },
-      required: ['title', 'message', 'module'],
-    },
-  },
-
-  async execute({ title, message, module }, tenantId) {
-    const recipients = await prisma.user.findMany({
-      where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
-      select: { id: true },
-    })
-
-    await prisma.notification.createMany({
-      data: recipients.map((u) => ({
-        tenantId,
-        userId:  u.id,
-        module:  (module as string).toUpperCase() as 'KIRA' | 'NIRA',
-        type:    'agente_alerta',
-        title:   title as string,
-        message: message as string,
-      })),
-    })
-
-    return { success: true, notificados: recipients.length }
-  },
-}
-
 // ─── Catálogo KIRA ────────────────────────────────────────────────────────────
 
 export const KIRA_TOOLS: AgentTool[] = [
   consultarStock,
   listarAlertasActivas,
-  registrarEntrada,
-  registrarSalida,
+  registrarMovimiento,
+  alertarEquipo,
   crearSolicitudCompra,
-  notificarEquipo,
 ]

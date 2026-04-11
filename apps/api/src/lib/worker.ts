@@ -49,19 +49,52 @@ async function sendWhatsAppReply(
   }
 }
 
-/** Obtiene el módulo activo de la integración de WhatsApp para invocar el agente correcto */
-async function resolveModule(tenantId: string): Promise<AgentModule> {
-  // Por ahora: si KIRA está activo lo usamos, si no NIRA, si no ARI
+/**
+ * Determina el módulo del agente a invocar según los feature flags del tenant.
+ *
+ * - Si solo hay un módulo activo: lo devuelve directamente.
+ * - Si hay varios activos: puntúa el mensaje con keywords de cada módulo
+ *   y elige el de mayor score. En caso de empate, aplica la prioridad fija.
+ *
+ * La decisión es determinista — el mismo mensaje siempre produce el mismo módulo.
+ */
+async function resolveModule(tenantId: string, message: string): Promise<AgentModule> {
   const flags = await directPrisma.featureFlag.findMany({
     where:  { tenantId, enabled: true },
     select: { module: true },
   })
-  const enabled = flags.map((f) => f.module as string)
-  if (enabled.includes('KIRA'))  return 'KIRA'
-  if (enabled.includes('NIRA'))  return 'NIRA'
-  if (enabled.includes('ARI'))   return 'ARI'
-  if (enabled.includes('AGENDA')) return 'AGENDA'
-  return 'KIRA' // fallback
+  const enabled = new Set(flags.map((f) => f.module as string))
+
+  // Prioridad fija cuando no hay distinción por keywords
+  const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA']
+  const active = PRIORITY.filter((m) => enabled.has(m))
+
+  if (active.length === 0) return 'KIRA'  // fallback de seguridad
+  if (active.length === 1) return active[0]!
+
+  // ── Routing por keywords cuando hay múltiples módulos activos ────────────
+  const KEYWORDS: Partial<Record<AgentModule, string[]>> = {
+    KIRA:   ['stock', 'inventario', 'producto', 'entrada', 'salida', 'unidades',
+              'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía'],
+    NIRA:   ['compra', 'proveedor', 'orden', 'cotización', 'precio', 'pedido',
+              'factura', 'surtir', ' oc ', 'suministro', 'abastec'],
+    ARI:    ['cliente', 'venta', 'cotizar', 'lead', 'oportunidad', 'oferta',
+              'presupuesto', 'negocio', 'contrato'],
+    AGENDA: ['cita', 'turno', 'agendar', 'horario', 'disponibilidad', 'reservar',
+              'appointment', 'agenda'],
+  }
+
+  const lower = message.toLowerCase()
+  const scores = new Map<AgentModule, number>()
+
+  for (const mod of active) {
+    const hits = (KEYWORDS[mod] ?? []).filter((kw) => lower.includes(kw)).length
+    scores.set(mod, hits)
+  }
+
+  // Módulo con mayor score; en empate, prioridad fija
+  const best = active.reduce((a, b) => (scores.get(b) ?? 0) > (scores.get(a) ?? 0) ? b : a)
+  return best
 }
 
 // ─── Procesador ───────────────────────────────────────────────────────────────
@@ -92,7 +125,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     }
 
     const accessToken = decrypt(integration.tokenEncrypted)
-    const module      = await resolveModule(d.tenantId)
+    const module      = await resolveModule(d.tenantId, d.content)
 
     // Invocar AgentRunner
     const result = await runAgent({
@@ -157,8 +190,6 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       return
     }
 
-    const module = await resolveModule(d.tenantId)
-
     for (const record of historyRecords) {
       for (const added of record.messagesAdded ?? []) {
         const messageId = added.message?.id
@@ -189,6 +220,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
         // Invocar AgentRunner con el contenido del email
         const emailMessage = `Asunto: ${subject}\nDe: ${from}\n\n${snippet}`
+        const module       = await resolveModule(d.tenantId, emailMessage)
 
         const result = await runAgent({
           tenantId:      d.tenantId,

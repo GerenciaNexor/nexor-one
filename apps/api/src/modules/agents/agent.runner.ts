@@ -22,7 +22,7 @@ import { prisma } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { KIRA_TOOLS } from './tools/kira.tools'
 import { NIRA_TOOLS } from './tools/nira.tools'
-import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail } from './types'
+import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail, FallbackReason } from './types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -117,9 +117,25 @@ async function saveLog(params: {
   }
 }
 
-// ─── Notificación de MAX_TURNS alcanzado ──────────────────────────────────────
+// ─── Notificación de fallback al equipo humano ────────────────────────────────
 
-async function notifyMaxTurns(tenantId: string, module: AgentModule, message: string): Promise<void> {
+const FALLBACK_REASON_LABEL: Record<FallbackReason, string> = {
+  max_turns: 'límite de turnos alcanzado',
+  api_error: 'error de Claude API',
+}
+
+const CHANNEL_LABEL: Record<AgentChannel, string> = {
+  whatsapp: 'WhatsApp',
+  gmail:    'Gmail',
+}
+
+async function notifyFallback(
+  tenantId: string,
+  module:   AgentModule,
+  channel:  AgentChannel,
+  message:  string,
+  reason:   FallbackReason,
+): Promise<void> {
   try {
     const managers = await prisma.user.findMany({
       where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
@@ -131,13 +147,13 @@ async function notifyMaxTurns(tenantId: string, module: AgentModule, message: st
         tenantId,
         userId:  u.id,
         module,
-        type:    'agente_max_turns',
-        title:   `Agente ${module} necesita ayuda`,
-        message: `El agente no pudo resolver la solicitud automáticamente: "${message.slice(0, 120)}". Requiere atención manual.`,
+        type:    'agente_fallback',
+        title:   `⚠️ Agente ${module} — atención requerida`,
+        message: `El agente no pudo resolver una solicitud por ${FALLBACK_REASON_LABEL[reason]}. Canal: ${CHANNEL_LABEL[channel]}. Mensaje: "${message.slice(0, 200)}".`,
       })),
     })
   } catch (err) {
-    console.error('[AgentRunner] No se pudo crear notificación de max_turns:', err)
+    console.error('[AgentRunner] No se pudo crear notificación de fallback:', err)
   }
 }
 
@@ -176,9 +192,10 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
   const toolDetails: ToolDetail[]  = []
   const toolsUsed:   string[]      = []
-  let   turnCount  = 0
-  let   finalReply = FALLBACK_MSG
-  let   hitMaxTurns = false
+  let   turnCount     = 0
+  let   finalReply    = FALLBACK_MSG
+  let   hitMaxTurns   = false
+  let   fallbackReason: FallbackReason | undefined
 
   try {
     while (turnCount < MAX_TURNS) {
@@ -243,15 +260,28 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
     // ── 4. MAX_TURNS alcanzado ─────────────────────────────────────────────
     if (turnCount >= MAX_TURNS && finalReply === FALLBACK_MSG) {
-      hitMaxTurns = true
-      await notifyMaxTurns(input.tenantId, input.module, input.message)
+      hitMaxTurns   = true
+      fallbackReason = 'max_turns'
+      await notifyFallback(input.tenantId, input.module, input.channel, input.message, 'max_turns')
     }
   } catch (err) {
     console.error('[AgentRunner] Error en el bucle de tool-use:', err)
-    finalReply = FALLBACK_MSG
+    finalReply     = FALLBACK_MSG
+    fallbackReason = 'api_error'
+    await notifyFallback(input.tenantId, input.module, input.channel, input.message, 'api_error')
   }
 
-  // ── 5. Log inmutable — siempre ────────────────────────────────────────────
+  // ── 5. Registrar razón de fallback en toolDetails (para auditoría) ────────
+  if (fallbackReason) {
+    toolDetails.push({
+      tool:      '__fallback__',
+      input:     { reason: fallbackReason },
+      output:    null,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  // ── 6. Log inmutable — siempre ────────────────────────────────────────────
   const durationMs = Date.now() - startTime
 
   await saveLog({
@@ -266,5 +296,5 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
     durationMs,
   })
 
-  return { reply: finalReply, toolsUsed, toolDetails, turnCount, durationMs, hitMaxTurns }
+  return { reply: finalReply, toolsUsed, toolDetails, turnCount, durationMs, hitMaxTurns, fallbackReason }
 }

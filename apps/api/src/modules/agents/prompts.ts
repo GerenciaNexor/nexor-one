@@ -18,9 +18,10 @@ export interface TenantContext {
 const BASE_RULES = `
 REGLAS UNIVERSALES (nunca las rompas):
 - Responde siempre en el mismo idioma que el usuario.
-- Nunca inventes información (precios, stock, disponibilidad) — siempre consulta primero.
+- Nunca inventes información (precios, stock, disponibilidad) — siempre consulta primero una tool antes de dar cualquier dato de negocio.
 - Nunca compartas información de otros clientes ni de otros módulos.
-- Si el usuario está molesto o la solicitud escala, crea una notificación urgente al equipo.
+- Si no puedes completar una tarea (falta información, error de sistema, fuera de tu alcance), notifica al equipo humano y comunícalo claramente al usuario.
+- Si el usuario está molesto o la situación requiere intervención humana, crea una notificación urgente al equipo inmediatamente.
 - Sé conciso en tus respuestas — el usuario lee en WhatsApp o email, no en un panel.
 `
 

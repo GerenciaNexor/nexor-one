@@ -1,5 +1,7 @@
 /**
  * Tools del agente NIRA — Compras
+ * HU-052: listar_proveedores, comparar_precios, crear_borrador_oc,
+ *         consultar_presupuesto, notificar_jefe_compras.
  */
 
 import { prisma } from '../../../lib/prisma'
@@ -10,11 +12,11 @@ import type { AgentTool } from '../types'
 const listarProveedores: AgentTool = {
   definition: {
     name:        'listar_proveedores',
-    description: 'Lista los proveedores activos del tenant con su puntuación y términos de pago.',
+    description: 'Returns the list of active suppliers for the tenant with their name, overall score and payment terms (credit days). Optionally filter by supplier name.',
     input_schema: {
       type:       'object',
       properties: {
-        search: { type: 'string', description: 'Filtrar por nombre (opcional)' },
+        search: { type: 'string', description: 'Filter by supplier name (optional partial match)' },
       },
     },
   },
@@ -33,15 +35,15 @@ const listarProveedores: AgentTool = {
       take:    20,
     })
 
-    if (suppliers.length === 0) return { message: 'No se encontraron proveedores activos.' }
+    if (suppliers.length === 0) return { message: 'No active suppliers found.' }
 
     return suppliers.map((s) => ({
       id:         s.id,
       nombre:     s.name,
-      contacto:   s.contactName ?? 'N/D',
-      email:      s.email ?? 'N/D',
-      plazo:      s.paymentTerms != null ? `${s.paymentTerms} días` : 'N/D',
-      puntuacion: s.score ? Number(s.score.overallScore).toFixed(1) : 'Sin eval.',
+      contacto:   s.contactName ?? 'N/A',
+      email:      s.email ?? 'N/A',
+      plazo:      s.paymentTerms != null ? `${s.paymentTerms} días` : 'N/A',
+      puntuacion: s.score ? Number(s.score.overallScore).toFixed(1) : 'Not rated',
       precio:     s.score ? Number(s.score.priceScore).toFixed(1) : '-',
       entrega:    s.score ? Number(s.score.deliveryScore).toFixed(1) : '-',
       calidad:    s.score ? Number(s.score.qualityScore).toFixed(1) : '-',
@@ -49,17 +51,17 @@ const listarProveedores: AgentTool = {
   },
 }
 
-// ─── comparar_cotizaciones ────────────────────────────────────────────────────
+// ─── comparar_precios ─────────────────────────────────────────────────────────
 
-const compararCotizaciones: AgentTool = {
+const compararPrecios: AgentTool = {
   definition: {
-    name:        'comparar_cotizaciones',
-    description: 'Compara el historial de precios de un producto entre distintos proveedores.',
+    name:        'comparar_precios',
+    description: 'Compares the price history of a product across different suppliers. Returns min, max and average price per supplier.',
     input_schema: {
       type: 'object',
       properties: {
-        productName: { type: 'string', description: 'Nombre o parte del nombre del producto' },
-        productId:   { type: 'string', description: 'ID del producto (alternativa)' },
+        productName: { type: 'string', description: 'Product name or partial name' },
+        productId:   { type: 'string', description: 'Exact product ID (alternative to productName)' },
       },
     },
   },
@@ -72,13 +74,12 @@ const compararCotizaciones: AgentTool = {
         where:  { tenantId, name: { contains: productName as string, mode: 'insensitive' } },
         select: { id: true },
       })
-      if (!product) return { error: `No se encontró el producto "${productName}"` }
+      if (!product) return { error: `Product "${productName}" not found.` }
       resolvedProductId = product.id
     }
 
-    if (!resolvedProductId) return { error: 'Debes proporcionar productName o productId' }
+    if (!resolvedProductId) return { error: 'Provide productName or productId.' }
 
-    // Buscar líneas de OC con este producto
     const items = await prisma.purchaseOrderItem.findMany({
       where: {
         productId: resolvedProductId,
@@ -94,7 +95,7 @@ const compararCotizaciones: AgentTool = {
       take:    30,
     })
 
-    if (items.length === 0) return { message: 'No hay historial de compras para este producto.' }
+    if (items.length === 0) return { message: 'No purchase history found for this product.' }
 
     const bySupplier = new Map<string, { nombre: string; precios: number[]; ultimaCompra: string }>()
 
@@ -107,8 +108,8 @@ const compararCotizaciones: AgentTool = {
         existing.precios.push(price)
       } else {
         bySupplier.set(sid, {
-          nombre:      item.purchaseOrder.supplier.name,
-          precios:     [price],
+          nombre:       item.purchaseOrder.supplier.name,
+          precios:      [price],
           ultimaCompra: item.purchaseOrder.createdAt.toISOString().split('T')[0]!,
         })
       }
@@ -133,12 +134,12 @@ const compararCotizaciones: AgentTool = {
 const crearBorradorOC: AgentTool = {
   definition: {
     name:        'crear_borrador_oc',
-    description: 'Crea un BORRADOR de orden de compra que requiere aprobación humana.',
+    description: 'Creates a DRAFT purchase order that requires human approval before it is sent to the supplier. Automatically notifies the purchasing team.',
     input_schema: {
       type: 'object',
       properties: {
-        supplierId: { type: 'string', description: 'ID del proveedor' },
-        branchId:   { type: 'string', description: 'ID de la sucursal destino' },
+        supplierId: { type: 'string', description: 'Supplier ID' },
+        branchId:   { type: 'string', description: 'Destination branch ID' },
         items: {
           type:  'array',
           items: {
@@ -150,9 +151,9 @@ const crearBorradorOC: AgentTool = {
             },
             required: ['productId', 'quantityOrdered', 'unitCost'],
           },
-          description: 'Productos a comprar',
+          description: 'Products to order',
         },
-        notes: { type: 'string', description: 'Nota opcional para el equipo' },
+        notes: { type: 'string', description: 'Optional note for the team' },
       },
       required: ['supplierId', 'branchId', 'items'],
     },
@@ -163,19 +164,18 @@ const crearBorradorOC: AgentTool = {
       where:  { id: supplierId as string, tenantId },
       select: { id: true, name: true },
     })
-    if (!supplier) return { error: 'Proveedor no encontrado en este tenant.' }
+    if (!supplier) return { error: 'Supplier not found in this tenant.' }
 
-    // Buscar un usuario TENANT_ADMIN para createdBy (requerido por schema)
+    // Requires a createdBy user — use TENANT_ADMIN
     const admin = await prisma.user.findFirst({
       where:  { tenantId, role: 'TENANT_ADMIN' },
       select: { id: true },
     })
-    if (!admin) return { error: 'No se encontró un administrador del tenant para registrar la OC.' }
+    if (!admin) return { error: 'No tenant admin found to register the purchase order.' }
 
     const lineItems = items as Array<{ productId: string; quantityOrdered: number; unitCost: number }>
     const subtotal  = lineItems.reduce((sum, i) => sum + i.quantityOrdered * i.unitCost, 0)
 
-    // Generar número de orden único
     const count       = await prisma.purchaseOrder.count({ where: { tenantId } })
     const orderNumber = `OC-AGENTE-${String(count + 1).padStart(4, '0')}`
 
@@ -203,9 +203,15 @@ const crearBorradorOC: AgentTool = {
       select: { id: true },
     })
 
-    // Notificar al equipo
+    // Notify purchasing team — mandatory per business rule
     const managers = await prisma.user.findMany({
-      where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
+      where: {
+        tenantId,
+        OR: [
+          { role: 'AREA_MANAGER', module: 'NIRA' },
+          { role: 'TENANT_ADMIN' },
+        ],
+      },
       select: { id: true },
     })
 
@@ -215,8 +221,8 @@ const crearBorradorOC: AgentTool = {
         userId:  u.id,
         module:  'NIRA' as const,
         type:    'borrador_oc',
-        title:   `Nueva OC borrador — ${supplier.name}`,
-        message: `NIRA creó la OC ${orderNumber} con ${lineItems.length} producto(s) por $${subtotal.toLocaleString()}. Requiere aprobación.`,
+        title:   `New draft PO — ${supplier.name}`,
+        message: `NIRA created PO ${orderNumber} with ${lineItems.length} item(s) for $${subtotal.toLocaleString()}. Requires approval.`,
         link:    `/nira/purchase-orders/${order.id}`,
       })),
     })
@@ -228,7 +234,55 @@ const crearBorradorOC: AgentTool = {
       proveedor: supplier.name,
       total:     subtotal,
       estado:    'draft',
-      mensaje:   'OC creada como borrador. El equipo debe aprobarla antes de enviarla.',
+      mensaje:   'Draft PO created. The team must approve it before it is sent.',
+    }
+  },
+}
+
+// ─── consultar_presupuesto ────────────────────────────────────────────────────
+
+const consultarPresupuesto: AgentTool = {
+  definition: {
+    name:        'consultar_presupuesto',
+    description: 'Returns the total amount spent on purchase orders in the current calendar month (excluding drafts and cancelled orders). Includes a breakdown by status.',
+    input_schema: { type: 'object', properties: {} },
+  },
+
+  async execute(_, tenantId) {
+    const now           = new Date()
+    const startOfMonth  = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const [aggregate, byStatus] = await Promise.all([
+      prisma.purchaseOrder.aggregate({
+        where: {
+          tenantId,
+          createdAt: { gte: startOfMonth },
+          status:    { notIn: ['draft', 'cancelled'] },
+        },
+        _sum:   { total: true },
+        _count: { id: true },
+      }),
+      prisma.purchaseOrder.groupBy({
+        by:   ['status'],
+        where: {
+          tenantId,
+          createdAt: { gte: startOfMonth },
+          status:    { notIn: ['draft', 'cancelled'] },
+        },
+        _sum:   { total: true },
+        _count: { id: true },
+      }),
+    ])
+
+    return {
+      mes:        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+      totalGastado: Number(aggregate._sum.total ?? 0).toFixed(2),
+      ordenes:      aggregate._count.id,
+      porEstado:    byStatus.map((g) => ({
+        estado:  g.status,
+        total:   Number(g._sum.total ?? 0).toFixed(2),
+        ordenes: g._count.id,
+      })),
     }
   },
 }
@@ -238,12 +292,12 @@ const crearBorradorOC: AgentTool = {
 const notificarJefeCompras: AgentTool = {
   definition: {
     name:        'notificar_jefe_compras',
-    description: 'Envía una notificación urgente al AREA_MANAGER de NIRA.',
+    description: 'Sends an urgent in-app notification to the NIRA purchasing team (AREA_MANAGERs and admins). Use when you need human intervention or cannot complete a task.',
     input_schema: {
       type: 'object',
       properties: {
-        title:   { type: 'string', description: 'Título de la notificación' },
-        message: { type: 'string', description: 'Contenido del mensaje' },
+        title:   { type: 'string', description: 'Short notification title' },
+        message: { type: 'string', description: 'Notification body' },
       },
       required: ['title', 'message'],
     },
@@ -251,7 +305,13 @@ const notificarJefeCompras: AgentTool = {
 
   async execute({ title, message }, tenantId) {
     const managers = await prisma.user.findMany({
-      where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
+      where: {
+        tenantId,
+        OR: [
+          { role: 'AREA_MANAGER', module: 'NIRA' },
+          { role: 'TENANT_ADMIN' },
+        ],
+      },
       select: { id: true },
     })
 
@@ -274,7 +334,8 @@ const notificarJefeCompras: AgentTool = {
 
 export const NIRA_TOOLS: AgentTool[] = [
   listarProveedores,
-  compararCotizaciones,
+  compararPrecios,
   crearBorradorOC,
+  consultarPresupuesto,
   notificarJefeCompras,
 ]
