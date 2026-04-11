@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation } from './service'
+import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
 
 /**
@@ -131,5 +132,33 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     await logImpersonation(id, request.user.userId, requestIp)
 
     return reply.code(200).send({ token, expiresIn: '1h' })
+  })
+
+  /**
+   * GET /v1/admin/agent-logs?tenantId=&module=KIRA&channel=whatsapp&from=&to=&page=1&limit=20
+   * Consulta los logs de cualquier tenant. Solo SUPER_ADMIN (garantizado por superAdminHook).
+   */
+  app.get('/agent-logs', async (request, reply) => {
+    const q = request.query as {
+      tenantId?: string
+      module?:   string
+      channel?:  string
+      from?:     string
+      to?:       string
+      page?:     string
+      limit?:    string
+    }
+
+    const result = await getAgentLogsAdmin({
+      tenantId: q.tenantId,
+      module:   q.module,
+      channel:  q.channel,
+      from:     q.from,
+      to:       q.to,
+      page:     q.page  ? Number(q.page)  : undefined,
+      limit:    q.limit ? Number(q.limit) : undefined,
+    })
+
+    return reply.code(200).send(result)
   })
 }

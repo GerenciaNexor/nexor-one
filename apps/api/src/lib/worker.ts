@@ -2,15 +2,14 @@
  * Worker de mensajes entrantes — BullMQ
  *
  * Consume la cola 'incoming-messages' y procesa cada job según su canal.
- * Sprint 4 (HU-033): registra el mensaje en los logs con todos sus datos.
- * Sprint 6+: llamará a AgentRunner para generar respuestas con IA.
+ * HU-033 (Sprint 4): cola + registro de mensajes.
+ * HU-049 (Sprint 6): AgentRunner para generar respuestas con IA.
  *
  * BullMQ requiere una conexión Redis SEPARADA de la Queue — no se comparte.
  *
  * Configuración de reintentos (definida en queue.ts):
  *   attempts: 3, backoff: exponential (2 s, 4 s, 8 s)
  *   removeOnFail: false → los fallidos quedan en la DLQ (estado 'failed' en BullMQ)
- *   Son visibles y reprocesables manualmente desde el dashboard de Bull Board.
  */
 
 import { Worker, type Job } from 'bullmq'
@@ -18,35 +17,143 @@ import { google } from 'googleapis'
 import { QUEUE_NAME, redisConnection, type IncomingMessageJob } from './queue'
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
+import { runAgent } from '../modules/agents/agent.runner'
+import type { AgentModule } from '../modules/agents/types'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Envía un mensaje de texto de vuelta al remitente por WhatsApp Business API */
+async function sendWhatsAppReply(
+  phoneNumberId: string,
+  to:            string,
+  text:          string,
+  accessToken:   string,
+): Promise<void> {
+  const url  = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`
+  const body = {
+    messaging_product: 'whatsapp',
+    to,
+    type:              'text',
+    text:              { body: text },
+  }
+
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body:    JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`[worker] WhatsApp send failed (${res.status}): ${detail}`)
+  }
+}
+
+/**
+ * Determina el módulo del agente a invocar según los feature flags del tenant.
+ *
+ * - Si solo hay un módulo activo: lo devuelve directamente.
+ * - Si hay varios activos: puntúa el mensaje con keywords de cada módulo
+ *   y elige el de mayor score. En caso de empate, aplica la prioridad fija.
+ *
+ * La decisión es determinista — el mismo mensaje siempre produce el mismo módulo.
+ */
+async function resolveModule(tenantId: string, message: string): Promise<AgentModule> {
+  const flags = await directPrisma.featureFlag.findMany({
+    where:  { tenantId, enabled: true },
+    select: { module: true },
+  })
+  const enabled = new Set(flags.map((f) => f.module as string))
+
+  // Prioridad fija cuando no hay distinción por keywords
+  const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA']
+  const active = PRIORITY.filter((m) => enabled.has(m))
+
+  if (active.length === 0) return 'KIRA'  // fallback de seguridad
+  if (active.length === 1) return active[0]!
+
+  // ── Routing por keywords cuando hay múltiples módulos activos ────────────
+  const KEYWORDS: Partial<Record<AgentModule, string[]>> = {
+    KIRA:   ['stock', 'inventario', 'producto', 'entrada', 'salida', 'unidades',
+              'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía'],
+    NIRA:   ['compra', 'proveedor', 'orden', 'cotización', 'precio', 'pedido',
+              'factura', 'surtir', ' oc ', 'suministro', 'abastec'],
+    ARI:    ['cliente', 'venta', 'cotizar', 'lead', 'oportunidad', 'oferta',
+              'presupuesto', 'negocio', 'contrato'],
+    AGENDA: ['cita', 'turno', 'agendar', 'horario', 'disponibilidad', 'reservar',
+              'appointment', 'agenda'],
+  }
+
+  const lower = message.toLowerCase()
+  const scores = new Map<AgentModule, number>()
+
+  for (const mod of active) {
+    const hits = (KEYWORDS[mod] ?? []).filter((kw) => lower.includes(kw)).length
+    scores.set(mod, hits)
+  }
+
+  // Módulo con mayor score; en empate, prioridad fija
+  const best = active.reduce((a, b) => (scores.get(b) ?? 0) > (scores.get(a) ?? 0) ? b : a)
+  return best
+}
 
 // ─── Procesador ───────────────────────────────────────────────────────────────
 
 async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<void> {
   const { canal } = job.data
 
+  // ── WhatsApp ──────────────────────────────────────────────────────────────
   if (canal === 'whatsapp') {
     const d = job.data
-    // Sprint 6: aquí se llamará a AgentRunner para procesar el mensaje con IA.
-    // Por ahora, registro completo en logs para verificación y auditoría.
-    console.info(
-      JSON.stringify({
-        event:         'worker_message_received',
-        jobId:         job.id,
-        attemptsMade:  job.attemptsMade,
-        canal:         'whatsapp',
-        tenantId:      d.tenantId,
-        integrationId: d.integrationId,
-        phoneNumberId: d.phoneNumberId,
-        from:          d.from,
-        content:       d.content,
-        messageId:     d.messageId,
-        timestamp:     d.timestamp,
-      }),
-    )
+
+    console.info(JSON.stringify({
+      event:         'worker_whatsapp_received',
+      jobId:         job.id,
+      tenantId:      d.tenantId,
+      from:          d.from,
+      content:       d.content,
+    }))
+
+    // Obtener access_token cifrado de la integración
+    const integration = await directPrisma.integration.findFirst({
+      where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP', isActive: true },
+      select: { tokenEncrypted: true },
+    })
+
+    if (!integration?.tokenEncrypted) {
+      throw new Error(`No hay integración de WhatsApp activa — tenant: ${d.tenantId}`)
+    }
+
+    const accessToken = decrypt(integration.tokenEncrypted)
+    const module      = await resolveModule(d.tenantId, d.content)
+
+    // Invocar AgentRunner
+    const result = await runAgent({
+      tenantId:      d.tenantId,
+      module,
+      channel:       'whatsapp',
+      message:       d.content,
+      senderId:      d.from,
+      integrationId: d.integrationId,
+    })
+
+    console.info(JSON.stringify({
+      event:      'worker_whatsapp_agent_done',
+      jobId:      job.id,
+      tenantId:   d.tenantId,
+      turns:      result.turnCount,
+      toolsUsed:  result.toolsUsed,
+      hitMaxTurns: result.hitMaxTurns,
+      durationMs: result.durationMs,
+    }))
+
+    // Enviar respuesta al remitente
+    await sendWhatsAppReply(d.phoneNumberId, d.from, result.reply, accessToken)
+
+  // ── Gmail ─────────────────────────────────────────────────────────────────
   } else if (canal === 'gmail') {
     const d = job.data
 
-    // ── 1. Obtener el refresh_token cifrado de la DB ───────────────────────
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL', isActive: true },
       select: { tokenEncrypted: true },
@@ -56,8 +163,6 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       throw new Error(`No hay integración de Gmail activa — tenant: ${d.tenantId}`)
     }
 
-    // ── 2. Descifrar refresh_token y obtener access_token fresco ──────────
-    // El access_token NUNCA se guarda — se genera aquí y se descarta al terminar el job.
     const refreshToken = decrypt(integration.tokenEncrypted)
     const oauthClient  = new google.auth.OAuth2(
       process.env['GOOGLE_CLIENT_ID'],
@@ -65,31 +170,26 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     )
     oauthClient.setCredentials({ refresh_token: refreshToken })
 
-    // ── 3. Consultar Gmail API: mensajes nuevos desde historyId ──────────
     const gmail = google.gmail({ version: 'v1', auth: oauthClient })
 
     const { data: historyData } = await gmail.users.history.list({
-      userId:       'me',
+      userId:         'me',
       startHistoryId: d.historyId,
-      historyTypes: ['messageAdded'],
-      labelId:      'INBOX',
+      historyTypes:   ['messageAdded'],
+      labelId:        'INBOX',
     })
 
     const historyRecords = historyData.history ?? []
 
     if (historyRecords.length === 0) {
       console.info(JSON.stringify({
-        event:        'worker_gmail_no_new_messages',
-        jobId:        job.id,
-        tenantId:     d.tenantId,
-        emailAddress: d.emailAddress,
-        historyId:    d.historyId,
+        event:    'worker_gmail_no_new_messages',
+        jobId:    job.id,
+        tenantId: d.tenantId,
       }))
       return
     }
 
-    // ── 4. Por cada mensaje nuevo, obtener sus metadatos y registrar ──────
-    // Sprint 6: aquí se llamará a AgentRunner para responder con IA.
     for (const record of historyRecords) {
       for (const added of record.messagesAdded ?? []) {
         const messageId = added.message?.id
@@ -102,25 +202,47 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           metadataHeaders: ['From', 'To', 'Subject', 'Date'],
         })
 
-        const headers  = fullMsg.payload?.headers ?? []
+        const headers   = fullMsg.payload?.headers ?? []
         const getHeader = (name: string) =>
           headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? ''
 
+        const from    = getHeader('From')
+        const subject = getHeader('Subject')
+        const snippet = fullMsg.snippet ?? ''
+
         console.info(JSON.stringify({
-          event:        'worker_gmail_message_received',
-          jobId:        job.id,
-          attemptsMade: job.attemptsMade,
-          tenantId:     d.tenantId,
-          emailAddress: d.emailAddress,
-          historyId:    d.historyId,
-          messageId:    fullMsg.id,
-          threadId:     fullMsg.threadId,
-          from:         getHeader('From'),
-          to:           getHeader('To'),
-          subject:      getHeader('Subject'),
-          date:         getHeader('Date'),
-          snippet:      fullMsg.snippet ?? '',
+          event:    'worker_gmail_message_received',
+          jobId:    job.id,
+          tenantId: d.tenantId,
+          from,
+          subject,
         }))
+
+        // Invocar AgentRunner con el contenido del email
+        const emailMessage = `Asunto: ${subject}\nDe: ${from}\n\n${snippet}`
+        const module       = await resolveModule(d.tenantId, emailMessage)
+
+        const result = await runAgent({
+          tenantId:      d.tenantId,
+          module,
+          channel:       'gmail',
+          message:       emailMessage,
+          senderId:      from,
+          integrationId: d.integrationId,
+        })
+
+        console.info(JSON.stringify({
+          event:       'worker_gmail_agent_done',
+          jobId:       job.id,
+          tenantId:    d.tenantId,
+          turns:       result.turnCount,
+          toolsUsed:   result.toolsUsed,
+          hitMaxTurns: result.hitMaxTurns,
+          durationMs:  result.durationMs,
+        }))
+
+        // Sprint 6+: enviar respuesta por Gmail (reply al thread)
+        // Por ahora el log queda registrado en agent_logs
       }
     }
   }
@@ -130,11 +252,6 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
 let workerInstance: Worker<IncomingMessageJob> | null = null
 
-/**
- * Crea e inicia el worker.
- * Separado de la declaración del módulo para evitar efectos secundarios al importar
- * (p. ej., en tests o scripts que solo importan los tipos).
- */
 export function startWorker(): Worker<IncomingMessageJob> {
   if (workerInstance) return workerInstance
 
@@ -142,22 +259,18 @@ export function startWorker(): Worker<IncomingMessageJob> {
     QUEUE_NAME,
     processIncomingMessage,
     {
-      // Conexión SEPARADA de la Queue (requisito de BullMQ/ioredis)
       connection:  redisConnection(),
-      // Procesar hasta 5 mensajes en paralelo — ajustar según carga real
       concurrency: 5,
     },
   )
 
   workerInstance.on('completed', (job) => {
-    console.info(
-      JSON.stringify({
-        event:   'worker_job_completed',
-        jobId:   job.id,
-        canal:   job.data.canal,
-        tenantId: job.data.tenantId,
-      }),
-    )
+    console.info(JSON.stringify({
+      event:    'worker_job_completed',
+      jobId:    job.id,
+      canal:    job.data.canal,
+      tenantId: job.data.tenantId,
+    }))
   })
 
   workerInstance.on('failed', (job, err) => {
@@ -165,17 +278,15 @@ export function startWorker(): Worker<IncomingMessageJob> {
       ? job.attemptsMade >= (job.opts.attempts ?? 3)
       : true
 
-    console.error(
-      JSON.stringify({
-        event:        isLastAttempt ? 'worker_job_dead_letter' : 'worker_job_retry',
-        jobId:        job?.id,
-        canal:        job?.data.canal,
-        tenantId:     job?.data.tenantId,
-        attemptsMade: job?.attemptsMade,
-        maxAttempts:  job?.opts.attempts ?? 3,
-        error:        err.message,
-      }),
-    )
+    console.error(JSON.stringify({
+      event:        isLastAttempt ? 'worker_job_dead_letter' : 'worker_job_retry',
+      jobId:        job?.id,
+      canal:        job?.data.canal,
+      tenantId:     job?.data.tenantId,
+      attemptsMade: job?.attemptsMade,
+      maxAttempts:  job?.opts.attempts ?? 3,
+      error:        err.message,
+    }))
   })
 
   workerInstance.on('error', (err) => {
@@ -187,10 +298,6 @@ export function startWorker(): Worker<IncomingMessageJob> {
   return workerInstance
 }
 
-/**
- * Cierra el worker limpiamente — espera a que los jobs en curso terminen.
- * Llamar desde el hook onClose de Fastify antes de cerrar las colas.
- */
 export async function closeWorker(): Promise<void> {
   if (workerInstance) {
     await workerInstance.close()
