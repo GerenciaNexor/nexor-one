@@ -1,6 +1,7 @@
 /**
- * Modulo Agents — AgentRunner: bucle de tool use con Claude API.
- * Orquesta todos los agentes del sistema (ARI, NIRA, KIRA, AGENDA, VERA).
- * Implementado en HU-XXX.
+ * Módulo Agents — AgentRunner: bucle de tool use con Claude API.
+ * HU-049: núcleo del motor de agentes IA.
  */
-export {}
+
+export { runAgent } from './agent.runner'
+export type { AgentRunnerInput, AgentRunnerResult, AgentModule, AgentChannel } from './types'
