@@ -27,6 +27,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
     "@bull-board/api": "^5.23.0",
     "@bull-board/fastify": "^5.23.0",
     "@bull-board/ui": "^5.23.0",

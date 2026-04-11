@@ -50,7 +50,9 @@
       "Bash(cmd /c \"taskkill /PID 15292 /F 2>&1\")",
       "Bash(railway version:*)",
       "Bash(find c:UsersjeikdOneDriveDocumentosnexor-one -type f \\\\\\(-name *.seed.* -o -path */scripts/* \\\\\\))",
-      "Bash(DIRECT_DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" npx tsx prisma/seed-full-demo.ts)"
+      "Bash(DIRECT_DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" DATABASE_URL=\"postgresql://postgres:password@localhost:5433/nexor_dev\" npx tsx prisma/seed-full-demo.ts)",
+      "Bash(DIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx tsx prisma/seed-full-demo.ts)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.dependencies, null, 2\\)\\)\")"
     ]
   }
 }

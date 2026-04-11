@@ -40,6 +40,7 @@ import { superAdminHook } from './modules/admin/routes'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
 import usersModule from './modules/users/index'
+import agentsModule from './modules/agents/index'
 
 const app = Fastify({
   logger: {
@@ -111,6 +112,7 @@ app.register(
     api.register(integrationsModule,  { prefix: '/integrations' })
     // api.register(ariModule,    { prefix: '/ari' })     — HU-009+
     api.register(niraModule,          { prefix: '/nira' })
+    api.register(agentsModule,        { prefix: '/agent-logs' })
     // api.register(agendaModule, { prefix: '/agenda' })
     // api.register(veraModule,   { prefix: '/vera' })
   },
