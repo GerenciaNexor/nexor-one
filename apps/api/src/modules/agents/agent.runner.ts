@@ -127,6 +127,7 @@ const FALLBACK_REASON_LABEL: Record<FallbackReason, string> = {
 const CHANNEL_LABEL: Record<AgentChannel, string> = {
   whatsapp: 'WhatsApp',
   gmail:    'Gmail',
+  internal: 'Chat interno',
 }
 
 async function notifyFallback(

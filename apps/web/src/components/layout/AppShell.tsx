@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { logoutRequest } from '@/lib/auth-api'
 import { apiClient } from '@/lib/api-client'
 import { SentryUserContext } from '@/components/layout/SentryUserContext'
+import { FloatingChat } from '@/components/chat/FloatingChat'
 
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
@@ -410,6 +411,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Chat flotante — visible en todas las pantallas del dashboard */}
+      <FloatingChat />
     </div>
   )
 }
