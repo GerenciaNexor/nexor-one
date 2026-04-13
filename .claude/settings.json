@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/node_modules/.bin/tsc\" --noEmit --project \"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/tsconfig.json\")"
+      "Bash(\"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/node_modules/.bin/tsc\" --noEmit --project \"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/tsconfig.json\")",
+      "Bash(/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/node_modules/.bin/tsc --noEmit --project apps/web/tsconfig.json)",
+      "Bash(./apps/web/node_modules/.bin/tsc --noEmit -p apps/web/tsconfig.json)"
     ]
   }
 }

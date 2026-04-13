@@ -9,6 +9,7 @@ import { apiClient } from '@/lib/api-client'
 import { SentryUserContext } from '@/components/layout/SentryUserContext'
 import { FloatingChat } from '@/components/chat/FloatingChat'
 import { useChatStore } from '@/store/chat'
+import { useTheme } from '@/hooks/useTheme'
 
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
@@ -54,6 +55,23 @@ function MenuIcon() {
   )
 }
 
+function SunIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(iso: string): string {
@@ -90,6 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, refreshToken, clearAuth } = useAuthStore()
 
   const chatUnread = useChatStore((s) => s.unreadCount)
+  const { theme, toggle: toggleTheme } = useTheme()
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
@@ -190,7 +209,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const activeModules = MODULES.filter((m) => flags[m.key])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
       <SentryUserContext />
 
       {/* Overlay movil */}
@@ -206,17 +225,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside
         className={[
           'fixed z-30 flex h-full w-60 shrink-0 flex-col border-r border-slate-200 bg-white',
+          'dark:border-slate-700 dark:bg-slate-800',
           'transition-transform duration-200 lg:static lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center border-b border-slate-200 px-5">
+        <div className="flex h-16 items-center border-b border-slate-200 px-5 dark:border-slate-700">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600">
               <span className="text-sm font-black text-white">N</span>
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">NEXOR</span>
+            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">NEXOR</span>
           </div>
         </div>
 
@@ -228,8 +248,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={[
                 'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
                 pathname === '/dashboard'
-                  ? 'bg-blue-50 font-semibold text-blue-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
               ].join(' ')}
             >
               Inicio
@@ -240,8 +260,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={[
                 'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
                 pathname === '/chat'
-                  ? 'bg-blue-50 font-semibold text-blue-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
               ].join(' ')}
             >
               <span>Chat IA</span>
@@ -253,7 +273,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
 
             {activeModules.length > 0 && (
-              <div className="my-2 border-t border-slate-100" />
+              <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
             )}
 
             {activeModules.map((m) => (
@@ -263,8 +283,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className={[
                   'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
                   pathname.startsWith(m.href)
-                    ? 'bg-blue-50 font-semibold text-blue-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                    ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
                 ].join(' ')}
               >
                 {m.label}
@@ -273,14 +293,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {(user?.role === 'BRANCH_ADMIN' || user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
               <>
-                <div className="my-2 border-t border-slate-100" />
+                <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
                 <Link
                   href="/settings/integrations"
                   className={[
                     'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
                     pathname.startsWith('/settings')
-                      ? 'bg-blue-50 font-semibold text-blue-700'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                      ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
                   ].join(' ')}
                 >
                   Integraciones
@@ -290,14 +310,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {user?.role === 'TENANT_ADMIN' && (
               <>
-                <div className="my-2 border-t border-slate-100" />
+                <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
                 <Link
                   href="/admin/branches"
                   className={[
                     'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
                     pathname.startsWith('/admin')
-                      ? 'bg-blue-50 font-semibold text-blue-700'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                      ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
                   ].join(' ')}
                 >
                   Administracion
@@ -308,9 +328,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Nombre del usuario en el pie de la sidebar */}
-        <div className="border-t border-slate-200 px-5 py-4">
-          <p className="truncate text-xs font-medium text-slate-700">{user?.name}</p>
-          <p className="mt-0.5 truncate text-xs text-slate-400">{user?.role}</p>
+        <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">{user?.name}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">{user?.role}</p>
         </div>
       </aside>
 
@@ -318,7 +338,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 sm:px-6">
+        <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 sm:px-6 dark:border-slate-700 dark:bg-slate-800">
 
           {/* Boton hamburguesa (solo movil) */}
           <button
@@ -330,17 +350,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           {/* Empresa */}
-          <span className="hidden truncate text-sm font-semibold text-slate-900 sm:block">
+          <span className="hidden truncate text-sm font-semibold text-slate-900 sm:block dark:text-slate-100">
             {user?.tenant.name}
           </span>
 
           <div className="flex-1" />
 
+          {/* Toggle de tema claro / oscuro */}
+          <button
+            onClick={toggleTheme}
+            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+            aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+            title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+          >
+            {theme === 'light' ? <MoonIcon /> : <SunIcon />}
+          </button>
+
           {/* Campana de notificaciones */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={handleBellClick}
-              className="relative rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+              className="relative rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
               aria-label={`Notificaciones${unreadCount > 0 ? `, ${unreadCount} sin leer` : ''}`}
             >
               <BellIcon />
@@ -353,11 +383,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Panel de notificaciones */}
             {notifOpen && (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800">
 
                 {/* Cabecera */}
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                  <span className="text-sm font-semibold text-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Notificaciones
                     {unreadCount > 0 && (
                       <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-xs text-red-600">
@@ -366,7 +396,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     )}
                   </span>
                   {unreadCount > 0 && (
-                    <button onClick={handleMarkAllRead} className="text-xs text-blue-600 hover:underline">
+                    <button onClick={handleMarkAllRead} className="text-xs text-blue-600 hover:underline dark:text-blue-400">
                       Marcar todas
                     </button>
                   )}
@@ -379,7 +409,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
                     </div>
                   ) : notifications.length === 0 ? (
-                    <p className="py-10 text-center text-sm text-slate-400">
+                    <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">
                       Sin notificaciones sin leer
                     </p>
                   ) : (
@@ -388,13 +418,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <li
                           key={n.id}
                           onClick={() => handleNotifClick(n)}
-                          className="flex cursor-pointer gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
+                          className="flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700"
                         >
                           <ModuleIcon module={n.module} />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-900">{n.title}</p>
-                            <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{n.message}</p>
-                            <p className="mt-1 text-xs text-slate-400">{relativeTime(n.createdAt)}</p>
+                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{n.title}</p>
+                            <p className="mt-0.5 text-xs text-slate-500 line-clamp-2 dark:text-slate-400">{n.message}</p>
+                            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{relativeTime(n.createdAt)}</p>
                           </div>
                           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                         </li>
@@ -404,11 +434,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
 
                 {/* Pie: Ver todas */}
-                <div className="border-t border-slate-100 px-4 py-2.5">
+                <div className="border-t border-slate-100 px-4 py-2.5 dark:border-slate-700">
                   <Link
                     href="/notifications"
                     onClick={() => setNotifOpen(false)}
-                    className="block text-center text-xs font-medium text-blue-600 hover:underline"
+                    className="block text-center text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
                   >
                     Ver todas las notificaciones →
                   </Link>
@@ -420,14 +450,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
           >
             Cerrar sesion
           </button>
         </header>
 
         {/* Contenido de la pagina */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto dark:bg-slate-900">
           {children}
         </main>
       </div>
