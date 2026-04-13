@@ -8,6 +8,7 @@ import { logoutRequest } from '@/lib/auth-api'
 import { apiClient } from '@/lib/api-client'
 import { SentryUserContext } from '@/components/layout/SentryUserContext'
 import { FloatingChat } from '@/components/chat/FloatingChat'
+import { useChatStore } from '@/store/chat'
 
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
@@ -87,6 +88,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, refreshToken, clearAuth } = useAuthStore()
+
+  const chatUnread = useChatStore((s) => s.unreadCount)
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
@@ -230,6 +233,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ].join(' ')}
             >
               Inicio
+            </Link>
+
+            <Link
+              href="/chat"
+              className={[
+                'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
+                pathname === '/chat'
+                  ? 'bg-blue-50 font-semibold text-blue-700'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+              ].join(' ')}
+            >
+              <span>Chat IA</span>
+              {chatUnread > 0 && (
+                <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                  {chatUnread > 9 ? '9+' : chatUnread}
+                </span>
+              )}
             </Link>
 
             {activeModules.length > 0 && (

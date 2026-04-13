@@ -101,13 +101,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     '/history',
     async (request, reply) => {
       const { userId, tenantId } = request.user
-      const q = request.query as { page?: string; limit?: string }
+      const q = request.query as { page?: string; limit?: string; sort?: string }
+      const sort = q.sort === 'desc' ? 'desc' : 'asc'
 
       const result = await getChatHistory(
         userId,
         tenantId,
         q.page  ? Number(q.page)  : 1,
         q.limit ? Number(q.limit) : 20,
+        sort,
       )
 
       return reply.code(200).send(result)
@@ -126,13 +128,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { tenantId } = request.user
       const { userId: targetUserId } = request.params as { userId: string }
-      const q = request.query as { page?: string; limit?: string }
+      const q = request.query as { page?: string; limit?: string; sort?: string }
+      const sort = q.sort === 'desc' ? 'desc' : 'asc'
 
       const result = await getChatHistoryForUser(
         targetUserId,
         tenantId,
         q.page  ? Number(q.page)  : 1,
         q.limit ? Number(q.limit) : 20,
+        sort,
       )
 
       if (!result) {

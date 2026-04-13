@@ -140,6 +140,7 @@ export async function getChatHistory(
   tenantId: string,
   page  = 1,
   limit = 20,
+  sort: 'asc' | 'desc' = 'asc',
 ) {
   const safeLimit = Math.min(100, Math.max(1, limit))
   const safePage  = Math.max(1, page)
@@ -148,7 +149,7 @@ export async function getChatHistory(
   const [messages, total] = await Promise.all([
     prisma.chatMessage.findMany({
       where:   { userId, tenantId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: sort },
       skip,
       take: safeLimit,
       select: { id: true, role: true, content: true, module: true, createdAt: true },
@@ -171,6 +172,7 @@ export async function getChatHistoryForUser(
   tenantId:     string,
   page  = 1,
   limit = 20,
+  sort: 'asc' | 'desc' = 'asc',
 ): Promise<ReturnType<typeof getChatHistory> | null> {
   // Verificar que el usuario objetivo pertenece al tenant
   const targetUser = await prisma.user.findUnique({
@@ -180,5 +182,5 @@ export async function getChatHistoryForUser(
 
   if (!targetUser || targetUser.tenantId !== tenantId) return null
 
-  return getChatHistory(targetUserId, tenantId, page, limit)
+  return getChatHistory(targetUserId, tenantId, page, limit, sort)
 }
