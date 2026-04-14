@@ -4,6 +4,7 @@ import { startStockAlertsScheduler } from './jobs/stock-alerts'
 import { startIntegrationHealthScheduler } from './jobs/integration-health'
 import { startSupplierScoresScheduler } from './jobs/supplier-scores'
 import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
+import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -37,6 +38,7 @@ import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
+import ariModule from './modules/ari/index'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
 import usersModule from './modules/users/index'
@@ -108,10 +110,10 @@ app.register(
     api.register(tenantsModule,       { prefix: '/tenants' })
     api.register(branchesModule,      { prefix: '/branches' })
     api.register(notificationsModule, { prefix: '/notifications' })
+    api.register(ariModule,           { prefix: '/ari' })
     api.register(kiraModule,          { prefix: '/kira' })
     api.register(usersModule,         { prefix: '/users' })
     api.register(integrationsModule,  { prefix: '/integrations' })
-    // api.register(ariModule,    { prefix: '/ari' })     — HU-009+
     api.register(niraModule,          { prefix: '/nira' })
     api.register(agentsModule,        { prefix: '/agent-logs' })
     api.register(chatModule,          { prefix: '/chat' })
@@ -133,6 +135,7 @@ const start = async (): Promise<void> => {
     startIntegrationHealthScheduler()   // Verifica tokens de WhatsApp y Gmail cada 7 días
     startSupplierScoresScheduler()      // Calcula scores de proveedores cada 24 h
     startOverdueDeliveriesScheduler()   // Detecta OC con entregas vencidas cada 24 h
+    startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
   } catch (err) {
     app.log.error(err)
     process.exit(1)
