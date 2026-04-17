@@ -252,7 +252,7 @@ export default function ClientsPage() {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-3">Nombre</th>
-                <th className="px-4 py-3">WhatsApp</th>
+                <th className="px-4 py-3">Teléfono</th>
                 <th className="px-4 py-3">Empresa</th>
                 <th className="px-4 py-3">Origen</th>
                 <th className="px-4 py-3">Vendedor</th>
@@ -291,7 +291,7 @@ export default function ClientsPage() {
                       {c.email && <p className="text-xs text-slate-400">{c.email}</p>}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                      {c.whatsappId ?? <span className="text-slate-300">—</span>}
+                      {c.phone ?? <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-500">
                       {c.company ?? <span className="text-slate-300">—</span>}
@@ -404,7 +404,7 @@ export default function ClientsPage() {
               </div>
 
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                {c.whatsappId      && <span>📱 {c.whatsappId}</span>}
+                {c.phone           && <span>📱 {c.phone}</span>}
                 {c.city            && <span>{c.city}</span>}
                 {c.assignedUser?.name && <span>Vendedor: {c.assignedUser.name}</span>}
                 {(c.activeDealsCount ?? 0) > 0 && (

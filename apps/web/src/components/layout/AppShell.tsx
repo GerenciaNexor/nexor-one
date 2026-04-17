@@ -118,12 +118,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notifLoading, setNotifLoading] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
-  // Feature flags: que modulos mostrar en la sidebar
+  // Feature flags: que modulos mostrar en la sidebar.
+  // Se refresca en cada cambio de ruta para reflejar cambios en /admin/modules.
   useEffect(() => {
     apiClient.get<Record<string, boolean>>('/v1/tenants/feature-flags')
       .then(setFlags)
       .catch(() => {})
-  }, [])
+  }, [pathname])
 
   // Polling del conteo de notificaciones no leidas cada 30s.
   // Se pausa cuando la pestaña no es visible (Page Visibility API).

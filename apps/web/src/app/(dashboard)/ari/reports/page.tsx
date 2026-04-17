@@ -88,18 +88,18 @@ function KpiCard({
   sub?:  string
   color?: 'blue' | 'emerald' | 'amber' | 'violet'
 }) {
-  const accent: Record<string, string> = {
-    blue:    'bg-blue-50   text-blue-700   dark:bg-blue-900/30  dark:text-blue-300',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-    amber:   'bg-amber-50  text-amber-700  dark:bg-amber-900/30 dark:text-amber-300',
-    violet:  'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  const textColor: Record<string, string> = {
+    blue:    'text-blue-700 dark:text-blue-300',
+    emerald: 'text-emerald-700 dark:text-emerald-300',
+    amber:   'text-amber-700 dark:text-amber-300',
+    violet:  'text-violet-700 dark:text-violet-300',
   }
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </p>
-      <p className={`mt-2 text-2xl font-bold ${accent[color]?.split(' ')[1]} dark:${accent[color]?.split(' ').slice(-1)[0]}`}>
+      <p className={`mt-2 text-2xl font-bold ${textColor[color] ?? ''}`}>
         {value}
       </p>
       {sub && (

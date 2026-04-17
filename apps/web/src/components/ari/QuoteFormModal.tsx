@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 
@@ -19,7 +19,11 @@ export interface Quote {
   createdAt:   string
   updatedAt:   string
   itemCount:   number
-  client:      { id: string; name: string; company: string | null }
+  client: {
+    id: string; name: string; company: string | null
+    email?: string | null; phone?: string | null
+    address?: string | null; city?: string | null; taxId?: string | null
+  }
   deal:        { id: string; title: string } | null
   creator:     { id: string; name: string }
   items?: QuoteItem[]
@@ -33,6 +37,14 @@ export interface QuoteItem {
   discountPct: number
   total:       number
   product:     { id: string; sku: string; name: string; unit: string } | null
+}
+
+interface KiraProduct {
+  id:        string
+  sku:       string
+  name:      string
+  salePrice: number | null
+  unit:      string
 }
 
 interface Client { id: string; name: string; company: string | null }
@@ -75,7 +87,90 @@ function fmtCOP(n: number) {
   }).format(n)
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// ─── ProductSearchInput ───────────────────────────────────────────────────────
+
+function ProductSearchInput({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string
+  onSelect: (id: string, name: string, price: number | null) => void
+}) {
+  const [val, setVal]     = useState('')
+  const [results, setRes] = useState<KiraProduct[]>([])
+  const [open, setOpen]   = useState(false)
+  const isSelected        = useRef(false)
+
+  // Si el padre limpia el selectedId (ej. reset de línea), limpiar el input también
+  useEffect(() => {
+    if (!selectedId) { setVal(''); isSelected.current = false }
+  }, [selectedId])
+
+  // Búsqueda con debounce de 300 ms — solo si no hay selección activa
+  useEffect(() => {
+    if (isSelected.current || !val.trim()) { setRes([]); setOpen(false); return }
+    const t = setTimeout(async () => {
+      try {
+        const r = await apiClient.get<{ data: KiraProduct[] }>(
+          `/v1/kira/products?search=${encodeURIComponent(val)}&active=true`,
+        )
+        setRes(r.data?.slice(0, 8) ?? [])
+        if ((r.data?.length ?? 0) > 0) setOpen(true)
+      } catch { setRes([]) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [val])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    isSelected.current = false
+    setVal(e.target.value)
+    if (!e.target.value) onSelect('', '', null)
+  }
+
+  function handleSelect(p: KiraProduct) {
+    isSelected.current = true
+    setVal(p.name)
+    setOpen(false)
+    onSelect(p.id, p.name, p.salePrice)
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={val}
+        onChange={handleChange}
+        onFocus={() => { if (results.length && !isSelected.current) setOpen(true) }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Buscar producto KIRA…"
+        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:placeholder-slate-500"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute left-0 top-full z-20 mt-0.5 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-900">
+          {results.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => handleSelect(p)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-slate-800 dark:text-slate-200">{p.name}</p>
+                <p className="text-xs text-slate-400">{p.sku} · {p.unit}</p>
+              </div>
+              {p.salePrice != null && (
+                <span className="shrink-0 text-xs text-slate-500">{fmtCOP(p.salePrice)}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Componente principal ──────────────────────────────────────────────────────
 
 export function QuoteFormModal({ onClose, onSuccess }: Props) {
   const [clientId, setClientId]     = useState('')
@@ -115,13 +210,12 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
 
   const fetchStock = useCallback(async (productId: string) => {
     if (!productId || stockMap[productId] !== undefined) return
-    // Marcar como "cargando" con null para no repetir la petición
     setStockMap((prev) => ({ ...prev, [productId]: null }))
     try {
       const info = await apiClient.get<StockInfo>(`/v1/ari/quotes/stock/${productId}`)
       setStockMap((prev) => ({ ...prev, [productId]: info }))
     } catch {
-      // Si falla simplemente no hay info de stock; no bloquear
+      // Si falla no hay info de stock; no bloquear la operación
     }
   }, [stockMap])
 
@@ -135,15 +229,22 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
     })
   }
 
-  function handleProductChange(idx: number, productId: string) {
+  function handleProductChange(
+    idx:       number,
+    productId: string,
+    name?:     string,
+    price?:    number | null,
+  ) {
+    if (!productId) {
+      setLine(idx, { productId: '' })
+      return
+    }
     setLine(idx, { productId })
-    if (productId) {
-      fetchStock(productId)
-      // Pre-fill unitPrice from salePrice when available
-      const info = stockMap[productId]
-      if (info?.salePrice != null) {
-        setLine(idx, { productId, unitPrice: String(info.salePrice), description: info.name })
-      }
+    fetchStock(productId)
+    if (price != null) {
+      setLine(idx, { productId, unitPrice: String(price), description: name ?? '' })
+    } else if (name) {
+      setLine(idx, { productId, description: name })
     }
   }
 
@@ -154,8 +255,8 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
       const info = stockMap[line.productId]
       if (!info) return line
       const updated = { ...line }
-      if (!line.description && info.name)   updated.description = info.name
-      if (line.unitPrice === '0' && info.salePrice != null) updated.unitPrice = String(info.salePrice)
+      if (!line.description && info.name)                       updated.description = info.name
+      if (line.unitPrice === '0' && info.salePrice != null)     updated.unitPrice   = String(info.salePrice)
       return updated
     }))
   }, [stockMap]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -370,7 +471,7 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                       <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
                         <div className="grid grid-cols-12 gap-2">
 
-                          {/* Descripción (ocupa más espacio) */}
+                          {/* Descripción */}
                           <div className="col-span-12 sm:col-span-5">
                             <label className="mb-1 block text-xs text-slate-500">Descripción *</label>
                             <input
@@ -441,33 +542,32 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                           </div>
                         </div>
 
-                        {/* Fila de selección de producto + info stock */}
-                        <div className="mt-2 flex flex-wrap items-center gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <label className="text-xs text-slate-400">Producto catálogo:</label>
-                            <input
-                              type="text"
-                              value={line.productId}
-                              onChange={(e) => handleProductChange(idx, e.target.value)}
-                              placeholder="ID de producto KIRA (opcional)"
-                              className="w-52 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none focus:border-blue-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                        {/* Fila de búsqueda de producto + info stock */}
+                        <div className="mt-2 flex flex-wrap items-start gap-3">
+                          <div className="w-56">
+                            <p className="mb-1 text-xs text-slate-400">Producto catálogo (opcional)</p>
+                            <ProductSearchInput
+                              selectedId={line.productId}
+                              onSelect={(id, name, price) => handleProductChange(idx, id, name, price)}
                             />
                           </div>
 
                           {/* Stock info */}
                           {line.productId && stock !== undefined && (
-                            stock === null ? (
-                              <span className="text-xs text-slate-400">Consultando stock…</span>
-                            ) : (
-                              <span className={`text-xs font-medium ${stock.totalStock > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                Stock: {stock.totalStock} {stock.unit}
-                                {stock.branches.length > 1 && (
-                                  <span className="ml-1 font-normal text-slate-400">
-                                    ({stock.branches.map((b) => `${b.branchName}: ${b.quantity}`).join(', ')})
-                                  </span>
-                                )}
-                              </span>
-                            )
+                            <div className="mt-4">
+                              {stock === null ? (
+                                <span className="text-xs text-slate-400">Consultando stock…</span>
+                              ) : (
+                                <span className={`text-xs font-medium ${stock.totalStock > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  Stock: {stock.totalStock} {stock.unit}
+                                  {stock.branches.length > 1 && (
+                                    <span className="ml-1 font-normal text-slate-400">
+                                      ({stock.branches.map((b) => `${b.branchName}: ${b.quantity}`).join(', ')})
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

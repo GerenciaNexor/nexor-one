@@ -168,7 +168,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const [deactivateLoad, setDeactivateLoad] = useState(false)
 
   // Interacciones
-  const [typeFilter,    setTypeFilter]    = useState('')
+  const [typeFilter,       setTypeFilter]       = useState('')
+  const [showAllInteractions, setShowAllInteractions] = useState(false)
   const [showAddInt,    setShowAddInt]    = useState(false)
   const [intForm,       setIntForm]       = useState({ type: 'note', direction: 'outbound', content: '', dealId: '' })
   const [intSubmitting, setIntSubmitting] = useState(false)
@@ -384,6 +385,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                     {interactions.length}
                   </span>
                 )}
+                {!showAllInteractions && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">· últimos 30 días</span>
+                )}
               </h2>
               <div className="flex items-center gap-2">
                 {/* Filtro por tipo */}
@@ -486,16 +490,40 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
             )}
 
             {(() => {
-              const filtered = typeFilter
+              const thirtyDaysAgo = new Date()
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+              const byType   = typeFilter
                 ? interactions.filter((i) => i.type === typeFilter)
                 : interactions
-              return filtered.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-400">
-                  {typeFilter ? 'Sin interacciones de este tipo' : 'Sin interacciones registradas'}
-                </p>
+
+              const visible  = showAllInteractions
+                ? byType
+                : byType.filter((i) => new Date(i.createdAt) >= thirtyDaysAgo)
+
+              const hiddenCount = byType.length - visible.length
+
+              return visible.length === 0 ? (
+                <div>
+                  <p className="px-5 py-8 text-center text-sm text-slate-400">
+                    {typeFilter
+                      ? 'Sin interacciones de este tipo en los últimos 30 días'
+                      : 'Sin interacciones en los últimos 30 días'}
+                  </p>
+                  {hiddenCount > 0 && (
+                    <div className="border-t border-slate-50 px-5 py-3 text-center">
+                      <button
+                        onClick={() => setShowAllInteractions(true)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Ver historial completo ({hiddenCount} más)
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="divide-y divide-slate-50">
-                  {filtered.map((int) => {
+                  {visible.map((int) => {
                     const isAgent = int.userId === null
                     return (
                       <div key={int.id} className="flex gap-3 px-5 py-3.5">
@@ -535,6 +563,26 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                       </div>
                     )
                   })}
+                  {/* Toggle ver todo / últimos 30 días */}
+                  {(hiddenCount > 0 || showAllInteractions) && (
+                    <div className="px-5 py-3 text-center">
+                      {showAllInteractions ? (
+                        <button
+                          onClick={() => setShowAllInteractions(false)}
+                          className="text-xs text-slate-400 hover:text-slate-600 hover:underline"
+                        >
+                          Mostrar solo últimos 30 días
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setShowAllInteractions(true)}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Ver historial completo ({hiddenCount} más)
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })()}
