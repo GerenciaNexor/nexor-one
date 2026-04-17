@@ -22,6 +22,7 @@ import { prisma } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { KIRA_TOOLS } from './tools/kira.tools'
 import { NIRA_TOOLS } from './tools/nira.tools'
+import { ARI_TOOLS  } from './tools/ari.tools'
 import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail, FallbackReason } from './types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -34,9 +35,10 @@ const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un ases
 
 function getToolsForModule(module: AgentModule): AgentTool[] {
   switch (module) {
-    case 'KIRA': return KIRA_TOOLS
-    case 'NIRA': return NIRA_TOOLS
-    default:     return []
+    case 'KIRA':   return KIRA_TOOLS
+    case 'NIRA':   return NIRA_TOOLS
+    case 'ARI':    return ARI_TOOLS
+    default:       return []
   }
 }
 
@@ -127,6 +129,7 @@ const FALLBACK_REASON_LABEL: Record<FallbackReason, string> = {
 const CHANNEL_LABEL: Record<AgentChannel, string> = {
   whatsapp: 'WhatsApp',
   gmail:    'Gmail',
+  internal: 'Chat interno',
 }
 
 async function notifyFallback(

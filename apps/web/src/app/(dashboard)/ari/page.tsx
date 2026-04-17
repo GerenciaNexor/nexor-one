@@ -1,5 +1,5 @@
-import { ComingSoon } from '@/components/layout/ComingSoon'
+import { redirect } from 'next/navigation'
 
 export default function AriPage() {
-  return <ComingSoon module="ARI" description="CRM, pipeline de ventas, cotizaciones y seguimiento de clientes." />
+  redirect('/ari/clients')
 }

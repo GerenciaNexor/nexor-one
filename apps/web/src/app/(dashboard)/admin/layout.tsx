@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 const TABS = [
   { href: '/admin/branches', label: 'Sucursales' },
   { href: '/admin/users',    label: 'Usuarios'   },
+  { href: '/admin/modules',  label: 'Módulos'    },
 ] as const
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

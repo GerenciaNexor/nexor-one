@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import type { UpdateTenantInput } from './schema'
+import { createDefaultPipelineStages } from '../ari/pipeline/service'
 
 const ALL_MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 
@@ -81,6 +82,12 @@ export async function updateFeatureFlag(
   if (result.count === 0) {
     throw { statusCode: 404, message: 'Feature flag no encontrado', code: 'NOT_FOUND' }
   }
+
+  // Al activar ARI por primera vez → crear las 6 etapas por defecto si no existen
+  if (module === 'ARI' && enabled) {
+    await createDefaultPipelineStages(tenantId)
+  }
+
   return { module, enabled }
 }
 
