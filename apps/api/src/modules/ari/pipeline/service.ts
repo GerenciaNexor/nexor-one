@@ -229,7 +229,7 @@ export async function moveDeal(
   tenantId:    string,
   dealId:      string,
   input:       MoveDealInput,
-  actorUserId: string,
+  _actorUserId: string,
 ) {
   const deal = await prisma.deal.findFirst({
     where:  { id: dealId, tenantId },
