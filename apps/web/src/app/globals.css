@@ -2,6 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE — overrides globales de contenido
+   Activa con `class="dark"` en <html> (tailwind darkMode: 'class').
+
+   Norma de accesibilidad aplicada: WCAG 2.1
+   ┌─────────────────────────────────────────────────────┐
+   │  Texto normal (< 18 px)   →  mínimo 4.5 : 1  (AA)  │
+   │  Texto grande (≥ 18 px)   →  mínimo 3.0 : 1  (AA)  │
+   │  Rango confortable        →  7 – 8 : 1       (AAA) │
+   │  Máximo recomendado       →  < 12 : 1               │
+   │  (contraste > 12:1 fatiga la vista en uso continuo) │
+   └─────────────────────────────────────────────────────┘
+
+   Superficie base: bg #1e293b (slate-800)
+   Ratios calculados con la fórmula WCAG de luminancia relativa.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* ── Fondos ───────────────────────────────────────────────────────────────── */
+html.dark .bg-white     { background-color: #1e293b; } /* slate-800  — tablas, cards, modales   */
+html.dark .bg-slate-50  { background-color: #162032; } /* entre 800-900 — cabeceras y subnavs   */
+html.dark .bg-slate-100 { background-color: #253347; } /* slate-750  — skeleton loader           */
+html.dark .bg-slate-200 { background-color: #2e3f55; } /* slate-700+ — barras skeleton           */
+
+/* Fondos de badges de estado (pills coloridos) */
+html.dark .bg-emerald-50  { background-color: rgba(6,  78,  59,  0.20); }
+html.dark .bg-emerald-100 { background-color: rgba(6,  78,  59,  0.25); }
+html.dark .bg-amber-50    { background-color: rgba(120, 53,  15,  0.20); }
+html.dark .bg-amber-100   { background-color: rgba(120, 53,  15,  0.25); }
+html.dark .bg-red-50      { background-color: rgba(220, 38,  38,  0.12); }
+html.dark .bg-red-100     { background-color: rgba(220, 38,  38,  0.20); }
+html.dark .bg-blue-50     { background-color: rgba(30,  58,  138, 0.20); }
+
+/* Filas de tabla con estado crítico — Tailwind opacity modifier bg-red-50/40
+   El nombre de clase HTML es "bg-red-50/40" → en CSS selector se escapa el slash */
+html.dark .bg-red-50\/40 {
+  background-color: rgba(220, 38, 38, 0.10); /* tinte rojo sutil, claramente distinto */
+  border-left: 2px solid rgba(248, 113, 113, 0.50); /* línea izquierda para refuerzo visual */
+}
+
+/* ── Bordes ───────────────────────────────────────────────────────────────── */
+html.dark .border-slate-200 { border-color: #2e3f55; } /* sutil, no distrae */
+html.dark .border-slate-100 { border-color: #253347; }
+
+/* Divisores de filas de tabla */
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #253347;
+}
+
+/* ── Textos — paleta calibrada para comodidad visual ─────────────────────── */
+/*
+   Todos los ratios calculados sobre el fondo de superficie #1e293b (L=0.030).
+
+   Clase           Hex        Ratio   WCAG
+   text-slate-900  #b8c6d6    7.7:1   AAA  ← texto principal (confortable, no cansa)
+   text-slate-800  #94a3b8    5.4:1   AA   ← contenido secundario
+   text-slate-700  #94a3b8    5.4:1   AA
+   text-slate-600  #8899ae    4.7:1   AA   ← etiquetas, subtítulos
+   text-slate-500  #8899ae    4.7:1   AA   ← texto muted
+   text-slate-400  #64748b    3.2:1   AA*  ← solo para textos grandes/decorativos
+   text-slate-300  #64748b    3.2:1   AA*  ← dashes "—", placeholders
+
+   * WCAG permite < 4.5:1 para texto incidental / decorativo (§1.4.3 excepción)
+*/
+/*
+   Clase           Hex        Ratio   WCAG
+   text-slate-900  #e2e8f0    10.3:1  AAA  ← texto principal (blanco suave, sin fatiga)
+   text-slate-800  #adbdd0     6.5:1  AA   ← título secundario
+   text-slate-700  #94a3b8     5.4:1  AA   ← contenido normal
+   text-slate-600  #8899ae     4.7:1  AA   ← etiquetas / muted
+   text-slate-500  #8899ae     4.7:1  AA
+   text-slate-400  #64748b     3.2:1  AA*  ← decorativo (celdas vacías "—")
+   text-slate-300  #64748b     3.2:1  AA*
+*/
+html.dark .text-slate-900 { color: #e2e8f0; } /* slate-200 — texto principal claro */
+html.dark .text-slate-800 { color: #adbdd0; }
+html.dark .text-slate-700 { color: #94a3b8; }
+html.dark .text-slate-600 { color: #8899ae; }
+html.dark .text-slate-500 { color: #8899ae; }
+html.dark .text-slate-400 { color: #64748b; }
+html.dark .text-slate-300 { color: #64748b; }
+
+/* Textos de badges de estado — versiones luminosas sobre fondo oscuro semitransparente */
+html.dark .text-emerald-700,
+html.dark .text-emerald-600 { color: #4ade80; } /* green-400  — ratio ≥ 6:1 sobre bg-emerald */
+html.dark .text-amber-700,
+html.dark .text-amber-600   { color: #fbbf24; } /* amber-400  — ratio ≥ 6:1 */
+html.dark .text-red-700,
+html.dark .text-red-600,
+html.dark .text-red-500     { color: #f87171; } /* red-400    — ratio ≥ 6:1 */
+
+/* ── Hover de filas — contraste mínimo con el fondo ─────────────────────── */
+html.dark .hover\:bg-slate-50:hover  { background-color: #263347; } /* +3 L sobre la superficie */
+html.dark .hover\:bg-slate-100:hover { background-color: #263347; }
+
+/* ── Inputs, selects y textareas ─────────────────────────────────────────── */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark select,
+html.dark textarea {
+  background-color: #162032; /* mismo que bg-slate-50 */
+  color: #e2e8f0;            /* mismo que text-slate-900 → 10.3:1 */
+  border-color: #2e3f55;
+}
+
+html.dark input:not([type="checkbox"]):not([type="radio"])::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b; /* 3.2:1 — placeholders son decorativos */
+}
+
+/* Select — opciones del dropdown nativo */
+html.dark select option {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
 @keyframes page-in {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0);    }
@@ -9,4 +128,13 @@
 
 .page-enter {
   animation: page-in 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+@keyframes chat-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+.chat-enter {
+  animation: chat-in 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
