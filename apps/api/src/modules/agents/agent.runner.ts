@@ -20,9 +20,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
-import { KIRA_TOOLS } from './tools/kira.tools'
-import { NIRA_TOOLS } from './tools/nira.tools'
-import { ARI_TOOLS  } from './tools/ari.tools'
+import { KIRA_TOOLS   } from './tools/kira.tools'
+import { NIRA_TOOLS   } from './tools/nira.tools'
+import { ARI_TOOLS    } from './tools/ari.tools'
+import { AGENDA_TOOLS } from './tools/agenda.tools'
 import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail, FallbackReason } from './types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ function getToolsForModule(module: AgentModule): AgentTool[] {
     case 'KIRA':   return KIRA_TOOLS
     case 'NIRA':   return NIRA_TOOLS
     case 'ARI':    return ARI_TOOLS
-    default:       return []
+    case 'AGENDA': return AGENDA_TOOLS
   }
 }
 

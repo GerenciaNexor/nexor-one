@@ -5,6 +5,8 @@ import { startIntegrationHealthScheduler } from './jobs/integration-health'
 import { startSupplierScoresScheduler } from './jobs/supplier-scores'
 import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
 import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
+import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders'
+import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -44,6 +46,9 @@ import niraModule from './modules/nira/index'
 import usersModule from './modules/users/index'
 import agentsModule from './modules/agents/index'
 import chatModule from './modules/chat/index'
+import agendaModule from './modules/agenda/index'
+import veraModule from './modules/vera/index'
+import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
 
 const app = Fastify({
   logger: {
@@ -100,6 +105,9 @@ app.register(
   { prefix: '/v1/admin' },
 )
 
+// ─── Cancelación de cita por email (sin JWT — token actúa como credencial) ───
+app.register(cancelAppointmentRoutes, { prefix: '/v1/agenda/cancel' })
+
 // ─── Rutas protegidas (/v1/*) — requieren JWT valido + tenant activo ──────────
 // Los modulos de negocio se registran dentro de este scope para que el
 // tenantHook se ejecute automaticamente en todos sus endpoints.
@@ -117,8 +125,8 @@ app.register(
     api.register(niraModule,          { prefix: '/nira' })
     api.register(agentsModule,        { prefix: '/agent-logs' })
     api.register(chatModule,          { prefix: '/chat' })
-    // api.register(agendaModule, { prefix: '/agenda' })
-    // api.register(veraModule,   { prefix: '/vera' })
+    api.register(agendaModule,        { prefix: '/agenda' })
+    api.register(veraModule,        { prefix: '/vera' })
   },
   { prefix: '/v1' },
 )
@@ -136,6 +144,8 @@ const start = async (): Promise<void> => {
     startSupplierScoresScheduler()      // Calcula scores de proveedores cada 24 h
     startOverdueDeliveriesScheduler()   // Detecta OC con entregas vencidas cada 24 h
     startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
+    startAppointmentRemindersScheduler() // Envía recordatorios de citas del día siguiente
+    startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
   } catch (err) {
     app.log.error(err)
     process.exit(1)

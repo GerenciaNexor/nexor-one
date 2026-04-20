@@ -6,7 +6,20 @@
       "Bash(./apps/web/node_modules/.bin/tsc --noEmit -p apps/web/tsconfig.json)",
       "Read(//c/Users/jeikd/.claude/projects/c--Users-jeikd-OneDrive-Documentos-nexor-one/memory/**)",
       "Bash(mkdir -p apps/web/src/components/ari)",
-      "Bash(mkdir -p \"apps/web/src/app/\\(dashboard\\)/ari/clients/[id]\")"
+      "Bash(mkdir -p \"apps/web/src/app/\\(dashboard\\)/ari/clients/[id]\")",
+      "Bash(railway --version)",
+      "Bash(export DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\")",
+      "Bash(export DIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\")",
+      "Bash(xargs grep *)",
+      "Bash(npx eslint *)",
+      "Bash(echo 'DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"')",
+      "Bash(npx dotenv-cli *)",
+      "Bash(rm -f .env.prod)",
+      "Bash(mv .env .env.bak)",
+      "Bash(mv .env.bak .env)",
+      "Bash(printf 'DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\nDIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\n')",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(npx next *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"
