@@ -18,15 +18,24 @@ import {
   createPurchaseOrderFromAlert,
 } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/nira/purchase-orders
-   * OPERATIVE.NIRA puede listar sus OC.
-   * Query: ?status=draft|pending_approval|... &supplierId=xxx &branchId=xxx
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Listar órdenes de compra',
+      description: 'Lista OC del tenant con filtros por estado, proveedor y sucursal.',
+      security:    bearerAuth,
+      querystring: z2j(PurchaseOrderQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = PurchaseOrderQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -40,9 +49,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * GET /v1/nira/purchase-orders/:id
-   * Detalle completo con líneas de productos.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Detalle de orden de compra',
+      description: 'Detalle completo con líneas de productos y recepciones parciales.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const po = await getPurchaseOrder(request.user.tenantId, id)
@@ -55,9 +73,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * POST /v1/nira/purchase-orders
-   * Crea una OC en borrador. OPERATIVE.NIRA o superior.
    */
-  app.post('/', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Crear orden de compra',
+      description: 'Crea una OC en estado draft. OPERATIVE.NIRA o superior.',
+      security:    bearerAuth,
+      body:        z2j(CreatePurchaseOrderSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = CreatePurchaseOrderSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -76,9 +103,19 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * PUT /v1/nira/purchase-orders/:id
-   * Edita una OC en borrador. Solo se permite en estado draft.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Editar orden de compra',
+      description: 'Edita una OC en estado draft. Rechaza con 409 si no está en draft.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdatePurchaseOrderSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdatePurchaseOrderSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -98,9 +135,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * POST /v1/nira/purchase-orders/:id/submit
-   * Envía la OC a aprobación (draft → pending_approval).
    */
-  app.post('/:id/submit', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.post('/:id/submit', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Enviar a aprobación',
+      description: 'Cambia el estado de la OC de draft → pending_approval.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const po = await submitForApproval(request.user.tenantId, id)
@@ -113,11 +159,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * PUT /v1/nira/purchase-orders/:id/approve
-   * Aprueba la OC (pending_approval → approved).
-   * Solo AREA_MANAGER.NIRA o superior.
-   * Genera egreso en VERA y notificación al comprador.
    */
-  app.put('/:id/approve', { preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA') }, async (request, reply) => {
+  app.put('/:id/approve', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Aprobar orden de compra',
+      description: 'Aprueba la OC (pending_approval → approved). Genera egreso en VERA y notifica al comprador. Requiere AREA_MANAGER.NIRA.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const po = await approvePurchaseOrder(request.user.tenantId, id, request.user.userId)
@@ -130,10 +183,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * PUT /v1/nira/purchase-orders/:id/cancel
-   * Cancela la OC. Si estaba aprobada, revierte el egreso en VERA.
-   * AREA_MANAGER.NIRA o superior (previene cancelaciones no autorizadas).
    */
-  app.put('/:id/cancel', { preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA') }, async (request, reply) => {
+  app.put('/:id/cancel', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Cancelar orden de compra',
+      description: 'Cancela la OC. Si estaba aprobada, revierte el egreso en VERA. Requiere AREA_MANAGER.NIRA.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const result = await cancelPurchaseOrder(request.user.tenantId, id)
@@ -146,13 +207,18 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * POST /v1/nira/purchase-orders/from-alert
-   * Crea un borrador de OC a partir de una alerta de stock crítico.
-   * Selecciona automáticamente el proveedor de mejor score con historial para el producto.
-   * Si no hay historial, crea el borrador sin proveedor para que el comprador lo complete.
-   * La cantidad sugerida = maxStock - stockActual (o minStock × 2 si no hay maxStock).
-   * OPERATIVE.NIRA o superior.
    */
-  app.post('/from-alert', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.post('/from-alert', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Crear OC desde alerta de stock',
+      description: 'Crea un borrador de OC a partir de una alerta de stock crítico. Sugiere proveedor por score y cantidad = maxStock − stockActual.',
+      security:    bearerAuth,
+      body:        z2j(FromAlertSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = FromAlertSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -171,15 +237,19 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
 
   /**
    * PUT /v1/nira/purchase-orders/:id/receive
-   * Registra la recepción de mercancía (total o parcial).
-   * Por cada línea recibida:
-   *   - Crea stock_movement de tipo 'entrada' en KIRA (referenceType: 'purchase_order')
-   *   - Actualiza quantity_received en la línea de la OC
-   * Si todas las líneas se recibieron → received. Si parcial → partial.
-   * Notifica al AREA_MANAGER de KIRA.
-   * OPERATIVE.NIRA o superior puede registrar recepciones.
    */
-  app.put('/:id/receive', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.put('/:id/receive', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Registrar recepción de mercancía',
+      description: 'Registra recepción total o parcial. Crea stock_movements en KIRA por cada línea recibida. OC → received o partial.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(ReceivePurchaseOrderSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = ReceivePurchaseOrderSchema.safeParse(request.body)
     if (!parsed.success) {

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
+import { Portal } from '@/components/ui/Portal'
 import { TransactionFormModal, type TxItem } from './TransactionFormModal'
 
 interface Category   { id: string; name: string; type: 'income' | 'expense' | 'both' }
@@ -54,38 +55,43 @@ function DeleteConfirmModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800">
-        <h3 className="text-base font-semibold text-slate-900 dark:text-white">Eliminar transacción</h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Esta acción es{' '}
-          <strong className="font-semibold text-red-600">irreversible</strong>.
-          La transacción será eliminada permanentemente sin posibilidad de recuperación.
-        </p>
-        <div className="truncate rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-700 dark:text-slate-300">
-          {tx.description}{' '}
-          <span className={tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}>
-            {tx.type === 'income' ? '+' : '−'}{fmt(Number(tx.amount), tx.currency)}
-          </span>
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={confirm} disabled={loading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-          >
-            {loading ? 'Eliminando…' : 'Eliminar permanentemente'}
-          </button>
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
+          <div className="space-y-4 px-6 py-5">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Eliminar transacción</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Esta acción es{' '}
+                <strong className="font-semibold text-red-600">irreversible</strong>.
+                La transacción será eliminada permanentemente sin posibilidad de recuperación.
+              </p>
+            </div>
+            <div className="truncate rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {tx.description}{' '}
+              <span className={tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}>
+                {tx.type === 'income' ? '+' : '−'}{fmt(Number(tx.amount), tx.currency)}
+              </span>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </div>
+          <div className="flex gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-700">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirm} disabled={loading}
+              className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+            >
+              {loading ? 'Eliminando…' : 'Eliminar permanentemente'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   )
 }
 

@@ -14,6 +14,7 @@ import {
   deleteManualTransaction,
   classifyTransaction,
 } from './service'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 function errReply(reply: FastifyReply, err: unknown) {
   const e = err as { statusCode?: number; message?: string; code?: string }
@@ -24,9 +25,18 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/vera/transactions
-   * Lista transacciones con filtros y búsqueda por descripción/referencia.
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'VERA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Listar transacciones',
+      description: 'Lista transacciones con filtros por tipo, categoría, fecha y búsqueda.',
+      security:    bearerAuth,
+      querystring: z2j(ListTransactionsQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'VERA'),
+  }, async (request, reply) => {
     const parsed = ListTransactionsQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos', code: 'VALIDATION_ERROR' })
@@ -37,9 +47,18 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/vera/transactions/:id
-   * Detalle completo de una transacción — muestra origen para las automáticas.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'VERA') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Detalle de transacción',
+      description: 'Detalle completo incluyendo origen (deal, OC, manual).',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const tx = await getTransaction(request.user.tenantId, id)
@@ -49,9 +68,18 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/vera/transactions
-   * Crea una transacción manual (isManual=true). Solo AREA_MANAGER.VERA y superiores.
    */
-  app.post('/', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Crear transacción manual',
+      description: 'Crea una transacción manual (isManual=true). Solo AREA_MANAGER.VERA y superiores.',
+      security:    bearerAuth,
+      body:        z2j(CreateManualTransactionSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = CreateManualTransactionSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
@@ -64,9 +92,19 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/vera/transactions/:id
-   * Edita una transacción manual. Rechaza automáticas con 403.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Editar transacción manual',
+      description: 'Edita una transacción manual. Las transacciones automáticas son rechazadas con 403.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateManualTransactionSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateManualTransactionSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -80,9 +118,18 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/vera/transactions/:id
-   * Elimina permanentemente una transacción manual. Rechaza automáticas con 403.
    */
-  app.delete('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Eliminar transacción manual',
+      description: 'Elimina permanentemente una transacción manual. Las automáticas son rechazadas con 403.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 204: { type: 'null' }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       await deleteManualTransaction(request.user.tenantId, id)
@@ -92,9 +139,19 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PATCH /v1/vera/transactions/:id/classify
-   * Asigna o cambia categoría y/o centro de costo (manual y automáticas).
    */
-  app.patch('/:id/classify', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.patch('/:id/classify', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Clasificar transacción',
+      description: 'Asigna o cambia categoría y/o centro de costo. Aplica a transacciones manuales y automáticas.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(ClassifyTransactionSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = ClassifyTransactionSchema.safeParse(request.body)
     if (!parsed.success) {

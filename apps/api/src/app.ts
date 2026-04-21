@@ -40,6 +40,7 @@ import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
+import swaggerPlugin from './plugins/swagger'
 import ariModule from './modules/ari/index'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
@@ -48,19 +49,36 @@ import agentsModule from './modules/agents/index'
 import chatModule from './modules/chat/index'
 import agendaModule from './modules/agenda/index'
 import veraModule from './modules/vera/index'
+import dashboardModule from './modules/dashboard/index'
 import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
 
 const app = Fastify({
   logger: {
     level: process.env['LOG_LEVEL'] ?? 'info',
   },
+  // AJV deshabilitado: la validación de requests la hace Zod en cada handler.
+  // Los schemas en las rutas son exclusivamente para documentación OpenAPI.
+  ajv: {
+    customOptions: {
+      removeAdditional: false,
+      strict:           false,
+      allowUnionTypes:  true,
+    },
+  },
 })
+
+// Deshabilitar el validador AJV: Zod valida en cada handler; los schemas son solo para OpenAPI.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.setSchemaController({ compilersFactory: { buildValidator: (() => () => true) as any } })
 
 /** Cierra worker, colas y Prisma al apagar el servidor (en orden correcto). */
 app.addHook('onClose', async () => {
   await closeWorker()                          // espera jobs en curso
   await Promise.all([prisma.$disconnect(), closeQueues()])
 })
+
+// ─── Documentación OpenAPI (solo dev/staging, antes de registrar rutas) ──────
+app.register(swaggerPlugin)
 
 // ─── Plugins globales ────────────────────────────────────────────────────────
 app.register(fastifyCors, {
@@ -126,7 +144,8 @@ app.register(
     api.register(agentsModule,        { prefix: '/agent-logs' })
     api.register(chatModule,          { prefix: '/chat' })
     api.register(agendaModule,        { prefix: '/agenda' })
-    api.register(veraModule,        { prefix: '/vera' })
+    api.register(veraModule,          { prefix: '/vera' })
+    api.register(dashboardModule,     { prefix: '/dashboard' })
   },
   { prefix: '/v1' },
 )

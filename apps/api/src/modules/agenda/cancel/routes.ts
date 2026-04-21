@@ -40,7 +40,19 @@ export async function cancelAppointmentRoutes(app: FastifyInstance): Promise<voi
    * No requiere autenticación — el token actúa como credencial temporal.
    * El token expira 2 horas antes de la cita para evitar cancelaciones de último momento.
    */
-  app.get('/:token', async (request, reply) => {
+  app.get('/:token', {
+    schema: {
+      tags:        ['AGENDA'],
+      summary:     'Cancelar cita por token de email',
+      description: 'Cancela una cita usando el token de un solo uso enviado por email. No requiere autenticación. El token expira 2 horas antes de la cita.',
+      security:    [],
+      params: {
+        type: 'object',
+        properties: { token: { type: 'string' } },
+        required: ['token'],
+      },
+    },
+  }, async (request, reply) => {
     const { token } = request.params as { token: string }
 
     const cancelToken = await prisma.appointmentCancelToken.findUnique({

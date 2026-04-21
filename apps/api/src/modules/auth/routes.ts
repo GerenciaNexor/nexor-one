@@ -2,10 +2,41 @@ import type { FastifyInstance } from 'fastify'
 import { LoginSchema, RefreshSchema, LogoutSchema } from './schema'
 import { login, refresh, logout, getMe } from './service'
 import { authenticate } from '../../plugins/jwt'
+import { z2j, objRes, stdErrors } from '../../lib/openapi'
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   /** POST /v1/auth/login */
-  app.post('/login', async (request, reply) => {
+  app.post('/login', {
+    schema: {
+      tags:    ['Auth'],
+      summary: 'Iniciar sesión',
+      description: 'Autentica al usuario y devuelve un JWT de acceso y un refresh token.',
+      security: [],  // ruta pública — sin bearer
+      body: z2j(LoginSchema),
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            token:        { type: 'string', description: 'JWT de acceso (exp 7d por defecto)' },
+            refreshToken: { type: 'string', description: 'Token opaco para renovar el JWT' },
+            user: {
+              type: 'object',
+              properties: {
+                id:       { type: 'string' },
+                email:    { type: 'string' },
+                name:     { type: 'string' },
+                role:     { type: 'string' },
+                tenantId: { type: 'string' },
+                branchId: { type: 'string', nullable: true },
+              },
+              additionalProperties: true,
+            },
+          },
+        },
+        ...stdErrors,
+      },
+    },
+  }, async (request, reply) => {
     const parsed = LoginSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -47,7 +78,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /** POST /v1/auth/refresh — emite nuevo access token sin re-autenticacion */
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', {
+    schema: {
+      tags:    ['Auth'],
+      summary: 'Renovar access token',
+      description: 'Intercambia un refresh token válido por un nuevo JWT de acceso.',
+      security: [],
+      body: z2j(RefreshSchema),
+      response: {
+        200: {
+          type: 'object',
+          properties: { token: { type: 'string', description: 'Nuevo JWT de acceso' } },
+        },
+        ...stdErrors,
+      },
+    },
+  }, async (request, reply) => {
     const parsed = RefreshSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -77,7 +123,19 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /** POST /v1/auth/logout — invalida el refresh token */
-  app.post('/logout', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/logout', {
+    schema: {
+      tags:    ['Auth'],
+      summary: 'Cerrar sesión',
+      description: 'Invalida el refresh token. El JWT de acceso expira naturalmente.',
+      body: z2j(LogoutSchema),
+      response: {
+        200: { type: 'object', properties: { message: { type: 'string' } } },
+        ...stdErrors,
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const parsed = LogoutSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -91,7 +149,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /** GET /v1/auth/me — perfil del usuario autenticado */
-  app.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/me', {
+    schema: {
+      tags:     ['Auth'],
+      summary:  'Perfil del usuario autenticado',
+      description: 'Devuelve los datos del usuario activo, su tenant y sucursal.',
+      response: {
+        200: { type: 'object', additionalProperties: true },
+        ...stdErrors,
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     try {
       const profile = await getMe(request.user.userId)
       return reply.code(200).send(profile)

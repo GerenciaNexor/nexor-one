@@ -19,7 +19,17 @@
       "Bash(mv .env.bak .env)",
       "Bash(printf 'DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\nDIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\n')",
       "PowerShell(Stop-Process -Force)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(npx playwright *)",
+      "Bash(node -e \"const f = require\\('fastify'\\); console.log\\(Object.keys\\(f\\(\\)\\).filter\\(k => k.includes\\('Schema'\\)\\)\\)\")",
+      "Bash(node -e \"console.log\\(require\\('fastify/package.json'\\).version\\)\")",
+      "Bash(sed -n '443,475p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(sed -n '475,530p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(sed -n '573,605p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(sed -n '279,340p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(sed -n '701,760p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(sed -n '759,800p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
+      "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { ReportQuerySchema, TimelineQuerySchema } from './schema'
 import { getSummary, getTimeline, getCategoryBreakdown, exportCsv } from './service'
+import { z2j, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 function errReply(reply: FastifyReply, err: unknown) {
   const e = err as { statusCode?: number; message?: string; code?: string }
@@ -11,10 +12,19 @@ function errReply(reply: FastifyReply, err: unknown) {
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
-   * GET /v1/vera/reports/summary?dateFrom=&dateTo=&branchId=
-   * KPIs globales + desglose por sucursal y por módulo origen.
+   * GET /v1/vera/reports/summary
    */
-  app.get('/summary', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/summary', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Resumen financiero',
+      description: 'KPIs globales + desglose por sucursal y módulo origen. Requiere AREA_MANAGER.VERA.',
+      security:    bearerAuth,
+      querystring: z2j(ReportQuerySchema),
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = ReportQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos', code: 'VALIDATION_ERROR' })
@@ -26,10 +36,19 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
-   * GET /v1/vera/reports/timeline?dateFrom=&dateTo=&branchId=&granularity=day|week|month
-   * Serie temporal de ingresos y egresos para graficar la evolución.
+   * GET /v1/vera/reports/timeline
    */
-  app.get('/timeline', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/timeline', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Serie temporal de ingresos y egresos',
+      description: 'Serie temporal agrupada por día, semana o mes para graficar la evolución financiera.',
+      security:    bearerAuth,
+      querystring: z2j(TimelineQuerySchema),
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = TimelineQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos', code: 'VALIDATION_ERROR' })
@@ -41,10 +60,19 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
-   * GET /v1/vera/reports/categories?dateFrom=&dateTo=&branchId=
-   * Desglose de ingresos y egresos por categoría con monto y porcentaje del total.
+   * GET /v1/vera/reports/categories
    */
-  app.get('/categories', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/categories', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Desglose por categoría',
+      description: 'Ingresos y egresos por categoría con monto y porcentaje del total.',
+      security:    bearerAuth,
+      querystring: z2j(ReportQuerySchema),
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = ReportQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos', code: 'VALIDATION_ERROR' })
@@ -56,10 +84,19 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
-   * GET /v1/vera/reports/export?dateFrom=&dateTo=&branchId=
-   * CSV descargable con todas las transacciones del periodo.
+   * GET /v1/vera/reports/export
    */
-  app.get('/export', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/export', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Exportar transacciones CSV',
+      description: 'Descarga un CSV con todas las transacciones del período seleccionado.',
+      security:    bearerAuth,
+      querystring: z2j(ReportQuerySchema),
+      response:    { 200: { type: 'string', description: 'Archivo CSV' } },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = ReportQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Parámetros inválidos', code: 'VALIDATION_ERROR' })

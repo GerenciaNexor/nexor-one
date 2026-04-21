@@ -114,7 +114,7 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
 
           <div className="space-y-4 px-6 py-4">
             {/* Status badge */}
-            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${STATUS_BADGE[appointment.status] ?? STATUS_BADGE.confirmed}`}>
+            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[appointment.status] ?? STATUS_BADGE.confirmed}`}>
               {STATUS_LABELS[appointment.status] ?? appointment.status}
             </span>
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { compareSupplierPrices } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { stdErrors, bearerAuth } from '../../../lib/openapi'
 
 const QuerySchema = z.object({
   productId: z.string().min(1, 'El productId es requerido'),
@@ -9,13 +10,23 @@ const QuerySchema = z.object({
 
 export async function compareRoutes(app: FastifyInstance): Promise<void> {
   /**
-   * GET /v1/nira/compare?productId=xxx
-   * Devuelve el historial de precios de un producto por proveedor.
-   * Solo OC en estado 'received' son consideradas.
-   * Ordenado por precio promedio ascendente.
-   * OPERATIVE.NIRA o superior puede consultar.
+   * GET /v1/nira/compare
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Comparar precios por proveedor',
+      description: 'Historial de precios de un producto por proveedor. Solo OC en estado received. Ordenado por precio promedio ascendente.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: { productId: { type: 'string', format: 'uuid', description: 'ID del producto a comparar' } },
+        required: ['productId'],
+      },
+      response: { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = QuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({

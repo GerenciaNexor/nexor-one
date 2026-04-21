@@ -412,10 +412,106 @@ pnpm --filter @nexor/api db:studio
 
 ### Configuración del backup automático semanal
 
-El workflow `.github/workflows/backup.yml` necesita el secret `DATABASE_URL_PROD` en GitHub:
+El workflow `.github/workflows/backup.yml` necesita estos secrets en GitHub:
 
 1. Ir a GitHub → Settings → Secrets and variables → Actions
-2. Crear secret: **`DATABASE_URL_PROD`**
-3. Valor: `postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway`
+2. Crear los secrets:
+   - **`DATABASE_URL_PROD`** → `postgresql://postgres:<password>@turntable.proxy.rlwy.net:28927/railway`
+   - **`RESEND_API_KEY`** → API key de Resend para el envío de la notificación por email
+   - **`BACKUP_NOTIFY_EMAIL`** → dirección de email donde llega la notificación de éxito/fallo
 
 El workflow corre automáticamente cada domingo a las 02:00 UTC. También puede ejecutarse manualmente desde GitHub Actions → **"Backup semanal DB produccion"** → **Run workflow**.
+
+---
+
+## 9. Tests E2E con Playwright
+
+Los tests de extremo a extremo viven en `packages/e2e/` y cubren los flujos principales del sistema contra una base de datos real.
+
+### Prerequisitos adicionales
+
+| Herramienta | Versión | Cómo verificar |
+|-------------|---------|----------------|
+| Docker Desktop | cualquiera | `docker --version` |
+| Playwright browsers | — | `pnpm --filter @nexor/e2e exec playwright install --with-deps` |
+
+### Variables de entorno para E2E
+
+Crea `packages/e2e/.env` (no se commitea):
+
+```env
+BASE_URL=http://localhost:3000
+API_URL=http://localhost:3001
+```
+
+### Levantar el entorno para E2E
+
+Los tests necesitan la API y el frontend corriendo con la base de datos de tests.
+
+```bash
+# 1. Levantar PostgreSQL y Redis (si no están corriendo)
+docker-compose up -d
+
+# 2. Preparar la base de datos de tests (seed especial)
+DATABASE_URL="postgresql://postgres:password@localhost:5433/nexor_dev" \
+  pnpm --filter @nexor/api db:seed-e2e
+
+# 3. Levantar la API y el frontend en background
+pnpm dev &
+
+# 4. Esperar que la API esté lista
+curl --retry 10 --retry-delay 2 http://localhost:3001/health
+```
+
+### Ejecutar los tests
+
+```bash
+# Todos los tests (modo headless)
+pnpm test:e2e
+
+# Solo un proyecto específico
+pnpm --filter @nexor/e2e exec playwright test --project=auth-tests
+pnpm --filter @nexor/e2e exec playwright test --project=security
+pnpm --filter @nexor/e2e exec playwright test --project=openapi
+pnpm --filter @nexor/e2e exec playwright test --project=chromium
+
+# Solo un archivo específico
+pnpm --filter @nexor/e2e exec playwright test tests/kira.spec.ts
+
+# Con UI interactiva (para depurar)
+pnpm test:e2e:headed
+
+# Ver el reporte HTML del último run
+pnpm test:e2e:report
+```
+
+### Proyectos de tests y lo que cubren
+
+| Proyecto | Archivo | Qué cubre |
+|----------|---------|-----------|
+| `auth-tests` | `auth.spec.ts` | Login, refresh token, logout, acceso por rol |
+| `security` | `security.spec.ts` | Aislamiento multi-tenant, acceso no autorizado, RLS |
+| `openapi` | `openapi.spec.ts` | Spec JSON válido, Swagger UI, tags, seguridad bearerAuth |
+| `chromium` | `kira.spec.ts` | Productos, stock, movimientos, alertas (UI) |
+| `chromium` | `nira.spec.ts` | Proveedores, órdenes de compra, flujo de aprobación (UI) |
+| `chromium` | `ari.spec.ts` | Clientes, pipeline, cotizaciones (UI) |
+| `chromium` | `multitenancy.spec.ts` | Datos de un tenant no visibles para otro |
+
+### Datos de test
+
+El seed E2E (`prisma/seed-e2e.ts`) crea:
+- **Tenant principal:** `e2e-test-tenant` con todos los módulos activos
+- **Tenant secundario:** `e2e-test-tenant-2` para pruebas de aislamiento
+- **Usuarios:** admin, branch-admin, area-manager (por módulo), operative (por módulo)
+- **Datos de prueba:** productos, clientes, deals, proveedores, citas
+
+> Los datos del seed E2E se recrean en cada run del workflow de CI. En desarrollo local, ejecuta `db:seed-e2e` manualmente antes de correr los tests.
+
+### Tests en CI (GitHub Actions)
+
+El workflow `.github/workflows/e2e.yml` corre automáticamente en cada PR a `main`:
+1. Levanta PostgreSQL 16 y Redis 7 como services de Docker
+2. Ejecuta migraciones + seeds (`db:seed` + `db:seed-e2e`)
+3. Compila y levanta la API y el frontend
+4. Corre los tests de Playwright en modo headless
+5. Sube el reporte HTML y capturas de fallos como artefactos

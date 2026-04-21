@@ -2,11 +2,11 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation } from './service'
 import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
+import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
 /**
  * Hook onRequest para el scope /v1/admin.
  * Verifica el JWT y exige exactamente el rol SUPER_ADMIN.
- * Registrado fuera del tenantHook porque SUPER_ADMIN opera a traves de todos los tenants.
  */
 export async function superAdminHook(
   request: FastifyRequest,
@@ -29,10 +29,24 @@ const ToggleSchema = z.object({ isActive: z.boolean() })
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
-   * GET /v1/admin/tenants?page=1&limit=20
-   * Listado paginado de todas las empresas de la plataforma.
+   * GET /v1/admin/tenants
    */
-  app.get('/tenants', async (request, reply) => {
+  app.get('/tenants', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Listar todos los tenants',
+      description: 'Listado paginado de todas las empresas de la plataforma. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          page:  { type: 'string' },
+          limit: { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
     const query = request.query as { page?: string; limit?: string }
     const page = Math.max(1, Number(query.page ?? 1))
     const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20)))
@@ -42,9 +56,17 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/admin/tenants/:id
-   * Detalle completo: sucursales, usuarios y feature flags del tenant.
    */
-  app.get('/tenants/:id', async (request, reply) => {
+  app.get('/tenants/:id', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Detalle de tenant',
+      description: 'Detalle completo: sucursales, usuarios y feature flags del tenant. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const tenant = await getTenantDetail(id)
@@ -57,12 +79,22 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/admin/tenants/:id/toggle
-   * Activar o desactivar una empresa. Al desactivarla, el tenantHook rechaza
-   * inmediatamente todos sus tokens con 403 TENANT_DISABLED.
-   *
-   * Restriccion: no se puede desactivar la propia empresa del Super Admin.
    */
-  app.put('/tenants/:id/toggle', async (request, reply) => {
+  app.put('/tenants/:id/toggle', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Activar o desactivar tenant',
+      description: 'Al desactivar, el tenantHook rechaza inmediatamente todos sus tokens. No se puede desactivar la propia empresa del Super Admin.',
+      security:    bearerAuth,
+      params:      idParam,
+      body: {
+        type: 'object',
+        required: ['isActive'],
+        properties: { isActive: { type: 'boolean' } },
+      },
+      response: { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = ToggleSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -72,7 +104,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    // No se puede desactivar la propia empresa del Super Admin
     if (!parsed.data.isActive && id === request.user.tenantId) {
       return reply.code(422).send({
         error: 'No puedes desactivar la empresa del Super Admin desde este panel',
@@ -91,14 +122,28 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/admin/tenants/:id/impersonate
-   * Genera un JWT de 1 hora que opera como TENANT_ADMIN del tenant objetivo.
-   * El token NO tiene refresh token — no puede renovarse.
-   * Queda registrado de forma permanente en agent_logs.
    */
-  app.post('/tenants/:id/impersonate', async (request, reply) => {
+  app.post('/tenants/:id/impersonate', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Impersonar tenant',
+      description: 'Genera un JWT de 1 hora como TENANT_ADMIN del tenant objetivo. No tiene refresh token. Queda registrado en agent_logs.',
+      security:    bearerAuth,
+      params:      idParam,
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            token:     { type: 'string' },
+            expiresIn: { type: 'string' },
+          },
+        },
+        ...stdErrors,
+      },
+    },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
-    // Verificar que el tenant existe y esta activo
     const { prisma } = await import('../../lib/prisma')
     const tenant = await prisma.tenant.findUnique({
       where: { id },
@@ -115,8 +160,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    // Token con rol TENANT_ADMIN del tenant objetivo, expira en 1 hora, sin refresh.
-    // No se genera refresh token — la impersonacion no es renovable por diseno.
     const token = app.jwt.sign(
       {
         userId: request.user.userId,
@@ -127,7 +170,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       { expiresIn: '1h' },
     )
 
-    // Audit log inmutable — APPEND-ONLY en agent_logs
     const requestIp = request.ip
     await logImpersonation(id, request.user.userId, requestIp)
 
@@ -135,10 +177,29 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
-   * GET /v1/admin/agent-logs?tenantId=&module=KIRA&channel=whatsapp&from=&to=&page=1&limit=20
-   * Consulta los logs de cualquier tenant. Solo SUPER_ADMIN (garantizado por superAdminHook).
+   * GET /v1/admin/agent-logs
    */
-  app.get('/agent-logs', async (request, reply) => {
+  app.get('/agent-logs', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Logs de agentes IA (todos los tenants)',
+      description: 'Consulta los logs del agente IA de cualquier tenant. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          module:   { type: 'string' },
+          channel:  { type: 'string' },
+          from:     { type: 'string' },
+          to:       { type: 'string' },
+          page:     { type: 'string' },
+          limit:    { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
     const q = request.query as {
       tenantId?: string
       module?:   string

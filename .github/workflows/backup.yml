@@ -52,3 +52,28 @@ jobs:
           # Retener 90 dias (maximo en GitHub gratuito)
           retention-days: 90
           if-no-files-found: error
+
+      - name: Notificar resultado por email
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFY_EMAIL:   ${{ secrets.BACKUP_NOTIFY_EMAIL }}
+          JOB_STATUS:     ${{ job.status }}
+          RUN_URL:        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            SUBJECT="✅ Backup NEXOR completado — $BACKUP_FILE"
+            BODY="El backup semanal de producción se generó correctamente.\n\nArchivo: ${BACKUP_FILE}\nFecha: $(date -u '+%Y-%m-%d %H:%M UTC')\nEjecución: ${RUN_URL}"
+          else
+            SUBJECT="❌ Backup NEXOR FALLÓ — $(date -u '+%Y-%m-%d')"
+            BODY="El backup semanal de producción FALLÓ.\n\nFecha: $(date -u '+%Y-%m-%d %H:%M UTC')\nEjecución: ${RUN_URL}\n\nRevisa los logs para más detalles."
+          fi
+          curl -s -X POST "https://api.resend.com/emails" \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"NEXOR Ops <no-reply@nexor.co>\",
+              \"to\": [\"${NOTIFY_EMAIL}\"],
+              \"subject\": \"${SUBJECT}\",
+              \"text\": \"${BODY}\"
+            }"

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { UpsertBudgetSchema, UpdateBudgetSchema } from './schema'
 import { listBudgets, getBudgetStatus, upsertBudget, updateBudget, deleteBudget } from './service'
+import { z2j, idParam, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 function errReply(reply: FastifyReply, err: unknown) {
   const e = err as { statusCode?: number; message?: string; code?: string }
@@ -12,19 +13,38 @@ export async function budgetsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/vera/budgets
-   * Lista todos los presupuestos del tenant.
    */
-  app.get('/', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Listar presupuestos',
+      description: 'Lista todos los presupuestos del tenant. Requiere AREA_MANAGER.VERA.',
+      security:    bearerAuth,
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const data = await listBudgets(request.user.tenantId)
     return reply.code(200).send({ data })
   })
 
   /**
-   * GET /v1/vera/budgets/current?branchId=
-   * Presupuesto del mes actual con porcentaje consumido.
-   * Usado por el dashboard de VERA para la barra de progreso.
+   * GET /v1/vera/budgets/current
    */
-  app.get('/current', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.get('/current', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Presupuesto del mes actual',
+      description: 'Devuelve el presupuesto del mes en curso con porcentaje consumido. Usado por el dashboard de VERA.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: { branchId: { type: 'string', format: 'uuid', description: 'Filtrar por sucursal' } },
+      },
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { branchId } = request.query as { branchId?: string }
     const now          = new Date()
     const status = await getBudgetStatus(request.user.tenantId, now.getFullYear(), now.getMonth() + 1, branchId)
@@ -33,9 +53,18 @@ export async function budgetsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/vera/budgets
-   * Crea o actualiza (upsert) el presupuesto para un mes/sucursal específico.
    */
-  app.post('/', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Crear o actualizar presupuesto',
+      description: 'Upsert del presupuesto para un mes/año y sucursal específicos. Requiere AREA_MANAGER.VERA.',
+      security:    bearerAuth,
+      body:        z2j(UpsertBudgetSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const parsed = UpsertBudgetSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
@@ -48,9 +77,19 @@ export async function budgetsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/vera/budgets/:id
-   * Edita el monto o moneda de un presupuesto existente.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Editar presupuesto',
+      description: 'Edita el monto o moneda de un presupuesto existente. Requiere AREA_MANAGER.VERA.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateBudgetSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateBudgetSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -64,9 +103,18 @@ export async function budgetsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/vera/budgets/:id
-   * Elimina un presupuesto. Los egresos no se ven afectados.
    */
-  app.delete('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA') }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['VERA'],
+      summary:     'Eliminar presupuesto',
+      description: 'Elimina un presupuesto. Los egresos asociados no se ven afectados. Requiere AREA_MANAGER.VERA.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 204: { type: 'null' }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'VERA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       await deleteBudget(request.user.tenantId, id)
