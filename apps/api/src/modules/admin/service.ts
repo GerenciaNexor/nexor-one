@@ -1,4 +1,4 @@
-import { prisma, withTenantContext } from '../../lib/prisma'
+import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -88,6 +88,80 @@ export async function getTenantDetail(tenantId: string) {
   }
 }
 
+// ─── Toggle feature flag de un módulo ────────────────────────────────────────
+
+/**
+ * Activa o desactiva un módulo para un tenant.
+ * Solo puede llamarlo SUPER_ADMIN desde el panel de administración.
+ */
+export async function toggleFeatureFlag(tenantId: string, module: string, enabled: boolean) {
+  const existing = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } })
+  if (!existing) {
+    throw { statusCode: 404, message: 'Empresa no encontrada', code: 'NOT_FOUND' }
+  }
+
+  try {
+    return await withTenantContext(tenantId, (tx) =>
+      tx.featureFlag.update({
+        where:  { tenantId_module: { tenantId, module: module as never } },
+        data:   { enabled },
+        select: { module: true, enabled: true, tenantId: true },
+      }),
+    )
+  } catch (err: unknown) {
+    const prismaErr = err as { code?: string }
+    if (prismaErr.code === 'P2025') {
+      throw { statusCode: 404, message: `Feature flag para módulo ${module} no encontrado`, code: 'NOT_FOUND' }
+    }
+    throw err
+  }
+}
+
+// ─── Listado de impersonaciones ────────────────────────────────────────────────
+
+/**
+ * Lista todas las impersonaciones registradas en agent_logs.
+ * directPrisma para bypassear RLS — el SUPER_ADMIN consulta cross-tenant.
+ */
+export async function listImpersonations(page: number, limit: number, tenantId?: string) {
+  const skip = (page - 1) * limit
+
+  const where = {
+    channel:   'admin',
+    toolsUsed: { has: 'impersonate' },
+    ...(tenantId ? { tenantId } : {}),
+  }
+
+  const [data, total] = await Promise.all([
+    directPrisma.agentLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take:    limit,
+      select: {
+        id:          true,
+        tenantId:    true,
+        toolDetails: true,
+        createdAt:   true,
+      },
+    }),
+    directPrisma.agentLog.count({ where }),
+  ])
+
+  return {
+    data:       data.map((r) => ({
+      id:              r.id,
+      tenantId:        r.tenantId,
+      toolDetails:     r.toolDetails,
+      createdAt:       r.createdAt,
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+
 // ─── Toggle isActive de un tenant ────────────────────────────────────────────
 
 export async function toggleTenant(tenantId: string, isActive: boolean) {
@@ -129,11 +203,12 @@ export async function logImpersonation(
         }),
         toolsUsed: ['impersonate'],
         toolDetails: {
-          event: 'impersonation',
+          event:            'impersonation',
           superAdminUserId,
           targetTenantId,
-          ip: requestIp,
-          timestamp: new Date().toISOString(),
+          ip:               requestIp,
+          timestamp:        new Date().toISOString(),
+          expiresAt:        new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         },
         turnCount: 1,
       },

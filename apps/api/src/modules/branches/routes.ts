@@ -2,14 +2,21 @@ import type { FastifyInstance } from 'fastify'
 import { CreateBranchSchema, UpdateBranchSchema } from './schema'
 import { listBranches, createBranch, updateBranch, deactivateBranch } from './service'
 import { requireTenantAdmin, requireBranchAdmin, getBranchFilter, canAccessBranch } from '../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
 export async function branchesRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /v1/branches
-   * TENANT_ADMIN ve todas las sucursales.
-   * BRANCH_ADMIN y roles menores ven solo la suya (filtrada por getBranchFilter).
    */
-  app.get('/', async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['Branches'],
+      summary:     'Listar sucursales',
+      description: 'TENANT_ADMIN ve todas; BRANCH_ADMIN y roles menores ven solo la suya.',
+      security:    bearerAuth,
+      response:    { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
     const branchIdFilter = getBranchFilter(request.user)
     const result = await listBranches(request.user.tenantId, branchIdFilter)
     return reply.code(200).send(result)
@@ -17,9 +24,18 @@ export async function branchesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/branches
-   * Solo TENANT_ADMIN puede crear sucursales.
    */
-  app.post('/', { preHandler: [requireTenantAdmin()] }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['Branches'],
+      summary:     'Crear sucursal',
+      description: 'Crea una nueva sucursal. Solo TENANT_ADMIN.',
+      security:    bearerAuth,
+      body:        z2j(CreateBranchSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: [requireTenantAdmin()],
+  }, async (request, reply) => {
     const parsed = CreateBranchSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -38,13 +54,21 @@ export async function branchesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/branches/:id
-   * TENANT_ADMIN puede editar cualquier sucursal.
-   * BRANCH_ADMIN solo puede editar su propia sucursal.
    */
-  app.put('/:id', { preHandler: [requireBranchAdmin()] }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['Branches'],
+      summary:     'Editar sucursal',
+      description: 'TENANT_ADMIN puede editar cualquier sucursal; BRANCH_ADMIN solo la suya.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateBranchSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: [requireBranchAdmin()],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
-    // BRANCH_ADMIN no puede modificar una sucursal que no sea la suya
     if (!canAccessBranch(request.user, id)) {
       return reply.code(403).send({
         error: 'No tienes permisos para modificar esta sucursal',
@@ -70,10 +94,18 @@ export async function branchesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/branches/:id
-   * Soft delete — solo desactiva la sucursal, conserva todos sus datos.
-   * Solo TENANT_ADMIN puede desactivar sucursales.
    */
-  app.delete('/:id', { preHandler: [requireTenantAdmin()] }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['Branches'],
+      summary:     'Desactivar sucursal',
+      description: 'Soft delete — desactiva la sucursal conservando todos sus datos. Solo TENANT_ADMIN.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: [requireTenantAdmin()],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const branch = await deactivateBranch(request.user.tenantId, id)

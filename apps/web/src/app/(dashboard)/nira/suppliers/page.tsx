@@ -32,24 +32,24 @@ function DeactivateModal({
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60">
+        <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
           <div className="px-6 pt-6 pb-4">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-900/30">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                 <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
             </div>
-            <h3 className="text-center text-base font-semibold text-slate-900">Desactivar proveedor</h3>
-            <p className="mt-2 text-center text-sm text-slate-500">
-              <span className="font-medium text-slate-700">{supplier.name}</span> quedará inactivo y no aparecerá en
+            <h3 className="text-center text-base font-semibold text-slate-900 dark:text-white">Desactivar proveedor</h3>
+            <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+              <span className="font-medium text-slate-700 dark:text-slate-300">{supplier.name}</span> quedará inactivo y no aparecerá en
               nuevas órdenes de compra. Las órdenes existentes no se verán afectadas.
             </p>
           </div>
-          <div className="flex gap-2 border-t border-slate-100 px-6 py-4">
+          <div className="flex gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-700">
             <button
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               Cancelar
             </button>

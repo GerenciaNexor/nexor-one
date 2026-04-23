@@ -26,6 +26,7 @@
  * - No requiere JWT — la autenticidad es responsabilidad del tenant de Pub/Sub.
  */
 
+import crypto from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { directPrisma } from '../../lib/prisma'
 import { incomingMessagesQueue, type GmailIncomingJob } from '../../lib/queue'
@@ -61,6 +62,23 @@ export default async function gmailWebhookRoutes(app: FastifyInstance): Promise<
    * Responde 200 inmediatamente; el procesamiento ocurre en el worker.
    */
   app.post('/', async (request, reply) => {
+
+    // ── 0. Verificar token de autenticación del webhook ─────────────────────
+    // La URL de Pub/Sub se configura como: .../webhook/gmail?token=<secret>
+    // timingSafeEqual con SHA-256 normaliza longitudes y evita timing attacks.
+    const secret        = process.env['GMAIL_WEBHOOK_SECRET']
+    const providedToken = (request.query as { token?: string }).token ?? ''
+    const sha256        = (s: string) => crypto.createHash('sha256').update(s).digest()
+    if (!secret || !providedToken) {
+      return reply.code(401).send({ error: 'Firma inválida', code: 'INVALID_SIGNATURE' })
+    }
+    try {
+      if (!crypto.timingSafeEqual(sha256(secret), sha256(providedToken))) {
+        return reply.code(401).send({ error: 'Firma inválida', code: 'INVALID_SIGNATURE' })
+      }
+    } catch {
+      return reply.code(401).send({ error: 'Firma inválida', code: 'INVALID_SIGNATURE' })
+    }
 
     // ── 1. Responder 200 a Pub/Sub INMEDIATAMENTE ───────────────────────────
     // Si Pub/Sub no recibe 200 en tiempo, reintenta el delivery.

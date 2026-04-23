@@ -6,6 +6,12 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
+    "test:e2e":        "pnpm --filter @nexor/e2e test",
+    "test:e2e:headed": "pnpm --filter @nexor/e2e test:headed",
+    "test:e2e:report": "pnpm --filter @nexor/e2e report",
+    "test:load":       "pnpm --filter @nexor/load-tests test",
+    "test:load:smoke": "pnpm --filter @nexor/load-tests test:smoke",
+    "seed:staging":    "pnpm --filter @nexor/load-tests seed",
     "clean": "turbo clean && find . -name 'dist' -not -path '*/node_modules/*' -type d -exec rm -rf {} + 2>/dev/null; true"
   },
   "devDependencies": {

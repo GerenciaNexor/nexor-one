@@ -47,3 +47,7 @@ backups/
 # Archivos de entorno especificos de cada app (generados por el desarrollador)
 apps/api/.env
 apps/web/.env
+
+# Reportes de load testing (generados por k6 — no commitear resultados)
+packages/load-tests/results/*.html
+packages/load-tests/results/*.json

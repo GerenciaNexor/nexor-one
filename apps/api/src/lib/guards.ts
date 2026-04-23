@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import type { Role } from '@nexor/shared'
+import { prisma } from './prisma'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Jerarquia de roles
@@ -110,6 +111,36 @@ export const requireBranchAdmin = (): PreHandler => requireRole('BRANCH_ADMIN')
 
 /** Jefe de area o superior (cualquier modulo). */
 export const requireAreaManager = (): PreHandler => requireRole('AREA_MANAGER')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature flag guard — pricing enforcement
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Bloquea el acceso a un módulo si el tenant no tiene su feature flag habilitado.
+ * Aplica como addHook('preHandler', ...) en el index.ts de cada módulo,
+ * cubriendo automáticamente TODOS sus endpoints.
+ *
+ * El tenantHook ya corrió antes (onRequest) — request.user.tenantId garantizado.
+ * El resultado es 403 MODULE_DISABLED si el módulo no está en el plan del tenant.
+ */
+export function requireFeatureFlag(module: string): PreHandler {
+  return async function featureFlagGuard(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const flag = await prisma.featureFlag.findFirst({
+      where:  { tenantId: request.user.tenantId, module: module as never },
+      select: { enabled: true },
+    })
+    if (!flag?.enabled) {
+      return reply.code(403).send({
+        error: `El módulo ${module} no está activo en tu plan. Contacta a soporte para habilitarlo.`,
+        code:  'MODULE_DISABLED',
+      })
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilidades para los servicios

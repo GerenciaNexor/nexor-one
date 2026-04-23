@@ -246,7 +246,7 @@ export default function MovementsPage() {
     <div className="p-6">
 
       {/* ── Encabezado ──────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Historial de movimientos</h1>
           <p className="mt-0.5 text-sm text-slate-500">
@@ -265,7 +265,7 @@ export default function MovementsPage() {
           placeholder="Buscar producto o SKU…"
           value={liveSearch}
           onChange={(e) => handleSearchInput(e.target.value)}
-          className="w-52 rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-52"
         />
         <select
           value={typeFilter}
@@ -294,8 +294,8 @@ export default function MovementsPage() {
         </div>
       </div>
 
-      {/* ── Tabla ───────────────────────────────────────────────────────── */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* ── Tabla (desktop) ─────────────────────────────────────────────── */}
+      <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -328,7 +328,7 @@ export default function MovementsPage() {
                     <tr
                       key={m.id}
                       onClick={() => setSelected(m)}
-                      className="cursor-pointer hover:bg-blue-50/50 transition-colors"
+                      className="cursor-pointer transition-colors hover:bg-blue-50/50"
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                         {fmt(m.createdAt)}
@@ -364,6 +364,57 @@ export default function MovementsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Tarjetas (móvil) ─────────────────────────────────────────────── */}
+      <div className="mt-4 space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+          ))
+        ) : fetchError ? (
+          <div className="rounded-xl border border-red-100 bg-white p-4 text-center">
+            <p className="text-sm text-red-500">{fetchError}</p>
+            <button onClick={load} className="mt-2 text-sm text-blue-600 hover:underline">Reintentar</button>
+          </div>
+        ) : movements.length === 0 ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400">
+            No se encontraron movimientos
+          </div>
+        ) : (
+          movements.map((m) => {
+            const sign = m.type === 'salida' || (m.type === 'ajuste' && m.quantityAfter < m.quantityBefore) ? '-' : '+'
+            return (
+              <div
+                key={m.id}
+                onClick={() => setSelected(m)}
+                className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-colors active:bg-slate-50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">{m.product.name}</p>
+                    <p className="mt-0.5 font-mono text-xs text-slate-400">
+                      {m.product.sku}{!isOperative ? ` · ${m.branch.name}` : ''}
+                    </p>
+                  </div>
+                  <TypeBadge type={m.type} />
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-sm">
+                    <span className="font-semibold text-slate-800">{sign}{m.quantity} {m.product.unit}</span>
+                    <span className="ml-2 text-xs text-slate-400">{m.quantityBefore} → {m.quantityAfter}</span>
+                  </div>
+                  <span className="text-xs text-slate-400">{fmt(m.createdAt)}</span>
+                </div>
+                {(m.notes || m.lotNumber) && (
+                  <p className="mt-1.5 line-clamp-1 text-xs text-slate-400">
+                    {m.notes ?? (m.lotNumber ? `Lote: ${m.lotNumber}` : '')}
+                  </p>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
 
       {/* ── Paginación ──────────────────────────────────────────────────── */}

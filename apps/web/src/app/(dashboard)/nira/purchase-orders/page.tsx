@@ -211,7 +211,7 @@ export default function PurchaseOrdersPage() {
           placeholder="Buscar por # OC o proveedor…"
           value={liveSearch}
           onChange={(e) => handleSearchInput(e.target.value)}
-          className="w-60 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-60"
         />
         <select
           value={statusFilter}

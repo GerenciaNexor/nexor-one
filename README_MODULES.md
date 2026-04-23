@@ -275,6 +275,31 @@ NIRA: OC aprobada
 
 ---
 
+## Dashboard — KPIs unificados
+**No es un módulo de negocio independiente — agrega datos de todos los módulos activos**  
+**Endpoint:** `GET /v1/dashboard/kpis`
+
+### Qué hace
+Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
+
+### KPIs por módulo
+
+| Módulo | KPIs |
+|--------|------|
+| KIRA | `productos_stock_critico`, `movimientos_hoy`, `valor_inventario_total` |
+| NIRA | `oc_pendientes_aprobacion`, `oc_entrega_vencida`, `total_gastado_mes` |
+| ARI | `leads_nuevos_hoy`, `deals_en_negociacion`, `valor_pipeline_total` |
+| AGENDA | `citas_hoy`, `proxima_cita`, `tasa_asistencia_mes` |
+| VERA | `ingresos_mes`, `egresos_mes`, `utilidad_bruta`, `porcentaje_presupuesto` |
+
+### Reglas de resiliencia
+- Cada módulo corre en paralelo con `Promise.allSettled` y un timeout de 800 ms.
+- Si un módulo falla, devuelve `{ data: null, error: "..." }` sin afectar los demás.
+- El endpoint **nunca devuelve 500** — siempre responde 200 aunque todos los módulos fallen.
+- OPERATIVE y AREA_MANAGER solo reciben KPIs del módulo que tienen asignado.
+
+---
+
 ## Super Admin — Panel de plataforma
 **No es un módulo de negocio — es la vista del equipo NEXOR**  
 **Rol requerido:** `SUPER_ADMIN`
@@ -300,6 +325,8 @@ Toda acción del Super Admin — especialmente la impersonación — queda regis
 |--------|-----------|--------------|--------|------------|----------------|
 | ARI | ARI | `ARI` | KIRA (stock) | clients, deals, quotes, interactions | Sí — ingresos |
 | NIRA | NIRA | `NIRA` | KIRA (alertas) | suppliers, purchase_orders | Sí — egresos |
-| KIRA | KIRA | `KIRA` | — | products, stocks, stock_movements | No |
-| AGENDA | Agenda | `AGENDA` | — | service_types, appointments | No (V2) |
-| VERA | — | `VERA` | ARI, NIRA | transactions | — |
+| KIRA | KIRA | `KIRA` | — | products, stocks, stock_movements, lots | No |
+| AGENDA | Agenda | `AGENDA` | — | service_types, availability, appointments | No |
+| VERA | — | `VERA` | ARI, NIRA | transactions, categories, cost_centers, budgets | — |
+| Dashboard | — | Todos | ARI, NIRA, KIRA, AGENDA, VERA | — | — |
+| Super Admin | — | — (SUPER_ADMIN) | Todos los tenants | — | — |

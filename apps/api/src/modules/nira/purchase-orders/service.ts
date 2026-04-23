@@ -263,10 +263,15 @@ export async function approvePurchaseOrder(
     })
 
     // 2. Generar egreso en VERA
+    const comprasCat = await tx.transactionCategory.findFirst({
+      where:  { tenantId, name: 'Compras', isActive: true },
+      select: { id: true },
+    })
     await tx.transaction.create({
       data: {
         tenantId,
         branchId:      existing.branchId ?? null,
+        categoryId:    comprasCat?.id ?? null,
         type:          'expense',
         amount:        existing.total,
         currency:      'COP',
