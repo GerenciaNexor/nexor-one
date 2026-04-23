@@ -41,6 +41,7 @@ import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
 import swaggerPlugin from './plugins/swagger'
+import securityHeadersPlugin from './plugins/security-headers'
 import ariModule from './modules/ari/index'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
@@ -68,8 +69,9 @@ const app = Fastify({
 })
 
 // Deshabilitar el validador AJV: Zod valida en cada handler; los schemas son solo para OpenAPI.
+// buildValidator(externalSchemas)(schema) → validatorFn(data) — 3 niveles requeridos por Fastify 4.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-app.setSchemaController({ compilersFactory: { buildValidator: (() => () => true) as any } })
+app.setSchemaController({ compilersFactory: { buildValidator: (() => () => () => true) as any } })
 
 /** Cierra worker, colas y Prisma al apagar el servidor (en orden correcto). */
 app.addHook('onClose', async () => {
@@ -88,6 +90,21 @@ app.register(fastifyCors, {
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
 app.register(sentryPlugin)
+app.register(securityHeadersPlugin)
+
+// ─── Error handler global — enmascara detalles internos en 5xx ───────────────
+app.setErrorHandler((err, request, reply) => {
+  const statusCode = err.statusCode ?? 500
+  if (statusCode >= 500) {
+    request.log.error({ err }, 'Unhandled error')
+    return reply.code(statusCode).send({ error: 'Error interno del servidor', code: 'INTERNAL_ERROR' })
+  }
+  // 4xx: re-enviar con mensaje limpio (sin stack trace)
+  return reply.code(statusCode).send({
+    error: err.message,
+    code:  (err as { code?: string }).code ?? 'REQUEST_ERROR',
+  })
+})
 
 // ─── Health check (sin autenticacion) — CI/CD test ───────────────────────────
 app.get('/health', async (): Promise<ApiResponse<{ version: string; db: string }>> => {

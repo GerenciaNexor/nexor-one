@@ -29,7 +29,8 @@
       "Bash(sed -n '279,340p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(sed -n '701,760p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(sed -n '759,800p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")"
+      "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"

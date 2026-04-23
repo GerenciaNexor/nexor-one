@@ -1,0 +1,16 @@
+{
+  "name": "@nexor/load-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Load tests con k6 — 15 tenants, 75 VUs en carga sostenida (HU-092)",
+  "scripts": {
+    "seed": "pnpm --filter @nexor/api db:seed:staging",
+    "test": "k6 run scenarios/main.js",
+    "test:smoke": "k6 run scenarios/smoke.js",
+    "test:report": "k6 run --out json=results/summary.json scenarios/main.js",
+    "test:env": "k6 run --env BASE_URL=$BASE_URL scenarios/main.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

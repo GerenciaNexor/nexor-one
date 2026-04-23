@@ -14,7 +14,6 @@ const SERVICE_SELECT = {
   branchId:        true,
   branch:          { select: { id: true, name: true } },
   professionals:   { select: { user: { select: { id: true, name: true, module: true } } } },
-  createdAt:       true,
   _count:          { select: { appointments: true } },
 } as const
 

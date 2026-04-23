@@ -384,7 +384,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Panel de notificaciones */}
             {notifOpen && (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800">
+              <div className="absolute right-0 top-11 z-50 w-[90vw] rounded-xl border border-slate-200 bg-white shadow-xl sm:w-80 dark:border-slate-700 dark:bg-slate-800">
 
                 {/* Cabecera */}
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">

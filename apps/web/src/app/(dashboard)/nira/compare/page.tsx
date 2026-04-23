@@ -126,12 +126,12 @@ export default function ComparePage() {
             placeholder="Buscar por nombre o SKU…"
             value={liveSearch}
             onChange={(e) => handleSearchInput(e.target.value)}
-            className="w-72 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-72"
           />
           <select
             value={productId}
             onChange={(e) => pickProduct(e.target.value)}
-            className="w-72 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-72"
           >
             <option value="">— Elige un producto —</option>
             {filteredProducts.map((p) => (

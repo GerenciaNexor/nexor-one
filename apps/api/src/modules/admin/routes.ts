@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation } from './service'
+import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation, toggleFeatureFlag, listImpersonations } from './service'
 import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -174,6 +174,87 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     await logImpersonation(id, request.user.userId, requestIp)
 
     return reply.code(200).send({ token, expiresIn: '1h' })
+  })
+
+  /**
+   * PUT /v1/admin/tenants/:id/feature-flags/:module
+   */
+  app.put('/tenants/:id/feature-flags/:module', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Activar o desactivar un módulo',
+      description: 'Cambia el estado del feature flag de un módulo para el tenant. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      params: {
+        type: 'object',
+        required: ['id', 'module'],
+        properties: {
+          id:     { type: 'string' },
+          module: { type: 'string', enum: ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] },
+        },
+      },
+      body: {
+        type: 'object',
+        required: ['enabled'],
+        properties: { enabled: { type: 'boolean' } },
+      },
+      response: { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const { id, module } = request.params as { id: string; module: string }
+
+    const paramsSchema = z.object({
+      module: z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA']),
+    })
+    const paramsParsed = paramsSchema.safeParse({ module })
+    if (!paramsParsed.success) {
+      return reply.code(400).send({
+        error: `Módulo inválido. Valores permitidos: ARI, NIRA, KIRA, AGENDA, VERA`,
+        code:  'VALIDATION_ERROR',
+      })
+    }
+
+    const bodyParsed = z.object({ enabled: z.boolean() }).safeParse(request.body)
+    if (!bodyParsed.success) {
+      return reply.code(400).send({
+        error: bodyParsed.error.errors[0]?.message ?? 'Datos de entrada invalidos',
+        code:  'VALIDATION_ERROR',
+      })
+    }
+    try {
+      const flag = await toggleFeatureFlag(id, paramsParsed.data.module, bodyParsed.data.enabled)
+      return reply.code(200).send({ success: true, data: flag })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * GET /v1/admin/impersonations
+   */
+  app.get('/impersonations', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Historial de impersonaciones',
+      description: 'Lista todas las impersonaciones realizadas por el SUPER_ADMIN, ordenadas de más reciente a más antigua.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          page:     { type: 'string' },
+          limit:    { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const q = request.query as { tenantId?: string; page?: string; limit?: string }
+    const page  = Math.max(1, Number(q.page  ?? 1))
+    const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
+    const result = await listImpersonations(page, limit, q.tenantId)
+    return reply.code(200).send(result)
   })
 
   /**

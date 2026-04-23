@@ -18,14 +18,15 @@ export function z2j(schema: ZodTypeAny): Record<string, unknown> {
 /** Referencia de seguridad Bearer JWT para incluir en cada ruta protegida. */
 export const bearerAuth: Array<Record<string, string[]>> = [{ bearerAuth: [] }]
 
-/** Schema de error estándar (4xx / 5xx). */
+/** Schema de error estándar (4xx / 5xx). Sin `required` para que fast-json-stringify
+ *  no lance si el error interno de Fastify no trae todos los campos. */
 export const errorSchema = {
   type: 'object',
   properties: {
     error: { type: 'string', example: 'Descripción del error' },
     code:  { type: 'string', example: 'ERROR_CODE' },
   },
-  required: ['error', 'code'],
+  additionalProperties: true,
 }
 
 /** Respuesta de objeto genérico (additionalProperties para no perder campos). */

@@ -126,7 +126,7 @@ export default function StockPage() {
           placeholder="Buscar producto o SKU…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-56 rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-56"
         />
         {!isOperative && branchOptions.length > 1 && (
           <select
@@ -151,8 +151,8 @@ export default function StockPage() {
         </label>
       </div>
 
-      {/* ── Tabla ───────────────────────────────────────────────────────── */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* ── Tabla (desktop) ─────────────────────────────────────────────── */}
+      <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -219,7 +219,7 @@ export default function StockPage() {
                           ev.stopPropagation()
                           openModal(s.product.id, s.branch.id)
                         }}
-                        className="whitespace-nowrap rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-white transition-colors"
+                        className="whitespace-nowrap rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:bg-white"
                       >
                         + Movimiento
                       </button>
@@ -230,6 +230,68 @@ export default function StockPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Tarjetas (móvil) ─────────────────────────────────────────────── */}
+      <div className="mt-4 space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+          ))
+        ) : fetchError ? (
+          <div className="rounded-xl border border-red-100 bg-white p-4 text-center">
+            <p className="text-sm text-red-500">{fetchError}</p>
+            <button onClick={() => load()} className="mt-2 text-sm text-blue-600 hover:underline">Reintentar</button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400">
+            {onlyCritical ? 'No hay productos con stock crítico' : 'No se encontraron productos'}
+          </div>
+        ) : (
+          filtered.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => router.push(`/kira/products/${s.product.id}`)}
+              className={[
+                'cursor-pointer rounded-xl border bg-white p-4 transition-colors active:bg-slate-50',
+                s.belowMin ? 'border-red-200 bg-red-50/30' : 'border-slate-200',
+              ].join(' ')}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-900">{s.product.name}</p>
+                  <p className="mt-0.5 font-mono text-xs text-slate-400">
+                    {s.product.sku}{!isOperative ? ` · ${s.branch.name}` : ''}
+                  </p>
+                </div>
+                {s.belowMin ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                    <AlertIcon />
+                    Bajo mínimo
+                  </span>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-600">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />OK
+                  </span>
+                )}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between">
+                <div className="text-sm">
+                  <span className={['font-semibold', s.belowMin ? 'text-red-600' : 'text-slate-800'].join(' ')}>
+                    {s.quantity} {s.product.unit}
+                  </span>
+                  <span className="ml-1.5 text-xs text-slate-400">mín. {s.product.minStock}</span>
+                </div>
+                <button
+                  onClick={(ev) => { ev.stopPropagation(); openModal(s.product.id, s.branch.id) }}
+                  className="rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-50"
+                >
+                  + Movimiento
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Modal */}

@@ -515,3 +515,114 @@ El workflow `.github/workflows/e2e.yml` corre automáticamente en cada PR a `mai
 3. Compila y levanta la API y el frontend
 4. Corre los tests de Playwright en modo headless
 5. Sube el reporte HTML y capturas de fallos como artefactos
+
+---
+
+## 10. Load Testing con k6 (HU-092)
+
+### Prerequisitos
+
+Instalar k6 como binario standalone (no es una dependencia npm):
+
+```bash
+# macOS
+brew install k6
+
+# Linux (Debian/Ubuntu)
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+  --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] \
+  https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update && sudo apt-get install k6
+
+# Windows (Chocolatey)
+choco install k6
+
+# Windows (winget)
+winget install k6 --source winget
+```
+
+Verificar instalación:
+```bash
+k6 version
+```
+
+### Flujo completo de load testing
+
+```bash
+# 1. Levantar el ambiente de staging (o apuntar a staging existente)
+#    El load test NUNCA se ejecuta contra producción
+
+# 2. Poblar la BD con datos representativos (15 tenants × 1.000 productos)
+pnpm seed:staging
+# Equivalente: pnpm --filter @nexor/api db:seed:staging
+
+# 3. Smoke test — verifica que los endpoints responden antes del test real (~2 min)
+pnpm test:load:smoke
+# Equivalente: k6 run packages/load-tests/scenarios/smoke.js
+
+# 4. Load test completo — 75 VUs × 6.5 minutos
+pnpm test:load
+# Equivalente: k6 run packages/load-tests/scenarios/main.js
+
+# 5. Contra staging remoto
+BASE_URL=https://staging.nexor.app k6 run packages/load-tests/scenarios/main.js
+
+# 6. Generar reporte HTML + JSON
+k6 run packages/load-tests/scenarios/main.js
+# Los reportes se generan automáticamente en packages/load-tests/results/
+```
+
+### Estructura del load test
+
+```
+packages/load-tests/
+├── scenarios/
+│   ├── main.js        ← Escenario completo: 75 VUs, 6.5 min
+│   └── smoke.js       ← Sanity check rápido: 3 VUs, 2 min
+└── utils/
+    └── helpers.js     ← login(), authHeaders(), checkOk(), etc.
+```
+
+### Credenciales de los tenants de prueba
+
+| Campo | Valor |
+|-------|-------|
+| Email | `admin01@load-test.nexor.co` … `admin15@load-test.nexor.co` |
+| Contraseña | `LoadTest2024!` |
+| Datos por tenant | 1.000 productos · 500 clientes · 200 transacciones |
+
+### Endpoints bajo prueba y distribución de carga
+
+| Endpoint | Distribución | SLA (p95) |
+|----------|-------------|-----------|
+| `GET /v1/kira/stock` | 30% | < 2 segundos |
+| `POST /v1/kira/stock/movements` | 10% | < 2 segundos |
+| `GET /v1/ari/pipeline/deals` | 20% | < 2 segundos |
+| `GET /v1/vera/reports/summary` | 20% | < 2 segundos |
+| `GET /v1/dashboard/kpis` | 15% | < 2 segundos |
+| `POST /v1/chat/message` | 5% | < 30 segundos |
+
+### Interpretar los resultados
+
+Un test exitoso muestra todos los thresholds en verde:
+
+```
+✓ http_req_failed.............: 0.00%   ✓ 0      ✗ 0
+✓ errors......................: 0.00%   ✓ 0      ✗ 0
+✓ duration_kira_stock.........: p(95)=380ms
+✓ duration_ari_deals..........: p(95)=340ms
+✓ duration_vera_summary.......: p(95)=820ms
+✓ duration_dashboard_kpis.....: p(95)=950ms
+✓ duration_chat_message.......: p(95)=12s
+```
+
+Si un threshold falla (aparece con ✗), hay un problema de performance que debe corregirse antes de cerrar el sprint. Ver la sección **Performance** en `README_ARCHITECTURE.md` para la línea base de referencia y los índices SQL recomendados.
+
+### Reglas de uso
+
+1. **Nunca ejecutar contra producción** — solo staging o local
+2. **El smoke test primero** — garantiza que el entorno está sano antes del test completo
+3. **Los reportes se guardan** en `packages/load-tests/results/` — incluir el HTML en el PR del sprint
+4. **Un endpoint que falla el SLA de 2s es un bug** de performance, no un "punto a mejorar"

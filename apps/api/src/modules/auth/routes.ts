@@ -3,10 +3,18 @@ import { LoginSchema, RefreshSchema, LogoutSchema } from './schema'
 import { login, refresh, logout, getMe } from './service'
 import { authenticate } from '../../plugins/jwt'
 import { z2j, objRes, stdErrors } from '../../lib/openapi'
+import { isIPBlocked, getBlockedUntil, recordFailedAttempt, clearFailedAttempts } from './login-limiter'
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   /** POST /v1/auth/login */
   app.post('/login', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+        keyGenerator: (req) => req.ip,
+      },
+    },
     schema: {
       tags:    ['Auth'],
       summary: 'Iniciar sesión',
@@ -37,6 +45,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, async (request, reply) => {
+    // ── Verificar bloqueo por intentos fallidos consecutivos ─────────────────
+    if (isIPBlocked(request.ip)) {
+      const blockedUntil = getBlockedUntil(request.ip)
+      return reply.code(429).send({
+        error: 'IP bloqueada temporalmente por demasiados intentos fallidos.',
+        code:  'IP_BLOCKED',
+        retryAfter: blockedUntil ? Math.ceil((blockedUntil - Date.now()) / 1000) : 900,
+      })
+    }
+
     const parsed = LoginSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -47,6 +65,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const userData = await login(parsed.data.email, parsed.data.password)
+
+      // Credenciales correctas — limpiar contador de fallos
+      clearFailedAttempts(request.ip)
 
       const token = app.jwt.sign({
         userId: userData.userId,
@@ -71,6 +92,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
+      // Registrar intento fallido de autenticación (401 = credenciales inválidas)
+      if ((e.statusCode ?? 500) === 401) {
+        recordFailedAttempt(request.ip)
+      }
       return reply
         .code(e.statusCode ?? 500)
         .send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

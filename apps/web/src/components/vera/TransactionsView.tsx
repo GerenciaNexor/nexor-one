@@ -313,8 +313,8 @@ export function TransactionsView() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {/* Table (desktop) */}
+      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block dark:border-slate-700 dark:bg-slate-800">
         {loading ? (
           <div className="flex h-32 items-center justify-center">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
@@ -459,6 +459,79 @@ export function TransactionsView() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* Cards (mobile) */}
+      <div className="space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ))
+        ) : txs.length === 0 ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800">
+            {hasFilters ? 'Ninguna transacción coincide con los filtros.' : 'Sin transacciones registradas.'}
+          </div>
+        ) : (
+          txs.map((tx) => {
+            const modLabel = tx.referenceType ? (MODULE_LABELS[tx.referenceType] ?? tx.referenceType) : null
+            return (
+              <div
+                key={tx.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900 dark:text-white">{tx.description}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {new Date(tx.date).toLocaleDateString('es', { day: '2-digit', month: 'short', year: '2-digit' })}
+                      {tx.txCategory && ` · ${tx.txCategory.name}`}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={[
+                      'font-semibold tabular-nums',
+                      tx.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+                    ].join(' ')}>
+                      {tx.type === 'income' ? '+' : '−'}{fmt(Number(tx.amount), tx.currency)}
+                    </span>
+                    <span className={[
+                      'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                      tx.type === 'income'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                    ].join(' ')}>
+                      {tx.type === 'income' ? 'Ingreso' : 'Egreso'}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>
+                    {tx.isManual ? '✎ Manual' : modLabel ?? '—'}
+                    {tx.branch && ` · ${tx.branch.name}`}
+                  </span>
+                  {tx.isManual && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditTx(tx)}
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                        title="Editar"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => setDeleteTx(tx)}
+                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                        title="Eliminar"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })
         )}
       </div>
 

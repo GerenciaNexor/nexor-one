@@ -272,10 +272,15 @@ export async function updateQuoteStatus(
       const branchId = quote.deal?.branchId ?? null
 
       if (amount > 0) {
+        const ventasCat = await tx.transactionCategory.findFirst({
+          where:  { tenantId, name: 'Ventas', isActive: true },
+          select: { id: true },
+        })
         await tx.transaction.create({
           data: {
             tenantId,
             branchId,
+            categoryId:    ventasCat?.id ?? null,
             type:          'income',
             amount,
             currency:      'COP',

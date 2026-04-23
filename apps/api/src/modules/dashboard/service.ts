@@ -27,33 +27,40 @@ function monthStart(): Date {
 // ── Per-module KPI functions ───────────────────────────────────────────────────
 
 async function kiraKpis(tenantId: string): Promise<Record<string, unknown>> {
-  const [products, movimientosHoy, stocksWithProducts] = await Promise.all([
-    prisma.product.findMany({
-      where: { tenantId, isActive: true, minStock: { gt: 0 } },
-      select: { minStock: true, stocks: { select: { quantity: true } } },
-    }),
+  // Aggregate queries replace prior N+1 patterns (product.findMany + nested stocks,
+  // stock.findMany with nested product filter). The new Product(tenant_id, is_active)
+  // index makes both WHERE clauses sub-millisecond at scale.
+  const [criticosRows, movimientosHoy, inventarioRows] = await Promise.all([
+    prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT p.id
+        FROM products p
+        LEFT JOIN stocks s ON s.product_id = p.id
+        WHERE p.tenant_id = ${tenantId}
+          AND p.is_active  = true
+          AND p.min_stock  > 0
+        GROUP BY p.id, p.min_stock
+        HAVING COALESCE(SUM(s.quantity), 0) < p.min_stock
+      ) crit
+    `,
     prisma.stockMovement.count({
       where: { tenantId, createdAt: { gte: todayStart() } },
     }),
-    prisma.stock.findMany({
-      where: { product: { tenantId, isActive: true, costPrice: { not: null } } },
-      select: { quantity: true, product: { select: { costPrice: true } } },
-    }),
+    prisma.$queryRaw<[{ total: number | null }]>`
+      SELECT SUM(s.quantity * p.cost_price)::float8 AS total
+      FROM stocks s
+      JOIN products p ON s.product_id = p.id
+      WHERE p.tenant_id  = ${tenantId}
+        AND p.is_active   = true
+        AND p.cost_price IS NOT NULL
+    `,
   ])
 
-  const productosCriticos = products.filter((p) => {
-    const total = p.stocks.reduce((s, st) => s + Number(st.quantity), 0)
-    return total < p.minStock
-  }).length
-
-  const valorInventario = stocksWithProducts.reduce((sum, s) => {
-    return sum + Number(s.quantity) * Number(s.product.costPrice ?? 0)
-  }, 0)
-
   return {
-    productos_stock_critico: productosCriticos,
+    productos_stock_critico: Number(criticosRows[0]?.count ?? 0),
     movimientos_hoy:         movimientosHoy,
-    valor_inventario_total:  Math.round(valorInventario * 100) / 100,
+    valor_inventario_total:  Math.round(Number(inventarioRows[0]?.total ?? 0) * 100) / 100,
   }
 }
 

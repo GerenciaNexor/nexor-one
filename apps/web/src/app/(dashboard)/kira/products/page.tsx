@@ -155,7 +155,7 @@ export default function ProductsPage() {
           placeholder="Buscar por nombre o SKU…"
           value={liveSearch}
           onChange={(e) => handleSearchInput(e.target.value)}
-          className="w-64 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-64"
         />
         <select
           value={categoryFilter}
@@ -177,8 +177,8 @@ export default function ProductsPage() {
         </select>
       </div>
 
-      {/* ── Tabla ───────────────────────────────────────────────────────── */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* ── Tabla (desktop) ─────────────────────────────────────────────── */}
+      <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -250,6 +250,70 @@ export default function ProductsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Tarjetas (móvil) ─────────────────────────────────────────────── */}
+      <div className="mt-4 space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+          ))
+        ) : fetchError ? (
+          <div className="rounded-xl border border-red-100 bg-white p-4 text-center">
+            <p className="text-sm text-red-500">{fetchError}</p>
+            <button onClick={() => setSearch((s) => s + ' ')} className="mt-2 text-sm text-blue-600 hover:underline">
+              Reintentar
+            </button>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400">
+            No se encontraron productos
+          </div>
+        ) : (
+          products.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => router.push(`/kira/products/${p.id}`)}
+              className={['cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-colors active:bg-slate-50', !p.isActive ? 'opacity-50' : ''].join(' ')}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-900">{p.name}</p>
+                  <p className="mt-0.5 font-mono text-xs text-slate-400">{p.sku}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <AbcBadge cls={p.abcClass} />
+                  {p.isActive ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Activo
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />Inactivo
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-sm">
+                <span className="text-slate-500">{p.category ?? '—'} · {p.unit}</span>
+                <span className="font-semibold text-slate-700">
+                  {p.salePrice != null ? `$${p.salePrice.toLocaleString('es-CO')}` : <span className="font-normal text-slate-300">—</span>}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-xs text-slate-400">Stock mín. {p.minStock}</p>
+                {canEdit && (
+                  <button
+                    onClick={(ev) => openEdit(p, ev)}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Editar
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* ── Modal crear / editar ─────────────────────────────────────────── */}

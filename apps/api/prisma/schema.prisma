@@ -465,6 +465,7 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([tenantId, sku])
+  @@index([tenantId, isActive])
   @@index([tenantId, category])
   @@index([tenantId, abcClass])
   @@map("products")
@@ -727,6 +728,7 @@ model Appointment {
   cancelTokens AppointmentCancelToken[]
 
   @@index([tenantId, branchId, startAt])
+  @@index([tenantId, startAt])
   @@index([tenantId, status])
   @@index([professionalId, startAt])
   @@map("appointments")

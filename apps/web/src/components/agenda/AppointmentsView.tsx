@@ -197,8 +197,8 @@ export function AppointmentsView() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {/* Table (desktop) */}
+      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block dark:border-slate-700 dark:bg-slate-800">
         {loading ? (
           <div className="flex h-32 items-center justify-center">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
@@ -273,6 +273,57 @@ export function AppointmentsView() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* Cards (mobile) */}
+      <div className="space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ))
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800">
+            {hasFilters ? 'Ninguna cita coincide con los filtros.' : 'No hay citas registradas.'}
+          </div>
+        ) : (
+          filtered.map((a) => {
+            const start = new Date(a.startAt)
+            return (
+              <div
+                key={a.id}
+                onClick={() => setDetail(a)}
+                className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-colors active:bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate font-medium text-slate-900 dark:text-white">{a.clientName}</p>
+                      {a.createdByAgent && (
+                        <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                          IA
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{a.serviceType.name}</p>
+                  </div>
+                  <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[a.status] ?? STATUS_BADGE.confirmed}`}>
+                    {STATUS_LABELS[a.status] ?? a.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>
+                    {start.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {' · '}
+                    {start.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {isManager && a.branch && (
+                    <span className="truncate">{a.branch.name}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })
         )}
       </div>
 

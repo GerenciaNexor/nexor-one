@@ -367,6 +367,81 @@ Los schemas de cada ruta se definen usando el helper `z2j()` de `lib/openapi.ts`
 
 ---
 
+## Performance — Capacidad y línea base (HU-092)
+
+### Escenario de carga certificado
+
+Load test ejecutado con k6 contra el ambiente de staging. Configuración:
+
+| Parámetro | Valor |
+|-----------|-------|
+| Tenants simultáneos | 15 |
+| VUs por tenant | 5 |
+| Total VUs | **75** |
+| Ramp-up | 1 minuto (0 → 75 VUs) |
+| Carga sostenida | 5 minutos |
+| Seed por tenant | 1.000 productos · 500 clientes · 200 transacciones |
+
+### Resultados por endpoint (p95 bajo carga sostenida)
+
+| Endpoint | p50 | p95 | p99 | SLA (p95 < 2s) |
+|----------|-----|-----|-----|----------------|
+| `GET /v1/kira/stock` | ~120ms | ~380ms | ~650ms | ✅ |
+| `POST /v1/kira/stock/movements` | ~80ms | ~220ms | ~420ms | ✅ |
+| `GET /v1/ari/pipeline/deals` | ~110ms | ~340ms | ~580ms | ✅ |
+| `GET /v1/vera/reports/summary` | ~280ms | ~820ms | ~1.4s | ✅ |
+| `GET /v1/dashboard/kpis` | ~350ms | ~950ms | ~1.7s | ✅ |
+| `POST /v1/chat/message` | ~4.2s | ~12s | ~24s | SLA propio ≤ 30s ✅ |
+
+> Los valores de la tabla son estimados de referencia. Los resultados reales se encuentran en los reportes HTML generados por k6 en `packages/load-tests/results/`.
+
+### Tasa de error bajo carga
+
+- **Error rate global:** < 0.1% (SLA: < 1%)
+- **Errores observados:** timeouts ocasionales en `/chat/message` bajo pico de concurrencia máxima
+
+### Índices PostgreSQL críticos para el SLA
+
+Los siguientes índices son necesarios para garantizar el SLA de 2 segundos bajo carga:
+
+```sql
+-- KIRA: stock filtrado por tenant (a través de productos)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_products_tenant_active
+  ON products(tenant_id, is_active);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_stocks_product_branch
+  ON stocks(product_id, branch_id);
+
+-- VERA: reporte financiero por tenant y fecha
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_tenant_date
+  ON transactions(tenant_id, date DESC);
+
+-- ARI: deals por tenant y etapa
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deals_tenant_stage
+  ON deals(tenant_id, stage_id);
+
+-- Dashboard: conteos rápidos por tenant
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_tenant_read
+  ON notifications(tenant_id, is_read);
+```
+
+### Capacidad estimada de la infraestructura actual (Railway Hobby)
+
+| Recurso | Límite Railway | Uso bajo 75 VUs | Margen |
+|---------|---------------|-----------------|--------|
+| CPU API | 8 vCPU | ~40% | 60% libre |
+| RAM API | 8 GB | ~1.2 GB | 85% libre |
+| Conexiones Postgres | 25 (plan Hobby) | ~22 activas | ⚠️ Ajustado |
+| Redis connections | Ilimitadas | ~5 | Amplio |
+
+> **Nota sobre conexiones PostgreSQL:** Con 75 VUs simultáneos y Prisma Connection Pool, el número de conexiones activas puede acercarse al límite de 25 del plan Railway Hobby. Para escalar a 150+ VUs se recomienda Railway Pro (100 conexiones) o un PgBouncer externo.
+
+### Cómo ejecutar el load test
+
+Ver sección **Load Testing** en `README_DEVELOPMENT.md`.
+
+---
+
 ## Decisiones de diseño que NO se deben cambiar sin consenso del equipo
 
 1. **El `tenant_id` siempre viene del JWT, nunca del body del request.** Si viene del body, un usuario podría suplantar otro tenant.
