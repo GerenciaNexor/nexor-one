@@ -30,14 +30,7 @@
       "Bash(sed -n '701,760p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(sed -n '759,800p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")",
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
-      "PowerShell(docker version 2>&1)",
-      "PowerShell(docker context ls 2>&1)",
-      "PowerShell(docker --context default ps 2>&1)",
-      "PowerShell(docker context use default 2>&1)",
-      "PowerShell(wsl --status 2>&1)",
-      "PowerShell(wsl -l -v 2>&1)",
-      "PowerShell(wsl -d docker-desktop -- sh -c \"echo ok\" 2>&1)"
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"
