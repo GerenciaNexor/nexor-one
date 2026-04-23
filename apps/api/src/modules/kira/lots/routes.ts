@@ -2,17 +2,23 @@ import type { FastifyInstance } from 'fastify'
 import { LotQuerySchema } from './schema'
 import { listLots } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, listRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function lotsRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /v1/kira/lots
-   * Lista todos los lotes del tenant con sus fechas de caducidad.
-   * Query: ?branchId=xxx&expiringSoon=true&expired=true
-   *
-   * Útil para el panel de alertas de caducidad.
-   * OPERATIVE.KIRA → forzado a su propia sucursal.
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Listar lotes',
+      description: 'Lista todos los lotes del tenant con fechas de caducidad. OPERATIVE forzado a su sucursal.',
+      security:    bearerAuth,
+      querystring: z2j(LotQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
     const parsed = LotQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -30,17 +36,23 @@ export async function lotsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/kira/lots/:productId
-   * Lotes de un producto específico, ordenados FIFO (vencimiento más próximo primero).
-   *
-   * La respuesta incluye:
-   *   - isExpired:      el lote ya venció
-   *   - isExpiringSoon: vence en los próximos 30 días
-   *   - totalQuantity:  total ingresado en ese lote (referencia histórica)
-   *
-   * Al registrar una salida, usar el primer lote de esta lista (FIFO).
-   * OPERATIVE.KIRA → forzado a su propia sucursal.
    */
-  app.get('/:productId', { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') }, async (request, reply) => {
+  app.get('/:productId', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Lotes por producto',
+      description: 'Lotes de un producto ordenados FIFO (vencimiento más próximo primero). Incluye isExpired, isExpiringSoon.',
+      security:    bearerAuth,
+      params: {
+        type: 'object',
+        properties: { productId: { type: 'string', format: 'uuid' } },
+        required: ['productId'],
+      },
+      querystring: z2j(LotQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
     const { productId } = request.params as { productId: string }
     const parsed = LotQuerySchema.safeParse(request.query)
     if (!parsed.success) {

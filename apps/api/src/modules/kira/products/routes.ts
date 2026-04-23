@@ -2,14 +2,23 @@ import type { FastifyInstance } from 'fastify'
 import { CreateProductSchema, UpdateProductSchema, ProductQuerySchema } from './schema'
 import { listProducts, getProduct, createProduct, updateProduct, deactivateProduct } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function productsRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /v1/kira/products
-   * OPERATIVE.KIRA puede consultar (solo lectura).
-   * Query params: ?search=, ?category=, ?active=true|false (default: activos)
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Listar productos',
+      description: 'Lista productos activos del tenant con filtros opcionales. OPERATIVE.KIRA puede consultar.',
+      security:    bearerAuth,
+      querystring: z2j(ProductQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
     const parsed = ProductQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -23,9 +32,18 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/kira/products/:id
-   * OPERATIVE.KIRA puede consultar el detalle completo.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'KIRA') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Detalle de producto',
+      description: 'Devuelve el producto con niveles de stock por sucursal.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const product = await getProduct(request.user.tenantId, id)
@@ -38,10 +56,18 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/kira/products
-   * AREA_MANAGER.KIRA o superior puede crear productos.
-   * OPERATIVE no puede crear.
    */
-  app.post('/', { preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Crear producto',
+      description: 'Crea un nuevo producto. SKU debe ser único en el tenant. Requiere AREA_MANAGER.KIRA o superior.',
+      security:    bearerAuth,
+      body:        z2j(CreateProductSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA'),
+  }, async (request, reply) => {
     const parsed = CreateProductSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -60,10 +86,19 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/kira/products/:id
-   * AREA_MANAGER.KIRA o superior puede editar.
-   * El SKU es inmutable — no se acepta en el body.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Editar producto',
+      description: 'Actualiza nombre, categoría o configuración de stock mínimo/máximo. El SKU es inmutable.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateProductSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateProductSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -83,10 +118,18 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/kira/products/:id
-   * Soft delete — desactiva el producto, conserva datos e historial.
-   * AREA_MANAGER.KIRA o superior puede desactivar.
    */
-  app.delete('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA') }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['KIRA'],
+      summary:     'Desactivar producto',
+      description: 'Soft delete — desactiva el producto conservando historial de stock. Requiere AREA_MANAGER.KIRA.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'KIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const product = await deactivateProduct(request.user.tenantId, id)

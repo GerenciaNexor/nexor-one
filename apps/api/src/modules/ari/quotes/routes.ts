@@ -12,16 +12,24 @@ import {
   getProductStockForQuote,
 } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function quotesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/quotes
-   * Lista cotizaciones del tenant.
-   * OPERATIVE ve solo las que él creó. AREA_MANAGER+ ve todas.
-   * Query: ?clientId=xxx &dealId=xxx &status=draft|sent|accepted|rejected|expired
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Listar cotizaciones',
+      description: 'Lista cotizaciones del tenant. OPERATIVE ve solo las que creó; AREA_MANAGER+ ve todas.',
+      security:    bearerAuth,
+      querystring: z2j(QuoteQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = QuoteQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -40,9 +48,18 @@ export async function quotesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/quotes/:id
-   * Detalle completo de una cotización con líneas de productos.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Detalle de cotización',
+      description: 'Detalle completo con líneas de productos, totales y estado actual.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const quote = await getQuote(request.user.tenantId, id)
@@ -55,11 +72,18 @@ export async function quotesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/ari/quotes
-   * Crea una cotización en estado 'draft'.
-   * Genera número automático COT-YYYY-NNN.
-   * Calcula automáticamente subtotal, descuento, impuesto y total.
    */
-  app.post('/', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Crear cotización',
+      description: 'Crea una cotización en estado draft. Genera número automático COT-YYYY-NNN. Calcula subtotal, descuento, impuesto y total.',
+      security:    bearerAuth,
+      body:        z2j(CreateQuoteSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = CreateQuoteSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -78,12 +102,19 @@ export async function quotesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/ari/quotes/:id/status
-   * Cambia el estado de la cotización.
-   * Estados válidos: sent, accepted, rejected
-   * Efecto secundario: si accepted → genera ingreso en VERA en la misma transacción.
-   * Regla: cotización vencida no puede aceptarse.
    */
-  app.put('/:id/status', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.put('/:id/status', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Cambiar estado de cotización',
+      description: 'Transición de estado: sent, accepted, rejected. Si accepted → genera ingreso en VERA. Cotización vencida no puede aceptarse.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateQuoteStatusSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateQuoteStatusSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -103,11 +134,22 @@ export async function quotesRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/quotes/stock/:productId
-   * Consulta informativa de stock en KIRA para un producto.
-   * Devuelve stock total y por sucursal.
-   * No reserva ni bloquea stock — solo informativo.
    */
-  app.get('/stock/:productId', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/stock/:productId', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Consultar stock para cotización',
+      description: 'Stock total y por sucursal de un producto. Solo informativo — no reserva stock.',
+      security:    bearerAuth,
+      params: {
+        type: 'object',
+        properties: { productId: { type: 'string', format: 'uuid' } },
+        required: ['productId'],
+      },
+      response: { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { productId } = request.params as { productId: string }
     try {
       const stock = await getProductStockForQuote(request.user.tenantId, productId)

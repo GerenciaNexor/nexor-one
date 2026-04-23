@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import { prisma } from '../lib/prisma'
+import { prisma, directPrisma } from '../lib/prisma'
 
 /**
  * onRequest hook para rutas protegidas bajo /v1/ (excepto /v1/auth).
@@ -49,6 +49,21 @@ export async function tenantHook(
     return reply.code(403).send({
       error: 'Empresa desactivada. Contacta al soporte de NEXOR.',
       code: 'TENANT_DISABLED',
+    })
+  }
+
+  // 3b. Verificar que el usuario este activo.
+  // directPrisma: a este punto el set_config de RLS aun no se ejecuto — en conexiones
+  // recicladas del pool, un RLS residual del tenant anterior descartaria la fila.
+  const { userId } = request.user
+  const activeUser = await directPrisma.user.findUnique({
+    where:  { id: userId },
+    select: { isActive: true },
+  })
+  if (!activeUser || !activeUser.isActive) {
+    return reply.code(403).send({
+      error: 'Cuenta desactivada. Contacta al administrador.',
+      code: 'ACCOUNT_DISABLED',
     })
   }
 

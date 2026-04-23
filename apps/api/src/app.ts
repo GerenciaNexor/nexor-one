@@ -5,6 +5,8 @@ import { startIntegrationHealthScheduler } from './jobs/integration-health'
 import { startSupplierScoresScheduler } from './jobs/supplier-scores'
 import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
 import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
+import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders'
+import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -38,24 +40,47 @@ import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
+import swaggerPlugin from './plugins/swagger'
+import securityHeadersPlugin from './plugins/security-headers'
 import ariModule from './modules/ari/index'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
 import usersModule from './modules/users/index'
 import agentsModule from './modules/agents/index'
 import chatModule from './modules/chat/index'
+import agendaModule from './modules/agenda/index'
+import veraModule from './modules/vera/index'
+import dashboardModule from './modules/dashboard/index'
+import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
 
 const app = Fastify({
   logger: {
     level: process.env['LOG_LEVEL'] ?? 'info',
   },
+  // AJV deshabilitado: la validación de requests la hace Zod en cada handler.
+  // Los schemas en las rutas son exclusivamente para documentación OpenAPI.
+  ajv: {
+    customOptions: {
+      removeAdditional: false,
+      strict:           false,
+      allowUnionTypes:  true,
+    },
+  },
 })
+
+// Deshabilitar el validador AJV: Zod valida en cada handler; los schemas son solo para OpenAPI.
+// buildValidator(externalSchemas)(schema) → validatorFn(data) — 3 niveles requeridos por Fastify 4.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.setSchemaController({ compilersFactory: { buildValidator: (() => () => () => true) as any } })
 
 /** Cierra worker, colas y Prisma al apagar el servidor (en orden correcto). */
 app.addHook('onClose', async () => {
   await closeWorker()                          // espera jobs en curso
   await Promise.all([prisma.$disconnect(), closeQueues()])
 })
+
+// ─── Documentación OpenAPI (solo dev/staging, antes de registrar rutas) ──────
+app.register(swaggerPlugin)
 
 // ─── Plugins globales ────────────────────────────────────────────────────────
 app.register(fastifyCors, {
@@ -65,6 +90,21 @@ app.register(fastifyCors, {
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
 app.register(sentryPlugin)
+app.register(securityHeadersPlugin)
+
+// ─── Error handler global — enmascara detalles internos en 5xx ───────────────
+app.setErrorHandler((err, request, reply) => {
+  const statusCode = err.statusCode ?? 500
+  if (statusCode >= 500) {
+    request.log.error({ err }, 'Unhandled error')
+    return reply.code(statusCode).send({ error: 'Error interno del servidor', code: 'INTERNAL_ERROR' })
+  }
+  // 4xx: re-enviar con mensaje limpio (sin stack trace)
+  return reply.code(statusCode).send({
+    error: err.message,
+    code:  (err as { code?: string }).code ?? 'REQUEST_ERROR',
+  })
+})
 
 // ─── Health check (sin autenticacion) — CI/CD test ───────────────────────────
 app.get('/health', async (): Promise<ApiResponse<{ version: string; db: string }>> => {
@@ -100,6 +140,9 @@ app.register(
   { prefix: '/v1/admin' },
 )
 
+// ─── Cancelación de cita por email (sin JWT — token actúa como credencial) ───
+app.register(cancelAppointmentRoutes, { prefix: '/v1/agenda/cancel' })
+
 // ─── Rutas protegidas (/v1/*) — requieren JWT valido + tenant activo ──────────
 // Los modulos de negocio se registran dentro de este scope para que el
 // tenantHook se ejecute automaticamente en todos sus endpoints.
@@ -117,8 +160,9 @@ app.register(
     api.register(niraModule,          { prefix: '/nira' })
     api.register(agentsModule,        { prefix: '/agent-logs' })
     api.register(chatModule,          { prefix: '/chat' })
-    // api.register(agendaModule, { prefix: '/agenda' })
-    // api.register(veraModule,   { prefix: '/vera' })
+    api.register(agendaModule,        { prefix: '/agenda' })
+    api.register(veraModule,          { prefix: '/vera' })
+    api.register(dashboardModule,     { prefix: '/dashboard' })
   },
   { prefix: '/v1' },
 )
@@ -136,6 +180,8 @@ const start = async (): Promise<void> => {
     startSupplierScoresScheduler()      // Calcula scores de proveedores cada 24 h
     startOverdueDeliveriesScheduler()   // Detecta OC con entregas vencidas cada 24 h
     startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
+    startAppointmentRemindersScheduler() // Envía recordatorios de citas del día siguiente
+    startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
   } catch (err) {
     app.log.error(err)
     process.exit(1)

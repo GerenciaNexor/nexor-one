@@ -18,11 +18,12 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma } from '../../lib/prisma'
+import { prisma, directPrisma } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
-import { KIRA_TOOLS } from './tools/kira.tools'
-import { NIRA_TOOLS } from './tools/nira.tools'
-import { ARI_TOOLS  } from './tools/ari.tools'
+import { KIRA_TOOLS   } from './tools/kira.tools'
+import { NIRA_TOOLS   } from './tools/nira.tools'
+import { ARI_TOOLS    } from './tools/ari.tools'
+import { AGENDA_TOOLS } from './tools/agenda.tools'
 import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail, FallbackReason } from './types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ function getToolsForModule(module: AgentModule): AgentTool[] {
     case 'KIRA':   return KIRA_TOOLS
     case 'NIRA':   return NIRA_TOOLS
     case 'ARI':    return ARI_TOOLS
-    default:       return []
+    case 'AGENDA': return AGENDA_TOOLS
   }
 }
 
@@ -169,7 +170,33 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   const agentTools = getToolsForModule(input.module)
   const toolMap    = new Map(agentTools.map((t) => [t.definition.name, t]))
 
-  // ── 1. Contexto del tenant ─────────────────────────────────────────────────
+  // ── 1. Verificar que el módulo está habilitado para el tenant ────────────
+  // directPrisma: el AgentRunner corre en contexto de webhook (sin tenantHook),
+  // por lo que app.current_tenant_id nunca fue seteado. La política RLS bloquearía
+  // la query con prisma. directPrisma (superuser) bypasea RLS; el WHERE tenantId
+  // garantiza el aislamiento a nivel de aplicación.
+  const featureFlag = await directPrisma.featureFlag.findFirst({
+    where:  { tenantId: input.tenantId, module: input.module as never },
+    select: { enabled: true },
+  })
+  if (!featureFlag?.enabled) {
+    const disabledReply = `El módulo ${input.module} no está activo para este tenant. Contacta al administrador de NEXOR.`
+    const durationMs = Date.now() - startTime
+    await saveLog({
+      tenantId:     input.tenantId,
+      module:       input.module,
+      channel:      input.channel,
+      inputMessage: input.message,
+      reply:        disabledReply,
+      toolsUsed:    [],
+      toolDetails:  [{ tool: '__module_disabled__', input: { module: input.module }, output: null, timestamp: new Date().toISOString() }],
+      turnCount:    0,
+      durationMs,
+    })
+    return { reply: disabledReply, toolsUsed: [], toolDetails: [], turnCount: 0, durationMs, hitMaxTurns: false, fallbackReason: undefined }
+  }
+
+  // ── 2. Contexto del tenant ─────────────────────────────────────────────────
   const tenant = await prisma.tenant.findUniqueOrThrow({
     where:   { id: input.tenantId },
     select:  { name: true, currency: true },
@@ -188,7 +215,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
   const systemPrompt = getSystemPrompt(input.module, tenantCtx)
 
-  // ── 2. Bucle de conversación ───────────────────────────────────────────────
+  // ── 3. Bucle de conversación ───────────────────────────────────────────────
   const messages: Anthropic.MessageParam[] = [
     { role: 'user', content: input.message },
   ]

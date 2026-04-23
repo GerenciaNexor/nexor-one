@@ -2,18 +2,24 @@ import type { FastifyInstance } from 'fastify'
 import { CreateSupplierSchema, UpdateSupplierSchema, SupplierQuerySchema } from './schema'
 import { listSuppliers, getSupplier, createSupplier, updateSupplier, deactivateSupplier } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function suppliersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/nira/suppliers
-   * OPERATIVE.NIRA puede consultar (solo lectura).
-   * Query: ?search=nombre_o_nit, ?active=true|false (default: solo activos)
-   *
-   * Un proveedor desactivado no aparece en la lista por defecto
-   * — evita que se asocie a nuevas órdenes de compra.
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Listar proveedores',
+      description: 'Lista proveedores activos del tenant. OPERATIVE.NIRA puede consultar. Query: search, active.',
+      security:    bearerAuth,
+      querystring: z2j(SupplierQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = SupplierQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -27,9 +33,18 @@ export async function suppliersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/nira/suppliers/:id
-   * OPERATIVE.NIRA puede ver el detalle completo incluyendo el score calculado.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'NIRA') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Detalle de proveedor',
+      description: 'Detalle completo incluyendo score calculado e historial de OC.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const supplier = await getSupplier(request.user.tenantId, id)
@@ -42,10 +57,18 @@ export async function suppliersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/nira/suppliers
-   * AREA_MANAGER.NIRA o superior puede crear proveedores.
-   * OPERATIVE no puede crear ni editar — solo consultar.
    */
-  app.post('/', { preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Crear proveedor',
+      description: 'Crea un nuevo proveedor. Requiere AREA_MANAGER.NIRA o superior.',
+      security:    bearerAuth,
+      body:        z2j(CreateSupplierSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+  }, async (request, reply) => {
     const parsed = CreateSupplierSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -64,9 +87,19 @@ export async function suppliersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/nira/suppliers/:id
-   * AREA_MANAGER.NIRA o superior puede editar cualquier campo.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Editar proveedor',
+      description: 'Actualiza cualquier campo del proveedor. Requiere AREA_MANAGER.NIRA o superior.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateSupplierSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateSupplierSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -86,10 +119,18 @@ export async function suppliersRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/nira/suppliers/:id
-   * Soft delete — desactiva el proveedor sin borrar órdenes ni score.
-   * AREA_MANAGER.NIRA o superior puede desactivar.
    */
-  app.delete('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA') }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Desactivar proveedor',
+      description: 'Soft delete — desactiva el proveedor conservando órdenes y score. Requiere AREA_MANAGER.NIRA.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const supplier = await deactivateSupplier(request.user.tenantId, id)

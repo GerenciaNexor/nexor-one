@@ -15,16 +15,24 @@ import {
   createInteraction,
 } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/clients
-   * Lista clientes del tenant con búsqueda y filtros.
-   * OPERATIVE ve solo sus asignados. AREA_MANAGER+ ve todos.
-   * Query: ?search=xxx &source=whatsapp &assignedTo=me|userId
    */
-  app.get('/', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Listar clientes',
+      description: 'Lista clientes del tenant. OPERATIVE ve solo sus asignados; AREA_MANAGER+ ve todos.',
+      security:    bearerAuth,
+      querystring: z2j(ClientQuerySchema),
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = ClientQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -43,9 +51,18 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/clients/:id
-   * Detalle completo del cliente.
    */
-  app.get('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Detalle de cliente',
+      description: 'Detalle completo del cliente incluyendo deals activos e historial.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const client = await getClient(request.user.tenantId, id)
@@ -58,10 +75,18 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/ari/clients
-   * Crea un nuevo cliente o lead.
-   * El creador queda como vendedor asignado si no se especifica otro.
    */
-  app.post('/', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Crear cliente',
+      description: 'Crea un nuevo cliente o lead. El creador queda como vendedor asignado por defecto.',
+      security:    bearerAuth,
+      body:        z2j(CreateClientSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = CreateClientSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -80,9 +105,19 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * PUT /v1/ari/clients/:id
-   * Actualiza datos del cliente.
    */
-  app.put('/:id', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.put('/:id', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Editar cliente',
+      description: 'Actualiza datos del cliente. OPERATIVE puede editar sus propios asignados.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateClientSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = UpdateClientSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -102,11 +137,18 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * DELETE /v1/ari/clients/:id
-   * Soft-delete: desactiva el cliente (isActive = false).
-   * Historial, deals y cotizaciones se conservan.
-   * Requiere AREA_MANAGER.ARI o superior.
    */
-  app.delete('/:id', { preHandler: requireRoleAndModule('AREA_MANAGER', 'ARI') }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Desactivar cliente',
+      description: 'Soft delete — desactiva el cliente conservando deals, cotizaciones e historial. Requiere AREA_MANAGER.ARI.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('AREA_MANAGER', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const client = await deactivateClient(request.user.tenantId, id)
@@ -121,9 +163,18 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/clients/:id/interactions
-   * Historial de interacciones del cliente.
    */
-  app.get('/:id/interactions', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/:id/interactions', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Historial de interacciones',
+      description: 'Lista todas las interacciones registradas con el cliente.',
+      security:    bearerAuth,
+      params:      idParam,
+      response:    { 200: listRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
       const result = await listInteractions(request.user.tenantId, id)
@@ -136,9 +187,19 @@ export async function clientsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/ari/clients/:id/interactions
-   * Registra una nueva interacción con el cliente.
    */
-  app.post('/:id/interactions', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.post('/:id/interactions', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Registrar interacción',
+      description: 'Registra una nueva interacción (llamada, email, reunión, etc.) con el cliente.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(CreateInteractionSchema),
+      response:    { 201: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = CreateInteractionSchema.safeParse(request.body)
     if (!parsed.success) {

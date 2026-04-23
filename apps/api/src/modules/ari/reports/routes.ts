@@ -2,21 +2,24 @@ import type { FastifyInstance } from 'fastify'
 import { ReportQuerySchema } from './schema'
 import { getSalesReport, getPipelineReport } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
+import { z2j, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/reports/sales
-   * Reporte de rendimiento de ventas: deals ganados/perdidos, valor, tasa de conversión,
-   * días promedio para cerrar y desglose por vendedor.
-   *
-   * Acceso:
-   *   - OPERATIVE.ARI  → solo ve sus propios deals (forzado en servicio)
-   *   - AREA_MANAGER+  → ve todos; puede filtrar por assignedTo y branchId
-   *
-   * Query: ?dateFrom=YYYY-MM-DD &dateTo=YYYY-MM-DD &assignedTo=userId|me &branchId=xxx
    */
-  app.get('/sales', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/sales', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Reporte de ventas',
+      description: 'Deals ganados/perdidos, valor, tasa de conversión y días promedio para cerrar. OPERATIVE ve solo los suyos.',
+      security:    bearerAuth,
+      querystring: z2j(ReportQuerySchema),
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = ReportQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({
@@ -35,15 +38,18 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
   /**
    * GET /v1/ari/reports/pipeline
-   * Estado del pipeline: deals y valor por etapa, deals sin actividad > 7 días.
-   *
-   * Acceso:
-   *   - OPERATIVE.ARI  → solo sus deals asignados
-   *   - AREA_MANAGER+  → todo el tenant
-   *
-   * Query: ?dateFrom=YYYY-MM-DD &dateTo=YYYY-MM-DD &assignedTo=userId|me &branchId=xxx
    */
-  app.get('/pipeline', { preHandler: requireRoleAndModule('OPERATIVE', 'ARI') }, async (request, reply) => {
+  app.get('/pipeline', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Reporte de pipeline',
+      description: 'Deals y valor por etapa, deals sin actividad > 7 días. OPERATIVE ve solo los suyos.',
+      security:    bearerAuth,
+      querystring: z2j(ReportQuerySchema),
+      response:    { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
     const parsed = ReportQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.code(400).send({

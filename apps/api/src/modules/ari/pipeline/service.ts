@@ -267,10 +267,15 @@ export async function moveDeal(
     if (newStage.isFinalWon) {
       const amount = deal.value ? parseFloat(String(deal.value)) : 0
       if (amount > 0) {
+        const ventasCat = await tx.transactionCategory.findFirst({
+          where:  { tenantId, name: 'Ventas', isActive: true },
+          select: { id: true },
+        })
         await tx.transaction.create({
           data: {
             tenantId,
             branchId:      deal.branchId ?? null,
+            categoryId:    ventasCat?.id ?? null,
             type:          'income',
             amount,
             currency:      'COP',

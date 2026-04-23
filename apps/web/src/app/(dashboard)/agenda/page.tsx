@@ -1,5 +1,5 @@
-import { ComingSoon } from '@/components/layout/ComingSoon'
+import { redirect } from 'next/navigation'
 
 export default function AgendaPage() {
-  return <ComingSoon module="AGENDA" description="Agendamiento de citas, disponibilidad de profesionales y recordatorios." />
+  redirect('/agenda/calendar')
 }

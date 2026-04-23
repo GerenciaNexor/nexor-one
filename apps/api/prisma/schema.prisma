@@ -87,8 +87,13 @@ model Tenant {
   serviceTypes   ServiceType[]
   availability   Availability[]
   appointments   Appointment[]
-  transactions   Transaction[]
-  chatMessages   ChatMessage[]
+  blockedDates   BlockedDate[]
+  cancelTokens   AppointmentCancelToken[]
+  transactions          Transaction[]
+  transactionCategories TransactionCategory[]
+  costCenters           CostCenter[]
+  monthlyBudgets        MonthlyBudget[]
+  chatMessages          ChatMessage[]
 
   @@map("tenants")
 }
@@ -117,7 +122,9 @@ model Branch {
   serviceTypes   ServiceType[]
   availability   Availability[]
   appointments   Appointment[]
+  blockedDates   BlockedDate[]
   transactions   Transaction[]
+  monthlyBudgets MonthlyBudget[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -152,10 +159,11 @@ model User {
   purchaseOrdersCreated  PurchaseOrder[] @relation("POCreator")
   purchaseOrdersApproved PurchaseOrder[] @relation("POApprover")
   stockMovements         StockMovement[]
-  availabilitySchedules  Availability[]
-  professionalAppointments Appointment[] @relation("AppointmentProfessional")
-  refreshTokens          RefreshToken[]
-  chatMessages           ChatMessage[]
+  availabilitySchedules    Availability[]
+  professionalAppointments Appointment[]          @relation("AppointmentProfessional")
+  serviceProfessionals     ServiceProfessional[]
+  refreshTokens            RefreshToken[]
+  chatMessages             ChatMessage[]
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -457,6 +465,7 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([tenantId, sku])
+  @@index([tenantId, isActive])
   @@index([tenantId, category])
   @@index([tenantId, abcClass])
   @@map("products")
@@ -622,18 +631,52 @@ model ServiceType {
   tenantId        String   @db.VarChar(30) @map("tenant_id")
   branchId        String?  @db.VarChar(30) @map("branch_id")
   name            String   @db.VarChar(255)
+  description     String?  @db.VarChar(500)
   durationMinutes Int      @default(30) @map("duration_minutes")
   price           Decimal? @db.Decimal(15, 2)
   color           String?  @db.VarChar(7)
   isActive        Boolean  @default(true) @map("is_active")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch?       @relation(fields: [branchId], references: [id])
-  appointments Appointment[]
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch?              @relation(fields: [branchId], references: [id])
+  appointments  Appointment[]
+  professionals ServiceProfessional[]
 
   @@index([tenantId])
   @@index([tenantId, branchId])
+  @@index([tenantId, isActive])
   @@map("service_types")
+}
+
+/// Profesionales (usuarios) que pueden realizar un servicio.
+/// Tabla puente ServiceType ↔ User.
+model ServiceProfessional {
+  serviceTypeId String @db.VarChar(30) @map("service_type_id")
+  userId        String @db.VarChar(30) @map("user_id")
+
+  serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId],        references: [id], onDelete: Cascade)
+
+  @@id([serviceTypeId, userId])
+  @@index([userId])
+  @@map("service_professionals")
+}
+
+/// Fechas bloqueadas por sucursal (festivos, cierres especiales).
+/// Cuando una fecha está bloqueada no se generan slots para esa sucursal ese día.
+model BlockedDate {
+  id       String   @id @default(cuid()) @db.VarChar(30)
+  tenantId String   @db.VarChar(30) @map("tenant_id")
+  branchId String?  @db.VarChar(30) @map("branch_id")
+  date     DateTime @db.Date
+  reason   String?  @db.VarChar(255)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId, date])
+  @@index([tenantId, date])
+  @@map("blocked_dates")
 }
 
 /// Horarios de disponibilidad por sucursal o profesional.
@@ -665,12 +708,14 @@ model Appointment {
   professionalId String?  @db.VarChar(30) @map("professional_id")
   clientName     String   @db.VarChar(255) @map("client_name")
   clientPhone    String?  @db.VarChar(20) @map("client_phone")
+  clientEmail    String?  @db.VarChar(255) @map("client_email")
   startAt        DateTime @map("start_at") @db.Timestamptz(6)
   endAt          DateTime @map("end_at") @db.Timestamptz(6)
   status         String   @default("scheduled") @db.VarChar(30)
   notes          String?  @db.Text
   channel        String   @default("manual") @db.VarChar(50)
   reminderSent   Boolean  @default(false) @map("reminder_sent")
+  createdByAgent Boolean  @default(false) @map("created_by_agent")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -680,41 +725,133 @@ model Appointment {
   client       Client?      @relation(fields: [clientId], references: [id])
   serviceType  ServiceType? @relation(fields: [serviceTypeId], references: [id])
   professional User?        @relation("AppointmentProfessional", fields: [professionalId], references: [id])
+  cancelTokens AppointmentCancelToken[]
 
   @@index([tenantId, branchId, startAt])
+  @@index([tenantId, startAt])
   @@index([tenantId, status])
   @@index([professionalId, startAt])
   @@map("appointments")
+}
+
+/// Token de un solo uso para cancelar una cita desde el email de recordatorio sin autenticarse.
+model AppointmentCancelToken {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  token         String    @unique @db.VarChar(64)
+  tenantId      String    @db.VarChar(30) @map("tenant_id")
+  appointmentId String    @db.VarChar(30) @map("appointment_id")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt        DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@map("appointment_cancel_tokens")
 }
 
 // =============================================================================
 // MODULO VERA — Finanzas
 // =============================================================================
 
-/// Registro financiero de movimientos de dinero. Generado por ARI y NIRA.
-/// No se ingresa manualmente — lo crean los modulos automaticamente.
+/// Registro financiero de movimientos de dinero.
+/// isManual=true → creado por usuario; isManual=false → generado por ARI, NIRA o AGENDA.
+/// Solo las transacciones manuales pueden editarse o eliminarse.
 model Transaction {
-  id            String  @id @default(cuid()) @db.VarChar(30)
-  tenantId      String  @db.VarChar(30) @map("tenant_id")
-  branchId      String? @db.VarChar(30) @map("branch_id")
-  type          String  @db.VarChar(20)
-  amount        Decimal @db.Decimal(15, 2)
-  currency      String  @default("COP") @db.VarChar(3)
-  description   String  @db.VarChar(500)
-  category      String? @db.VarChar(100)
-  referenceType String  @db.VarChar(50) @map("reference_type")
-  referenceId   String  @db.VarChar(30) @map("reference_id")
-  date          DateTime @db.Date
+  id                String   @id @default(cuid()) @db.VarChar(30)
+  tenantId          String   @db.VarChar(30) @map("tenant_id")
+  branchId          String?  @db.VarChar(30) @map("branch_id")
+  categoryId        String?  @db.VarChar(30) @map("category_id")
+  costCenterId      String?  @db.VarChar(30) @map("cost_center_id")
+  isManual          Boolean  @default(false) @map("is_manual")
+  type              String   @db.VarChar(20)
+  amount            Decimal  @db.Decimal(15, 2)
+  currency          String   @default("COP") @db.VarChar(3)
+  description       String   @db.VarChar(500)
+  externalReference String?  @db.VarChar(255) @map("external_reference")
+  category          String?  @db.VarChar(100)
+  referenceType     String?  @db.VarChar(50)  @map("reference_type")
+  referenceId       String?  @db.VarChar(30)  @map("reference_id")
+  date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?              @relation(fields: [branchId], references: [id])
+  txCategory   TransactionCategory? @relation(fields: [categoryId], references: [id])
+  costCenter   CostCenter?          @relation(fields: [costCenterId], references: [id])
+
+  @@index([tenantId, date(sort: Desc)])
+  @@index([tenantId, type])
+  @@index([tenantId, isManual])
+  @@index([tenantId, categoryId])
+  @@index([referenceType, referenceId])
+  @@map("transactions")
+}
+
+/// Categoria de clasificacion de transacciones VERA. Configurable por tenant.
+/// Las categorias isDefault no pueden eliminarse.
+model TransactionCategory {
+  id        String  @id @default(cuid()) @db.VarChar(30)
+  tenantId  String  @db.VarChar(30) @map("tenant_id")
+  name      String  @db.VarChar(100)
+  type      String  @db.VarChar(10)
+  color     String? @db.VarChar(7)
+  isDefault Boolean @default(false) @map("is_default")
+  isActive  Boolean @default(true)  @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("transaction_categories")
+}
+
+/// Centro de costo para clasificacion financiera interna por area del negocio.
+model CostCenter {
+  id          String  @id @default(cuid()) @db.VarChar(30)
+  tenantId    String  @db.VarChar(30) @map("tenant_id")
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("cost_centers")
+}
+
+/// Presupuesto mensual de egresos de VERA. Uno por tenant/sucursal/mes.
+/// Si no hay presupuesto configurado no se generan alertas.
+model MonthlyBudget {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  tenantId  String   @db.VarChar(30) @map("tenant_id")
+  branchId  String?  @db.VarChar(30) @map("branch_id")
+  year      Int
+  month     Int
+  amount    Decimal  @db.Decimal(15, 2)
+  currency  String   @default("COP") @db.VarChar(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id])
 
-  @@index([tenantId, date(sort: Desc)])
-  @@index([tenantId, type])
-  @@index([referenceType, referenceId])
-  @@map("transactions")
+  @@unique([tenantId, branchId, year, month])
+  @@index([tenantId])
+  @@map("monthly_budgets")
 }
 
 /// Historial de conversación del chat interno del dashboard.

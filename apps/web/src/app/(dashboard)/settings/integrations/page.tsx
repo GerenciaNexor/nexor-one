@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
+import { useToast } from '@/components/ui/Toast'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -31,10 +32,10 @@ function getStatus(integration: Integration | undefined): Status {
 
 function StatusBadge({ status }: { status: Status }) {
   const MAP = {
-    connected: { label: 'Conectado',         cls: 'bg-emerald-100 text-emerald-700' },
-    error:     { label: 'Error',             cls: 'bg-red-100 text-red-700' },
-    pending:   { label: 'Pendiente de prueba', cls: 'bg-amber-100 text-amber-700' },
-    none:      { label: 'Sin configurar',    cls: 'bg-slate-100 text-slate-500' },
+    connected: { label: 'Conectado',           cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+    error:     { label: 'Error',               cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+    pending:   { label: 'Pendiente de prueba', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+    none:      { label: 'Sin configurar',      cls: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400' },
   }
   const { label, cls } = MAP[status]
   return (
@@ -322,35 +323,19 @@ function IntegrationCard({
   )
 }
 
-// ─── Toast ─────────────────────────────────────────────────────────────────────
-
-function Toast({ message, success }: { message: string; success: boolean }) {
-  return (
-    <div className={[
-      'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all',
-      success ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white',
-    ].join(' ')}>
-      {success
-        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      }
-      {message}
-    </div>
-  )
-}
-
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
   const router  = useRouter()
   const { user } = useAuthStore()
 
+  const { show: showToast, element: toastEl } = useToast()
+
   const [integrations,   setIntegrations]   = useState<Integration[]>([])
   const [loading,        setLoading]        = useState(true)
   const [waModal,        setWaModal]        = useState(false)
   const [disconnectTarget, setDisconnectTarget] = useState<Integration | null>(null)
   const [testing,        setTesting]        = useState<string | null>(null)
-  const [toast,          setToast]          = useState<{ msg: string; ok: boolean } | null>(null)
   const [connectingGmail, setConnectingGmail] = useState(false)
 
   // Guardia de roles: solo BRANCH_ADMIN y superiores
@@ -388,11 +373,6 @@ export default function IntegrationsPage() {
   }
 
   useEffect(() => { load() }, [])
-
-  function showToast(msg: string, ok: boolean) {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 4_500)
-  }
 
   async function handleConnectGoogle() {
     setConnectingGmail(true)
@@ -444,12 +424,12 @@ export default function IntegrationsPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <div className="mb-6">
-          <div className="h-6 w-48 rounded-lg bg-slate-200 animate-pulse" />
-          <div className="mt-2 h-4 w-72 rounded bg-slate-100 animate-pulse" />
+          <div className="h-6 w-48 rounded-lg bg-slate-200 animate-pulse dark:bg-slate-700" />
+          <div className="mt-2 h-4 w-72 rounded bg-slate-100 animate-pulse dark:bg-slate-700" />
         </div>
         <div className="space-y-4">
           {[0, 1].map((i) => (
-            <div key={i} className="h-32 rounded-xl border border-slate-100 bg-white animate-pulse" />
+            <div key={i} className="h-32 rounded-xl border border-slate-100 bg-white animate-pulse dark:border-slate-700 dark:bg-slate-800" />
           ))}
         </div>
       </div>
@@ -539,8 +519,7 @@ export default function IntegrationsPage() {
         />
       )}
 
-      {/* Toast */}
-      {toast && <Toast message={toast.msg} success={toast.ok} />}
+      {toastEl}
     </div>
   )
 }

@@ -352,8 +352,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Rol requerido:** `AREA_MANAGER` de NIRA o superior
 
 #### `PUT /v1/nira/suppliers/:id`
-#### `GET /v1/nira/suppliers/:id/score`
-**Propósito:** Ver el score detallado del proveedor (precio, entrega, calidad).
+**Rol requerido:** `AREA_MANAGER` de NIRA o superior
+
+#### `DELETE /v1/nira/suppliers/:id`
+**Rol requerido:** `AREA_MANAGER` de NIRA o superior  
+**Propósito:** Desactivar proveedor (soft delete). Las OC existentes no se ven afectadas.
 
 ---
 
@@ -375,17 +378,30 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 }
 ```
 
-#### `PUT /v1/nira/purchase-orders/:id/approve`
-**Rol requerido:** `AREA_MANAGER` de NIRA o superior  
-**Propósito:** Aprobar una OC. Genera `transaction` de egreso en VERA.
+#### `POST /v1/nira/purchase-orders/:id/submit`
+**Propósito:** Enviar la OC borrador a aprobación (`draft` → `submitted`).
 
-#### `PUT /v1/nira/purchase-orders/:id/receive`
+#### `POST /v1/nira/purchase-orders/:id/approve`
+**Rol requerido:** `AREA_MANAGER` de NIRA o superior  
+**Propósito:** Aprobar una OC (`submitted` → `approved`). Genera `transaction` de egreso en VERA.
+
+#### `POST /v1/nira/purchase-orders/:id/cancel`
+**Propósito:** Cancelar una OC que aún no fue recibida.  
+**Request:** `{ "reason": "Proveedor no disponible" }`
+
+#### `POST /v1/nira/purchase-orders/:id/receive`
 **Propósito:** Registrar recepción (total o parcial) de una OC.  
 **Request:** `{ "items": [{ "purchaseOrderItemId": "xxx", "quantityReceived": 80 }] }`  
 **Efecto secundario:** Genera `stock_movement` de entrada en KIRA por cada ítem recibido.
 
-#### `GET /v1/nira/purchase-orders/:id/compare`
-**Propósito:** Comparar precios del mismo producto entre distintos proveedores.
+#### `POST /v1/nira/purchase-orders/from-alert`
+**Propósito:** Crear una OC borrador a partir de una alerta de stock crítico de KIRA.  
+**Request:** `{ "alertId": "clxalert1", "supplierId": "clxsup1" }`
+
+#### `GET /v1/nira/compare`
+**Propósito:** Comparar precios del mismo producto entre distintos proveedores.  
+**Query:** `?productId=clxprod1`  
+**Response:** `{ "data": [{ supplierId, supplierName, lastUnitCost, avgUnitCost, totalOrders, score }] }`
 
 ---
 
@@ -456,17 +472,35 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 #### `GET /v1/kira/alerts`
 **Propósito:** Listar productos con stock crítico (por debajo del mínimo) en tiempo real.  
-**Response:** `{ "critical": [{ productId, productName, branchId, branchName, currentQty, minQty }] }`
+**Response:** `{ "data": [{ productId, productName, branchId, branchName, currentQty, minQty }], "total" }`
+
+#### `POST /v1/kira/alerts/trigger`
+**Rol requerido:** `AREA_MANAGER` de KIRA o superior  
+**Propósito:** Forzar una revisión inmediata de stock (sin esperar al job horario).
+
+---
+
+### Lotes
+
+#### `GET /v1/kira/lots`
+**Propósito:** Listar lotes activos con número de lote, fecha de caducidad y stock disponible.  
+**Query:** `?productId=xxx&branchId=xxx&expiringInDays=30`
 
 ---
 
 ### Reportes KIRA
 
 #### `GET /v1/kira/reports/abc`
+**Query:** `?branchId=xxx`  
 **Response:** Clasificación ABC del inventario con valor total por categoría.
 
 #### `GET /v1/kira/reports/rotation`
+**Query:** `?from=2024-01-01&to=2024-12-31&branchId=xxx`  
 **Response:** Velocidad de rotación por producto en el período.
+
+#### `POST /v1/kira/reports/trigger-abc`
+**Rol requerido:** `AREA_MANAGER` de KIRA o superior  
+**Propósito:** Forzar recálculo inmediato de clasificación ABC (sin esperar al job semanal).
 
 ---
 
@@ -477,29 +511,70 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 ### Tipos de servicio
 
-#### `GET /v1/agenda/service-types`
-#### `POST /v1/agenda/service-types`
+#### `GET /v1/agenda/services`
+**Propósito:** Listar servicios activos del tenant (nombre, duración, precio, profesionales asignados).
+
+#### `POST /v1/agenda/services`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior  
+**Request:** `{ "name", "durationMinutes", "price", "branchId", "color" }`
+
+#### `PUT /v1/agenda/services/:id`
 **Rol requerido:** `AREA_MANAGER` de AGENDA o superior
+
+#### `DELETE /v1/agenda/services/:id`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior  
+**Propósito:** Desactivar tipo de servicio (soft delete).
 
 ---
 
 ### Disponibilidad
 
 #### `GET /v1/agenda/availability` 🤖
-**Propósito:** Consultar horarios disponibles para agendar.  
-**Query:** `?branchId=xxx&date=2024-12-15&serviceTypeId=xxx`  
-**Response:** `{ "availableSlots": ["09:00", "09:30", "10:00", ...] }`
+**Propósito:** Listar horarios de disponibilidad configurados por sucursal/profesional.  
+**Query:** `?branchId=xxx&userId=xxx`  
+**Response:** `{ "data": [{ dayOfWeek, startTime, endTime, isActive }] }`
 
-#### `PUT /v1/agenda/availability`
+#### `POST /v1/agenda/availability`
 **Rol requerido:** `AREA_MANAGER` de AGENDA o superior  
-**Propósito:** Configurar horarios de disponibilidad.
+**Propósito:** Crear bloque de disponibilidad.  
+**Request:** `{ "branchId", "userId", "dayOfWeek": 1, "startTime": "09:00", "endTime": "18:00" }`
+
+#### `PUT /v1/agenda/availability/:id`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior
+
+#### `DELETE /v1/agenda/availability/:id`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior
+
+---
+
+### Slots disponibles
+
+#### `GET /v1/agenda/slots` 🤖
+**Propósito:** Calcular los slots libres para una fecha y servicio dado.  
+**Query:** `?branchId=xxx&serviceTypeId=xxx&date=2024-12-15`  
+**Response:** `{ "data": ["09:00", "09:30", "10:00", ...] }`  
+**Usado por:** El agente de WhatsApp para proponer horarios al cliente.
+
+---
+
+### Fechas bloqueadas
+
+#### `GET /v1/agenda/blocked-dates`
+**Query:** `?branchId=xxx&from=2024-12-01&to=2024-12-31`
+
+#### `POST /v1/agenda/blocked-dates`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior  
+**Request:** `{ "branchId", "date": "2024-12-25", "reason": "Navidad" }`
+
+#### `DELETE /v1/agenda/blocked-dates/:id`
+**Rol requerido:** `AREA_MANAGER` de AGENDA o superior
 
 ---
 
 ### Citas
 
 #### `GET /v1/agenda/appointments`
-**Query:** `?branchId=xxx&date=2024-12-15&status=scheduled&professionalId=xxx`
+**Query:** `?branchId=xxx&status=scheduled&professionalId=xxx&from=2024-12-15&to=2024-12-15`
 
 #### `POST /v1/agenda/appointments` 🤖
 **Propósito:** Crear una cita. El agente la crea directamente desde WhatsApp.  
@@ -517,7 +592,15 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Efecto secundario:** Envía confirmación por email/WhatsApp al cliente (vía Resend).
 
 #### `PUT /v1/agenda/appointments/:id/status`
-**Request:** `{ "status": "confirmed" | "cancelled" | "completed" | "no_show" }`
+**Request:** `{ "status": "confirmed" | "cancelled" | "completed" | "no_show" | "attended" }`
+
+---
+
+### Cancelación por token (sin autenticación)
+
+#### `GET /v1/agenda/cancel/:token`
+**Propósito:** Cancelar una cita desde el link del email de recordatorio, sin requerir login.  
+**Nota:** El token es de un solo uso (expira en 48 h). Si ya fue usado devuelve `409`.
 
 ---
 
@@ -529,24 +612,94 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 ### Transacciones
 
 #### `GET /v1/vera/transactions`
-**Query:** `?type=income&from=2024-01-01&to=2024-12-31&branchId=xxx`
+**Query:** `?type=income&from=2024-01-01&to=2024-12-31&branchId=xxx&categoryId=xxx&page=1&limit=50`
 
-#### `GET /v1/vera/dashboard`
-**Propósito:** KPIs financieros consolidados para el dashboard ejecutivo.  
-**Response:**
-```json
-{
-  "totalIncome": 15000000,
-  "totalExpense": 8000000,
-  "netBalance": 7000000,
-  "byMonth": [{ "month": "2024-01", "income": 1200000, "expense": 600000 }],
-  "byBranch": [{ "branchId", "branchName", "income", "expense" }]
-}
-```
+#### `GET /v1/vera/transactions/:id`
 
-#### `GET /v1/vera/reports/income-statement`
-**Propósito:** Estado de resultados del período.  
+#### `POST /v1/vera/transactions`
+**Rol requerido:** `AREA_MANAGER` de VERA o superior  
+**Propósito:** Crear transacción manual (ingresos/egresos no generados por otros módulos).  
+**Request:** `{ "type": "income", "amount": 500000, "description": "Venta directa", "date": "2024-12-15", "categoryId", "costCenterId", "branchId" }`
+
+#### `PUT /v1/vera/transactions/:id`
+**Rol requerido:** `AREA_MANAGER` de VERA o superior  
+**Nota:** Solo transacciones manuales (`isManual: true`) pueden editarse.
+
+#### `DELETE /v1/vera/transactions/:id`
+**Rol requerido:** `AREA_MANAGER` de VERA o superior  
+**Nota:** Solo transacciones manuales pueden eliminarse. Las automáticas (de ARI/NIRA) son inmutables.
+
+#### `POST /v1/vera/transactions/:id/classify`
+**Propósito:** Asignar o cambiar la categoría y centro de costo de una transacción existente.  
+**Request:** `{ "categoryId": "clxcat1", "costCenterId": "clxcc1" }`
+
+---
+
+### Categorías
+
+#### `GET /v1/vera/categories`
+**Query:** `?type=income|expense|both`  
+**Response:** `{ "data": [{ id, name, type, color, isDefault }], "total" }`
+
+#### `POST /v1/vera/categories`
+**Rol requerido:** `AREA_MANAGER` de VERA o superior
+
+#### `PUT /v1/vera/categories/:id`
+**Nota:** Las categorías `isDefault: true` no pueden eliminarse ni cambiar de tipo.
+
+#### `DELETE /v1/vera/categories/:id`
+
+---
+
+### Centros de costo
+
+#### `GET /v1/vera/cost-centers`
+
+#### `POST /v1/vera/cost-centers`
+**Rol requerido:** `AREA_MANAGER` de VERA o superior
+
+#### `PUT /v1/vera/cost-centers/:id`
+
+#### `DELETE /v1/vera/cost-centers/:id`
+
+---
+
+### Presupuestos mensuales
+
+#### `GET /v1/vera/budgets`
+**Propósito:** Listar presupuestos del tenant (por sucursal y mes).
+
+#### `GET /v1/vera/budgets/current`
+**Propósito:** Presupuesto del mes en curso con porcentaje ejecutado.  
+**Query:** `?branchId=xxx`  
+**Response:** `{ "data": [{ year, month, amount, spent, percentage, branchId, branchName }] }`
+
+#### `POST /v1/vera/budgets`
+**Rol requerido:** `TENANT_ADMIN` o `AREA_MANAGER` de VERA  
+**Request:** `{ "year": 2024, "month": 12, "amount": 5000000, "branchId": "clxbranch1" }`
+
+#### `PUT /v1/vera/budgets/:id`
+
+#### `DELETE /v1/vera/budgets/:id`
+
+---
+
+### Reportes VERA
+
+#### `GET /v1/vera/reports/summary`
+**Propósito:** Resumen financiero del período (ingresos, egresos, utilidad bruta).  
+**Query:** `?from=2024-01-01&to=2024-12-31&branchId=xxx`
+
+#### `GET /v1/vera/reports/timeline`
+**Propósito:** Evolución mensual de ingresos y egresos.  
 **Query:** `?from=2024-01-01&to=2024-12-31`
+
+#### `GET /v1/vera/reports/by-category`
+**Propósito:** Desglose de egresos por categoría.
+
+#### `GET /v1/vera/reports/export`
+**Propósito:** Exportar transacciones del período como CSV.  
+**Query:** `?from=2024-01-01&to=2024-12-31&type=expense`
 
 ---
 
@@ -570,6 +723,72 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 ---
 
+## Dashboard — KPIs unificados · `/v1/dashboard`
+
+Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MANAGER solo ven KPIs de su módulo asignado.
+
+---
+
+### `GET /v1/dashboard/kpis`
+**Propósito:** Devuelve los KPIs de todos los módulos activos del tenant en una sola respuesta.  
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "kira": {
+      "data": { "productos_stock_critico": 3, "movimientos_hoy": 12, "valor_inventario_total": 42500000 }
+    },
+    "nira": {
+      "data": { "oc_pendientes_aprobacion": 2, "oc_entrega_vencida": 1, "total_gastado_mes": 8200000 }
+    },
+    "ari": {
+      "data": { "leads_nuevos_hoy": 5, "deals_en_negociacion": 18, "valor_pipeline_total": 95000000 }
+    },
+    "agenda": {
+      "data": { "citas_hoy": 8, "proxima_cita": { "clientName": "Ana", "startAt": "..." }, "tasa_asistencia_mes": 92 }
+    },
+    "vera": {
+      "data": { "ingresos_mes": 15000000, "egresos_mes": 8000000, "utilidad_bruta": 7000000, "porcentaje_presupuesto": 68 }
+    }
+  }
+}
+```
+**Comportamiento de fallos:** Si un módulo falla o supera 800 ms, devuelve `{ data: null, error: "timeout after 800ms" }` sin afectar los demás módulos.
+
+---
+
+## Chat con agente IA — `/v1/chat`
+
+---
+
+### `POST /v1/chat/message`
+**Propósito:** Enviar un mensaje al agente IA interno del tenant y obtener respuesta.  
+**Request:** `{ "message": "¿Cuántos productos tenemos bajo el mínimo de stock?" }`  
+**Response:** `{ "reply": "Actualmente hay 3 productos bajo el mínimo...", "toolsUsed": ["get_stock_alerts"] }`
+
+### `GET /v1/chat/history`
+**Propósito:** Obtener el historial de mensajes del usuario autenticado.  
+**Query:** `?page=1&limit=20`
+
+### `GET /v1/chat/history/:userId`
+**Rol requerido:** `TENANT_ADMIN`  
+**Propósito:** Ver el historial de otro usuario del tenant (para auditoría).
+
+---
+
+## Logs de agentes IA — `/v1/agent-logs`
+
+---
+
+### `GET /v1/agent-logs`
+**Propósito:** Listar el registro de acciones tomadas por los agentes IA del tenant.  
+**Query:** `?module=ARI&channel=whatsapp&from=2024-01-01&to=2024-12-31&page=1&limit=20`  
+**Response:** `{ "data": [{ id, module, channel, inputMessage, reply, toolsUsed, turnCount, durationMs, createdAt }], "total" }`  
+**Nota:** Registro inmutable (append-only). Solo lectura — no se puede editar ni eliminar.
+
+---
+
 ## Resumen de roles por endpoint
 
 | Endpoint | SUPER_ADMIN | TENANT_ADMIN | BRANCH_ADMIN | AREA_MANAGER | OPERATIVE |
@@ -580,5 +799,12 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 | `/v1/users POST` | ✅ | ✅ | ✅ (su sucursal) | ❌ | ❌ |
 | `/v1/ari/deals PUT stage` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `/v1/nira/purchase-orders/:id/approve` | ✅ | ✅ | ✅ | ✅ NIRA | ❌ |
+| `/v1/nira/purchase-orders/:id/submit` | ✅ | ✅ | ✅ | ✅ NIRA | ✅ NIRA |
 | `/v1/kira/products POST` | ✅ | ✅ | ✅ | ✅ KIRA | ❌ |
+| `/v1/agenda/services POST` | ✅ | ✅ | ✅ | ✅ AGENDA | ❌ |
+| `/v1/vera/transactions POST` | ✅ | ✅ | ✅ | ✅ VERA | ❌ |
+| `/v1/vera/budgets POST` | ✅ | ✅ | ❌ | ✅ VERA | ❌ |
+| `/v1/dashboard/kpis` | ✅ | ✅ | ✅ | ✅ (solo su módulo) | ✅ (solo su módulo) |
+| `/v1/chat/history/:userId` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `/v1/agent-logs GET` | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `/v1/kira/stock/movements POST` | ✅ | ✅ | ✅ | ✅ | ✅ KIRA |

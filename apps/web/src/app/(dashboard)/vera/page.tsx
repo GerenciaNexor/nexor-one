@@ -1,5 +1,5 @@
-import { ComingSoon } from '@/components/layout/ComingSoon'
+import { VeraDashboard } from '@/components/vera/VeraDashboard'
 
 export default function VeraPage() {
-  return <ComingSoon module="VERA" description="Dashboard financiero, ingresos, egresos y reportes contables." />
+  return <VeraDashboard />
 }

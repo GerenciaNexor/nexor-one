@@ -1,0 +1,172 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB:       nexor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      DATABASE_URL:         postgresql://postgres:postgres@localhost:5432/nexor_test
+      DIRECT_DATABASE_URL:  postgresql://postgres:postgres@localhost:5432/nexor_test
+      REDIS_URL:            redis://localhost:6379
+      JWT_SECRET:           e2e-test-secret-32-chars-minimum-here
+      JWT_EXPIRES_IN:       7d
+      REFRESH_TOKEN_EXPIRES_DAYS: 30
+      ENCRYPTION_KEY:       0000000000000000000000000000000000000000000000000000000000000000
+      GMAIL_WEBHOOK_SECRET: e2e-test-gmail-webhook-secret
+      PORT:                 3001
+      HOST:                 0.0.0.0
+      CORS_ORIGIN:          http://localhost:3000
+      NODE_ENV:             test
+      LOG_LEVEL:            error
+      # Web
+      NEXT_PUBLIC_API_URL:  http://localhost:3001
+      BASE_URL:             http://localhost:3000
+      API_URL:              http://localhost:3001
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar Prisma Client
+        run: pnpm --filter @nexor/api exec prisma generate
+
+      - name: Ejecutar migraciones
+        run: pnpm --filter @nexor/api exec prisma migrate deploy
+
+      - name: Seed principal
+        run: pnpm --filter @nexor/api db:seed
+
+      - name: Seed E2E (segundo tenant + módulos)
+        run: pnpm --filter @nexor/api db:seed-e2e
+
+      - name: Build API
+        run: pnpm --filter @nexor/api build
+
+      - name: Iniciar API en background
+        run: node apps/api/dist/app.js &
+        env:
+          DATABASE_URL:         ${{ env.DATABASE_URL }}
+          DIRECT_DATABASE_URL:  ${{ env.DIRECT_DATABASE_URL }}
+          REDIS_URL:            ${{ env.REDIS_URL }}
+          JWT_SECRET:           ${{ env.JWT_SECRET }}
+          JWT_EXPIRES_IN:       ${{ env.JWT_EXPIRES_IN }}
+          REFRESH_TOKEN_EXPIRES_DAYS: ${{ env.REFRESH_TOKEN_EXPIRES_DAYS }}
+          ENCRYPTION_KEY:       ${{ env.ENCRYPTION_KEY }}
+          GMAIL_WEBHOOK_SECRET: ${{ env.GMAIL_WEBHOOK_SECRET }}
+          PORT:                 ${{ env.PORT }}
+          HOST:                 ${{ env.HOST }}
+          CORS_ORIGIN:          ${{ env.CORS_ORIGIN }}
+          NODE_ENV:             ${{ env.NODE_ENV }}
+          LOG_LEVEL:            ${{ env.LOG_LEVEL }}
+
+      - name: Esperar que la API responda
+        run: |
+          echo "Esperando API en puerto 3001..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/health; then
+              echo "API lista en intento $i"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Error: API no respondió después de 60 segundos"
+              exit 1
+            fi
+            echo "Intento $i/30 — esperando..."
+            sleep 2
+          done
+
+      - name: Build web
+        run: pnpm --filter @nexor/web build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+
+      - name: Iniciar web en background
+        run: pnpm --filter @nexor/web start &
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+          PORT: 3000
+
+      - name: Esperar que la web responda
+        run: |
+          echo "Esperando web en puerto 3000..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000; then
+              echo "Web lista en intento $i"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Error: web no respondió después de 90 segundos"
+              exit 1
+            fi
+            echo "Intento $i/30 — esperando..."
+            sleep 3
+          done
+
+      - name: Instalar browsers de Playwright
+        run: pnpm --filter @nexor/e2e exec playwright install chromium --with-deps
+
+      - name: Ejecutar tests E2E
+        run: pnpm --filter @nexor/e2e test
+        env:
+          BASE_URL: http://localhost:3000
+          API_URL:  http://localhost:3001
+          CI:       true
+
+      - name: Subir reporte HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Subir capturas de pantalla de fallos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-failures
+          path: packages/e2e/test-results/
+          retention-days: 7

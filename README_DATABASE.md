@@ -481,7 +481,9 @@ Catálogo global de productos por tenant. El stock es por sucursal, pero el prod
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, category)`, `(tenant_id, abc_class)`
+**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, is_active)`, `(tenant_id, category)`, `(tenant_id, abc_class)`
+
+> **Nota de rendimiento (HU-093):** El índice `(tenant_id, is_active)` es crítico para KIRA. Toda query de inventario filtra `{ tenantId, isActive: true }` y sin él el planner hacía sequential scan sobre toda la tabla del tenant. Migración: `20260422000000_perf_indexes`.
 
 ---
 
@@ -594,7 +596,9 @@ Citas agendadas. El agente de IA puede crearlas directamente desde WhatsApp.
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `(tenant_id, branch_id, start_at)`, `(tenant_id, status)`, `(professional_id, start_at)`
+**Índices:** `(tenant_id, branch_id, start_at)`, `(tenant_id, start_at)`, `(tenant_id, status)`, `(professional_id, start_at)`
+
+> **Nota de rendimiento (HU-093):** `agendaKpis` agrupa citas por `{ tenantId, startAt }` sin filtrar por `branchId`. El índice compuesto de tres columnas no cubre este patrón (branchId queda en el medio), por lo que se agregó `(tenant_id, start_at)` para esas queries de rango mensual. Migración: `20260422000000_perf_indexes`.
 
 ---
 
