@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { LoginSchema, RefreshSchema, LogoutSchema } from './schema'
 import { login, refresh, logout, getMe } from './service'
 import { authenticate } from '../../plugins/jwt'
-import { z2j, objRes, stdErrors } from '../../lib/openapi'
+import { z2j, stdErrors } from '../../lib/openapi'
 import { isIPBlocked, getBlockedUntil, recordFailedAttempt, clearFailedAttempts } from './login-limiter'
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
