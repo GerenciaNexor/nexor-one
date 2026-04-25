@@ -57,7 +57,7 @@ nexor/                          ← Raíz del proyecto
 │   │   │   │   ├── vera/       ← Finanzas: transactions, categories, cost-centers, budgets, reports
 │   │   │   │   └── dashboard/  ← KPIs unificados de todos los módulos activos
 │   │   │   ├── lib/            ← Utilidades: prisma, queue, worker, guards, openapi, encryption
-│   │   │   ├── plugins/        ← JWT, CORS, rate-limit, tenant middleware, swagger
+│   │   │   ├── plugins/        ← JWT, CORS, rate-limit, tenant middleware, swagger, security-headers
 │   │   │   └── jobs/           ← Schedulers de BullMQ
 │   │   └── prisma/             ← Schema, migraciones y seed
 │   │
@@ -73,8 +73,9 @@ nexor/                          ← Raíz del proyecto
 └── packages/
     ├── shared/                 ← Tipos TypeScript compartidos
     │   └── src/types/          ← AuthUser, Tenant, Branch, etc.
-    ├── ui/                     ← Componentes UI compartidos (Toast, Portal, SkeletonRows)
-    └── e2e/                    ← Tests de extremo a extremo con Playwright
+    ├── ui/                     ← Componentes UI compartidos (V2)
+    ├── e2e/                    ← Tests de extremo a extremo con Playwright
+    └── load-tests/             ← Load tests k6 (75 VUs, 15 tenants, SLA 2s p95)
 ```
 
 **Regla de oro:** Los tipos que usa tanto el frontend como el backend van en `packages/shared`. Nunca duplicar un tipo.
@@ -297,10 +298,18 @@ Los jobs permiten ejecutar tareas sin bloquear los requests HTTP.
 | Autorización | Middleware verifica rol contra la acción solicitada |
 | Multi-tenancy | RLS en PostgreSQL + tenant_id en JWT |
 | Tokens de integración | Cifrado AES-256 antes de guardar en DB |
-| Rate limiting | 100 req/min por tenant (no por IP) |
-| Webhook WhatsApp | Verificación de firma HMAC-SHA256 de Meta |
+| Rate limiting global | 100 req/min por tenant/IP — `@fastify/rate-limit` |
+| Rate limiting login | 10 req/min por IP — override per-route en `auth/routes.ts` |
+| Bloqueo por fallos de login | 5 intentos fallidos en 15 min → bloqueo 15 min — `login-limiter.ts` (in-memory) |
+| Usuario desactivado | Verificación `isActive` en `tenantHook` — 403 inmediato sin esperar expiración del JWT |
+| Webhook WhatsApp | Verificación de firma HMAC-SHA256 de Meta (`timingSafeEqual`) |
+| Webhook Gmail | Token en query string verificado con `SHA-256 + timingSafeEqual` (`GMAIL_WEBHOOK_SECRET`) |
+| Headers HTTP de seguridad | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, HSTS (solo producción) — `security-headers.ts` |
+| Enmascaramiento de errores 5xx | `setErrorHandler` global — stack traces solo en logs del servidor, nunca en responses |
 | Audit log | Toda acción del Super Admin y del agente queda registrada |
 | Variables de entorno | Nunca en el código — solo en .env (gitignored) |
+
+> **Limitación conocida:** El bloqueo por fallos de login usa un store in-memory. Se resetea al reiniciar el servidor. Migrar a Redis en Sprint 12 para entornos multi-instancia.
 
 ---
 
@@ -367,11 +376,22 @@ Los schemas de cada ruta se definen usando el helper `z2j()` de `lib/openapi.ts`
 
 ---
 
-## Performance — Capacidad y línea base (HU-092)
+## Performance — Capacidad y línea base (HU-092 / HU-093)
 
-### Escenario de carga certificado
+> **Estado (Sprint 11):** El escenario k6 está implementado y listo para ejecutar. El load test contra staging es un paso **obligatorio** del `docs/LAUNCH_CHECKLIST.md` antes del go-live del cliente piloto. Los valores de latencia de la tabla son estimaciones de referencia calculadas con las optimizaciones implementadas — no resultados de un test ejecutado.
 
-Load test ejecutado con k6 contra el ambiente de staging. Configuración:
+### Optimizaciones implementadas (HU-093)
+
+| Optimización | Endpoint impactado |
+|--------------|-------------------|
+| Índice `products(tenant_id, is_active)` | Todas las queries de inventario KIRA |
+| Índice `appointments(tenant_id, start_at)` | `GET /v1/agenda/*`, KPIs de dashboard |
+| `kiraKpis`: reemplazado N+1 con 2 `$queryRaw` GROUP BY | `GET /v1/dashboard/kpis` |
+| `Promise.allSettled` con timeout 800ms en dashboard | `GET /v1/dashboard/kpis` — nunca bloquea |
+
+### Escenario de carga configurado
+
+Configuración del test en `packages/load-tests/scenarios/main.js`:
 
 | Parámetro | Valor |
 |-----------|-------|
@@ -382,18 +402,18 @@ Load test ejecutado con k6 contra el ambiente de staging. Configuración:
 | Carga sostenida | 5 minutos |
 | Seed por tenant | 1.000 productos · 500 clientes · 200 transacciones |
 
-### Resultados por endpoint (p95 bajo carga sostenida)
+### SLAs objetivo por endpoint (pendientes de verificación en staging)
 
-| Endpoint | p50 | p95 | p99 | SLA (p95 < 2s) |
-|----------|-----|-----|-----|----------------|
-| `GET /v1/kira/stock` | ~120ms | ~380ms | ~650ms | ✅ |
-| `POST /v1/kira/stock/movements` | ~80ms | ~220ms | ~420ms | ✅ |
-| `GET /v1/ari/pipeline/deals` | ~110ms | ~340ms | ~580ms | ✅ |
-| `GET /v1/vera/reports/summary` | ~280ms | ~820ms | ~1.4s | ✅ |
-| `GET /v1/dashboard/kpis` | ~350ms | ~950ms | ~1.7s | ✅ |
-| `POST /v1/chat/message` | ~4.2s | ~12s | ~24s | SLA propio ≤ 30s ✅ |
+| Endpoint | Distribución | SLA (p95) |
+|----------|-------------|-----------|
+| `GET /v1/kira/stock` | 30% | < 2 s |
+| `POST /v1/kira/stock/movements` | 10% | < 2 s |
+| `GET /v1/ari/pipeline/deals` | 20% | < 2 s |
+| `GET /v1/vera/reports/summary` | 20% | < 2 s |
+| `GET /v1/dashboard/kpis` | 15% | < 2 s |
+| `POST /v1/chat/message` | 5% | < 30 s |
 
-> Los valores de la tabla son estimados de referencia. Los resultados reales se encuentran en los reportes HTML generados por k6 en `packages/load-tests/results/`.
+Los reportes del load test se generan en `packages/load-tests/results/` al ejecutarlo.
 
 ### Tasa de error bajo carga
 

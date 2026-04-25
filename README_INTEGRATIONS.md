@@ -166,18 +166,35 @@ Backend configura el watch de Gmail:
   Body: { topicName: "projects/nexor/topics/gmail-messages", labelIds: ["INBOX"] }
 ```
 
+### Autenticación del webhook Gmail (GMAIL_WEBHOOK_SECRET)
+
+Google Pub/Sub no firma las notificaciones con HMAC como hace Meta. Para verificar que la notificación viene de Google y no de un tercero, NEXOR usa un token secreto en la URL:
+
+```
+URL configurada en Pub/Sub:
+  https://api.nexor.co/webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>
+```
+
+Al recibir cada notificación, el webhook verifica el token usando `crypto.timingSafeEqual(SHA-256(secret), SHA-256(token))` antes de procesar nada. Si el token no coincide o no existe, responde `401 INVALID_SIGNATURE`.
+
+**Importante:** Si `GMAIL_WEBHOOK_SECRET` no está configurado en la variable de entorno, **el webhook rechazará todas las notificaciones con 401**. Google Pub/Sub reintentará indefinidamente. Ver Fase 2 del `docs/LAUNCH_CHECKLIST.md`.
+
+---
+
 ### Flujo de email entrante
 
 ```
 Email llega a la bandeja del tenant
     ↓
-Google Pub/Sub envía POST /webhook/gmail:
+Google Pub/Sub envía POST /webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>:
 {
   "message": {
     "data": "base64({"emailAddress": "ventas@empresa.com", "historyId": "12345"})",
     "messageId": "xxx"
   }
 }
+    ↓
+Fastify verifica GMAIL_WEBHOOK_SECRET (SHA-256 + timingSafeEqual)
     ↓
 Fastify responde 200 OK inmediatamente
     ↓
@@ -202,9 +219,12 @@ Worker BullMQ procesa:
 GMAIL_CLIENT_ID=xxx.apps.googleusercontent.com
 GMAIL_CLIENT_SECRET=GOCSPX-xxx
 GOOGLE_PUBSUB_TOPIC=projects/nexor-project/topics/gmail-messages
+GMAIL_WEBHOOK_SECRET=cadena-aleatoria-de-al-menos-32-caracteres   # ← NUEVO — requerido desde HU-097
 ```
 
 El `refresh_token` se guarda **por tenant** en `integrations` (cifrado), nunca en variables de entorno.
+
+`GMAIL_WEBHOOK_SECRET` es una cadena que tú generas (p.ej. `openssl rand -hex 32`) y que debes incluir en la URL de push de la suscripción de Pub/Sub.
 
 ---
 

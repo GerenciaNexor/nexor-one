@@ -30,7 +30,12 @@
       "Bash(sed -n '701,760p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(sed -n '759,800p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
       "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")",
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx tsx query-users.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx tsx seed-dental.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx tsx seed-dental-activity.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\" npx tsx seed-cirugia.ts)",
+      "Bash(del \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\seed-cirugia.ts\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"
