@@ -96,19 +96,19 @@ jobs:
       - name: Iniciar API en background
         run: node apps/api/dist/app.js > /tmp/api.log 2>&1 &
         env:
-          DATABASE_URL:         ${{ env.DATABASE_URL }}
-          DIRECT_DATABASE_URL:  ${{ env.DIRECT_DATABASE_URL }}
-          REDIS_URL:            ${{ env.REDIS_URL }}
-          JWT_SECRET:           ${{ env.JWT_SECRET }}
-          JWT_EXPIRES_IN:       ${{ env.JWT_EXPIRES_IN }}
-          REFRESH_TOKEN_EXPIRES_DAYS: ${{ env.REFRESH_TOKEN_EXPIRES_DAYS }}
-          ENCRYPTION_KEY:       ${{ env.ENCRYPTION_KEY }}
-          GMAIL_WEBHOOK_SECRET: ${{ env.GMAIL_WEBHOOK_SECRET }}
-          PORT:                 ${{ env.PORT }}
-          HOST:                 ${{ env.HOST }}
-          CORS_ORIGIN:          ${{ env.CORS_ORIGIN }}
-          NODE_ENV:             ${{ env.NODE_ENV }}
-          LOG_LEVEL:            ${{ env.LOG_LEVEL }}
+          DATABASE_URL:               postgresql://postgres:postgres@localhost:5432/nexor_test
+          DIRECT_DATABASE_URL:        postgresql://postgres:postgres@localhost:5432/nexor_test
+          REDIS_URL:                  redis://localhost:6379
+          JWT_SECRET:                 e2e-test-secret-32-chars-minimum-here
+          JWT_EXPIRES_IN:             7d
+          REFRESH_TOKEN_EXPIRES_DAYS: 30
+          ENCRYPTION_KEY:             ${{ secrets.ENCRYPTION_KEY }}
+          GMAIL_WEBHOOK_SECRET:       e2e-test-gmail-webhook-secret
+          PORT:                       3001
+          HOST:                       0.0.0.0
+          CORS_ORIGIN:                http://localhost:3000
+          NODE_ENV:                   test
+          LOG_LEVEL:                  error
 
       - name: Esperar que la API responda
         run: |
