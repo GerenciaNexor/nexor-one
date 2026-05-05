@@ -85,6 +85,14 @@ jobs:
       - name: Build API
         run: pnpm --filter @nexor/api build
 
+      - name: Verificar secrets
+        run: |
+          echo "ENCRYPTION_KEY length: ${#ENCRYPTION_KEY}"
+          echo "JWT_SECRET length: ${#JWT_SECRET}"
+          if [ -z "$ENCRYPTION_KEY" ]; then echo "ERROR: ENCRYPTION_KEY está vacío"; exit 1; fi
+          if [ -z "$JWT_SECRET" ]; then echo "ERROR: JWT_SECRET está vacío"; exit 1; fi
+          echo "Secrets OK"
+
       - name: Iniciar API en background
         run: node apps/api/dist/app.js > /tmp/api.log 2>&1 &
         env:
