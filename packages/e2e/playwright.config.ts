@@ -1,5 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
+import { readFileSync, existsSync } from 'fs'
 import path from 'path'
+
+// Carga .env.local si existe (desarrollo local apuntando a Railway/local)
+const envLocal = path.join(__dirname, '.env.local')
+if (existsSync(envLocal)) {
+  for (const line of readFileSync(envLocal, 'utf-8').split('\n')) {
+    const eq = line.indexOf('=')
+    if (eq > 0 && !line.startsWith('#')) {
+      const key = line.slice(0, eq).trim()
+      const val = line.slice(eq + 1).trim()
+      if (key && !process.env[key]) process.env[key] = val
+    }
+  }
+}
 
 const BASE_URL  = process.env['BASE_URL']  ?? 'http://localhost:3000'
 const API_URL   = process.env['API_URL']   ?? 'http://localhost:3001'
@@ -9,15 +23,15 @@ export default defineConfig({
   testDir:     './tests',
   globalSetup: './global-setup.ts',
 
-  // Todos los tests deben completarse en menos de 5 min
-  globalTimeout: 5 * 60 * 1000,
+  // Todos los tests deben completarse en menos de 10 min (62s sleep en NIRA + posible retry)
+  globalTimeout: 10 * 60 * 1000,
   timeout:       30_000,
   expect:        { timeout: 10_000 },
 
   // Tests independientes — fallo de uno no bloquea los demás
   fullyParallel: true,
-  workers:       2,
-  retries:       process.env['CI'] ? 1 : 0,
+  workers:       1,
+  retries:       1,
 
   reporter: [
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
