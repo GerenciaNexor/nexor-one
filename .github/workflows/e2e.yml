@@ -186,6 +186,10 @@ jobs:
           path: packages/e2e/playwright-report/
           retention-days: 14
 
+      - name: Imprimir logs de la API (en caso de fallo)
+        if: failure()
+        run: cat /tmp/api.log || true
+
       - name: Subir capturas de pantalla de fallos
         if: failure()
         uses: actions/upload-artifact@v4

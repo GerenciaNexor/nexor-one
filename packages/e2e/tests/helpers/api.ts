@@ -3,6 +3,9 @@
  * Uso: setup/teardown de datos de prueba sin pasar por la UI.
  */
 
+import { readFileSync } from 'fs'
+import path from 'path'
+
 export const API_URL  = process.env['API_URL']  ?? 'http://localhost:3001'
 export const BASE_URL = process.env['BASE_URL'] ?? 'http://localhost:3000'
 
@@ -26,6 +29,16 @@ export interface LoginResult {
     branchId: string | null
     tenant:   { id: string; name: string; slug: string }
   }
+}
+
+// ── Token compartido (escrito por global-setup, leído por workers) ───────────
+
+const TOKENS_FILE = path.join(__dirname, '../../playwright/.auth/tokens.json')
+
+export function getSharedToken(which: 'tokenA' | 'tokenB' = 'tokenA'): string {
+  const raw = readFileSync(TOKENS_FILE, 'utf-8')
+  const tokens = JSON.parse(raw) as { tokenA: string; tokenB: string }
+  return tokens[which] ?? ''
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {

@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { login, api, DEMO_EMAIL, DEMO_PASSWORD, B_EMAIL, B_PASSWORD } from './helpers/api'
+import { api, getSharedToken } from './helpers/api'
 
 interface ProductA { id: string; name: string; sku: string; [k: string]: unknown }
 interface ClientA  { id: string; name: string; [k: string]: unknown }
@@ -23,18 +23,8 @@ test.describe('Aislamiento multi-tenant', () => {
   let clientAId:  string
 
   test.beforeAll(async () => {
-    // Login Tenant A
-    const authA = await login(DEMO_EMAIL, DEMO_PASSWORD)
-    tokenA = authA.token
-
-    // Login Tenant B
-    try {
-      const authB = await login(B_EMAIL, B_PASSWORD)
-      tokenB = authB.token
-    } catch {
-      // Si el seed-e2e no se ejecutó, el tenant B no existe
-      tokenB = ''
-    }
+    tokenA = getSharedToken('tokenA')
+    tokenB = getSharedToken('tokenB')
 
     // Crear un producto KIRA en Tenant A para usar como recurso de prueba
     const product = await api(tokenA).post<ProductA>('/v1/kira/products', {

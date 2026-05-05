@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { login, api, DEMO_EMAIL, DEMO_PASSWORD } from './helpers/api'
+import { api, getSharedToken } from './helpers/api'
 
 interface Supplier { id: string; name: string }
 interface PO       { id: string; orderNumber: string; status: string }
@@ -22,8 +22,7 @@ test.describe('Flujo NIRA — orden de compra', () => {
   let poId:         string
 
   test.beforeAll(async () => {
-    const auth = await login(DEMO_EMAIL, DEMO_PASSWORD)
-    token = auth.token
+    token = getSharedToken()
 
     // Crear proveedor de prueba vía API
     supplierName = `Proveedor E2E ${Date.now()}`

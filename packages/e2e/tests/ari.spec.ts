@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { login, api, DEMO_EMAIL, DEMO_PASSWORD } from './helpers/api'
+import { api, getSharedToken } from './helpers/api'
 
 interface Client  { id: string; name: string }
 interface Deal    { id: string; title: string; stage: { name: string } }
@@ -21,9 +21,8 @@ test.describe('Flujo ARI — deal ganado', () => {
   let clientName: string
   let dealId:     string
 
-  test.beforeAll(async () => {
-    const auth = await login(DEMO_EMAIL, DEMO_PASSWORD)
-    token = auth.token
+  test.beforeAll(() => {
+    token = getSharedToken()
   })
 
   test.afterAll(async () => {
