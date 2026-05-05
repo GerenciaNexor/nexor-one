@@ -17,11 +17,12 @@ import Link from 'next/link'
 import { useChatStore, type ChatMessage } from '@/store/chat'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
+import { MarkdownMessage } from '@/components/chat/MarkdownMessage'
 
 // ─── Tipos de la API ──────────────────────────────────────────────────────────
 
 interface HistoryResponse {
-  data: ChatMessage[]
+  data:       ChatMessage[]
   pagination: { page: number; limit: number; total: number; pages: number }
 }
 
@@ -108,7 +109,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
             : 'rounded-bl-sm border border-slate-200 bg-white text-slate-700 shadow-sm',
         ].join(' ')}
       >
-        {msg.content}
+        {isUser ? msg.content : <MarkdownMessage content={msg.content} />}
       </div>
     </div>
   )
@@ -123,7 +124,7 @@ export function FloatingChat() {
     open, close,
     addMessage, setMessages, setTyping,
     incrementUnread, clearUnread,
-    setHistoryLoaded,
+    setHistoryLoaded, setPagination,
   } = useChatStore()
 
   const messagesEndRef  = useRef<HTMLDivElement>(null)
@@ -141,9 +142,10 @@ export function FloatingChat() {
     if (!isOpen || historyLoaded) return
 
     apiClient
-      .get<HistoryResponse>('/v1/chat/history?limit=10')
+      .get<HistoryResponse>('/v1/chat/history?limit=50&sort=desc')
       .then((res) => {
-        setMessages(res.data)
+        setMessages([...res.data].reverse())
+        setPagination(res.pagination)
         setHistoryLoaded(true)
       })
       .catch(() => {

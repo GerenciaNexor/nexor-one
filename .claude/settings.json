@@ -5,7 +5,9 @@
       "Bash(awk '{print $2}')",
       "Bash(Start-Sleep -Seconds 2)",
       "Bash(pkill -f \"tsx src/app.ts\")",
-      "Bash(pkill -f \"node.*app.js\")"
+      "Bash(pkill -f \"node.*app.js\")",
+      "Bash(pnpm remove *)",
+      "Bash(node -e \"const rm = require\\('./apps/web/node_modules/react-markdown/index.js'\\); console.log\\('CJS ok'\\)\")"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [
