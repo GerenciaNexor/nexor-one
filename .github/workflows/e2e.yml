@@ -86,7 +86,7 @@ jobs:
         run: pnpm --filter @nexor/api build
 
       - name: Iniciar API en background
-        run: node apps/api/dist/app.js &
+        run: node apps/api/dist/app.js > /tmp/api.log 2>&1 &
         env:
           DATABASE_URL:         ${{ env.DATABASE_URL }}
           DIRECT_DATABASE_URL:  ${{ env.DIRECT_DATABASE_URL }}
@@ -105,16 +105,19 @@ jobs:
       - name: Esperar que la API responda
         run: |
           echo "Esperando API en puerto 3001..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3001/health; then
-              echo "API lista en intento $i"
+          for i in $(seq 1 60); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:3001/health 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "API lista en intento $i (HTTP 200)"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "Error: API no respondió después de 60 segundos"
+            if [ "$i" -eq 60 ]; then
+              echo "Error: API no respondió después de 120 segundos (último código: $HTTP_CODE)"
+              echo "=== API startup log ==="
+              cat /tmp/api.log || true
               exit 1
             fi
-            echo "Intento $i/30 — esperando..."
+            echo "Intento $i/60 — HTTP $HTTP_CODE — esperando..."
             sleep 2
           done
 
