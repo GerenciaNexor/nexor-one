@@ -12,7 +12,7 @@ Este repositorio tiene documentación exhaustiva para que cualquier desarrollado
 
 | Si necesitas saber... | Lee este documento |
 |-----------------------|--------------------|
-| Cómo instalar y correr el proyecto localmente | [README_DEVELOPMENT.md](./README_DEVELOPMENT.md) *(pendiente — Sprint 1)* |
+| Cómo instalar y correr el proyecto localmente | [README_DEVELOPMENT.md](./README_DEVELOPMENT.md) |
 | Cómo está organizado el sistema y por qué | [README_ARCHITECTURE.md](./README_ARCHITECTURE.md) |
 | Qué tablas hay en la DB y cómo se relacionan | [README_DATABASE.md](./README_DATABASE.md) |
 | Qué endpoints existen y cómo usarlos | [README_ENDPOINTS.md](./README_ENDPOINTS.md) |
@@ -60,9 +60,14 @@ nexor/
 │   └── web/          ← Frontend Next.js (Vercel)
 ├── packages/
 │   ├── shared/       ← Tipos TypeScript compartidos
-│   └── ui/           ← Componentes compartidos (V2)
+│   ├── ui/           ← Componentes compartidos (V2)
+│   ├── e2e/          ← Tests E2E con Playwright
+│   └── load-tests/   ← Load tests con k6 (75 VUs, SLA 2s p95)
 ├── .github/
-│   └── workflows/    ← CI/CD con GitHub Actions
+│   └── workflows/    ← CI/CD (lint, E2E, deploy, backup semanal)
+├── docs/
+│   ├── LAUNCH_CHECKLIST.md          ← Checklist pre-lanzamiento
+│   └── QA_REPORT_SPRINT11.md        ← Reporte QA Sprint 11
 ├── README.md                        ← Este archivo
 ├── README_ARCHITECTURE.md
 ├── README_DATABASE.md
@@ -72,5 +77,5 @@ nexor/
 ├── README_AGENTS.md
 ├── README_INTEGRATIONS.md
 ├── README_ONBOARDING_CLIENT.md
-└── README_DEVELOPMENT.md            ← Pendiente Sprint 1
+└── README_DEVELOPMENT.md
 ```

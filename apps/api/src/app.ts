@@ -42,6 +42,7 @@ import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
 import swaggerPlugin from './plugins/swagger'
 import securityHeadersPlugin from './plugins/security-headers'
+import multipartPlugin from './plugins/multipart'
 import ariModule from './modules/ari/index'
 import kiraModule from './modules/kira/index'
 import niraModule from './modules/nira/index'
@@ -51,6 +52,7 @@ import chatModule from './modules/chat/index'
 import agendaModule from './modules/agenda/index'
 import veraModule from './modules/vera/index'
 import dashboardModule from './modules/dashboard/index'
+import bulkUploadModule from './modules/bulk-upload/index'
 import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
 
 const app = Fastify({
@@ -91,6 +93,7 @@ app.register(jwtPlugin)
 app.register(rateLimitPlugin)
 app.register(sentryPlugin)
 app.register(securityHeadersPlugin)
+app.register(multipartPlugin)
 
 // ─── Error handler global — enmascara detalles internos en 5xx ───────────────
 app.setErrorHandler((err, request, reply) => {
@@ -163,6 +166,7 @@ app.register(
     api.register(agendaModule,        { prefix: '/agenda' })
     api.register(veraModule,          { prefix: '/vera' })
     api.register(dashboardModule,     { prefix: '/dashboard' })
+    api.register(bulkUploadModule,    { prefix: '/bulk-upload' })
   },
   { prefix: '/v1' },
 )

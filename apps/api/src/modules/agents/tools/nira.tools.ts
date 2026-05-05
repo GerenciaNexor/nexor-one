@@ -330,6 +330,169 @@ const notificarJefeCompras: AgentTool = {
   },
 }
 
+// ─── consultar_ordenes_compra ─────────────────────────────────────────────────
+
+function df(from?: unknown, to?: unknown) {
+  const gte = from ? new Date(from as string) : undefined
+  const lte = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : undefined
+  return (!gte && !lte) ? undefined : { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) }
+}
+
+const consultarOrdenesCompra: AgentTool = {
+  definition: {
+    name: 'consultar_ordenes_compra',
+    description: 'Returns purchase orders with optional filters by status, supplier and date range. Use to review purchasing activity or find a specific order.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        estado:      { type: 'string', enum: ['draft', 'sent', 'received', 'cancelled'], description: 'Order status filter' },
+        supplierId:  { type: 'string', description: 'Filter by supplier ID' },
+        from:        { type: 'string', description: 'Start date YYYY-MM-DD' },
+        to:          { type: 'string', description: 'End date YYYY-MM-DD' },
+        limit:       { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+
+  async execute({ estado, supplierId, from, to, limit }, tenantId) {
+    const take       = Math.min(50, Math.max(1, Number(limit ?? 20)))
+    const dateFilter = df(from, to)
+
+    const orders = await prisma.purchaseOrder.findMany({
+      where: {
+        tenantId,
+        ...(estado     ? { status: estado as string }             : {}),
+        ...(supplierId ? { supplierId: supplierId as string }     : {}),
+        ...(dateFilter ? { createdAt: dateFilter }                : {}),
+      },
+      include: {
+        supplier: { select: { name: true } },
+        branch:   { select: { name: true } },
+        items:    { select: { quantityOrdered: true, unitCost: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    })
+
+    if (orders.length === 0) return { total: 0, ordenes: [], message: 'No se encontraron órdenes con los filtros indicados.' }
+
+    return {
+      total: orders.length,
+      ordenes: orders.map((o) => ({
+        id:          o.id,
+        numero:      o.orderNumber,
+        estado:      o.status,
+        proveedor:   o.supplier?.name ?? null,
+        sucursal:    o.branch?.name   ?? null,
+        items:       o.items.length,
+        subtotal:    Number(o.subtotal).toFixed(2),
+        total:       Number(o.total).toFixed(2),
+        fecha:       o.createdAt.toISOString().split('T')[0],
+      })),
+    }
+  },
+}
+
+// ─── consultar_ranking_proveedores ────────────────────────────────────────────
+
+const consultarRankingProveedores: AgentTool = {
+  definition: {
+    name: 'consultar_ranking_proveedores',
+    description: 'Returns suppliers ranked by their overall score (price, delivery, quality). Use to identify the best and worst performing suppliers.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Number of suppliers to return (default 10)' },
+      },
+    },
+  },
+
+  async execute({ limit }, tenantId) {
+    const take = Math.min(50, Math.max(1, Number(limit ?? 10)))
+
+    const suppliers = await prisma.supplier.findMany({
+      where:   { tenantId, isActive: true, score: { isNot: null } },
+      include: { score: true },
+      orderBy: { score: { overallScore: 'desc' } },
+      take,
+    })
+
+    if (suppliers.length === 0) return { total: 0, proveedores: [], message: 'No hay proveedores con puntaje calculado aún.' }
+
+    return {
+      total: suppliers.length,
+      proveedores: suppliers.map((s, idx) => ({
+        posicion:    idx + 1,
+        proveedor:   s.name,
+        id:          s.id,
+        puntuacion:  Number(s.score!.overallScore).toFixed(1),
+        precio:      Number(s.score!.priceScore).toFixed(1),
+        entrega:     Number(s.score!.deliveryScore).toFixed(1),
+        calidad:     Number(s.score!.qualityScore).toFixed(1),
+        totalOrdenes: s.score!.totalOrders,
+        entregasATiempo: s.score!.onTimeDeliveries,
+      })),
+    }
+  },
+}
+
+// ─── consultar_reporte_costos ─────────────────────────────────────────────────
+
+const consultarReporteCostos: AgentTool = {
+  definition: {
+    name: 'consultar_reporte_costos',
+    description: 'Returns total purchasing spend for a period broken down by supplier. Excludes draft and cancelled orders.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from:  { type: 'string', description: 'Start date YYYY-MM-DD (default: first day of current month)' },
+        to:    { type: 'string', description: 'End date YYYY-MM-DD (default: today)' },
+        limit: { type: 'number', description: 'Top N suppliers (default 10)' },
+      },
+    },
+  },
+
+  async execute({ from, to, limit }, tenantId) {
+    const now  = new Date()
+    const gte  = from ? new Date(from as string) : new Date(now.getFullYear(), now.getMonth(), 1)
+    const lte  = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : now
+    const take = Math.min(50, Math.max(1, Number(limit ?? 10)))
+
+    const [totalAgg, bySup] = await Promise.all([
+      prisma.purchaseOrder.aggregate({
+        where: { tenantId, createdAt: { gte, lte }, status: { notIn: ['draft', 'cancelled'] } },
+        _sum:  { total: true },
+        _count: { id: true },
+      }),
+      prisma.purchaseOrder.groupBy({
+        by:    ['supplierId'],
+        where: { tenantId, createdAt: { gte, lte }, status: { notIn: ['draft', 'cancelled'] } },
+        _sum:  { total: true },
+        _count: { id: true },
+        orderBy: { _sum: { total: 'desc' } },
+        take,
+      }),
+    ])
+
+    const supIds   = bySup.map((r) => r.supplierId).filter(Boolean) as string[]
+    const sups     = supIds.length > 0
+      ? await prisma.supplier.findMany({ where: { id: { in: supIds } }, select: { id: true, name: true } })
+      : []
+    const supMap   = new Map(sups.map((s) => [s.id, s.name]))
+
+    return {
+      periodo:       { desde: gte.toISOString().split('T')[0], hasta: lte.toISOString().split('T')[0] },
+      totalGastado:  Number(totalAgg._sum.total ?? 0).toFixed(2),
+      totalOrdenes:  totalAgg._count.id,
+      porProveedor:  bySup.map((r) => ({
+        proveedor: r.supplierId ? (supMap.get(r.supplierId) ?? r.supplierId) : 'Sin proveedor',
+        total:     Number(r._sum.total ?? 0).toFixed(2),
+        ordenes:   r._count.id,
+      })),
+    }
+  },
+}
+
 // ─── Catálogo NIRA ────────────────────────────────────────────────────────────
 
 export const NIRA_TOOLS: AgentTool[] = [
@@ -338,4 +501,7 @@ export const NIRA_TOOLS: AgentTool[] = [
   crearBorradorOC,
   consultarPresupuesto,
   notificarJefeCompras,
+  consultarOrdenesCompra,
+  consultarRankingProveedores,
+  consultarReporteCostos,
 ]

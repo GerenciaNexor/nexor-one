@@ -3,37 +3,23 @@
 /**
  * Chat IA — HU-057D
  *
- * Historial completo de conversaciones con el agente.
+ * useChatStore es la fuente de verdad para el historial propio.
+ * Supervisión (TENANT_ADMIN) usa estado local sin tocar el store.
  * - Paginación DESC: carga los últimos 50 y permite cargar hacia atrás.
  * - Búsqueda client-side sobre mensajes cargados.
- * - TENANT_ADMIN: selector de usuario + modo supervisión (solo lectura).
  * - Input sticky al fondo; respuesta en tiempo real sin recargar.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
-import { useChatStore } from '@/store/chat'
+import { useChatStore, type ChatMessage, type PaginationMeta } from '@/store/chat'
+import { MarkdownMessage } from '@/components/chat/MarkdownMessage'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-interface ChatMsg {
-  id:        string
-  role:      'user' | 'assistant'
-  content:   string
-  module?:   string | null
-  createdAt: string
-}
-
-interface PaginationMeta {
-  page:  number
-  limit: number
-  total: number
-  pages: number
-}
-
 interface HistoryResponse {
-  data:       ChatMsg[]
+  data:       ChatMessage[]
   pagination: PaginationMeta
 }
 
@@ -44,7 +30,8 @@ interface TenantUser {
   role:  string
 }
 
-const PAGE_LIMIT = 50
+const PAGE_LIMIT       = 50
+const DEFAULT_PAGINATION: PaginationMeta = { page: 1, pages: 1, total: 0, limit: PAGE_LIMIT }
 
 // ─── Iconos SVG ───────────────────────────────────────────────────────────────
 
@@ -96,14 +83,12 @@ function EyeIcon() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTimestamp(iso: string): string {
-  const d     = new Date(iso)
-  const today = new Date()
+  const d       = new Date(iso)
+  const today   = new Date()
   const isToday = d.toDateString() === today.toDateString()
   const time    = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
   if (isToday) return time
-  return (
-    d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + time
-  )
+  return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + time
 }
 
 // ─── Typing indicator ─────────────────────────────────────────────────────────
@@ -129,14 +114,14 @@ function TypingIndicator() {
 
 // ─── Burbuja de mensaje ───────────────────────────────────────────────────────
 
-function MessageBubble({ msg, highlight }: { msg: ChatMsg; highlight?: string }) {
+function MessageBubble({ msg, highlight }: { msg: ChatMessage; highlight?: string }) {
   const isUser = msg.role === 'user'
 
-  let content: React.ReactNode = msg.content
-  if (highlight) {
+  let userContent: React.ReactNode = msg.content
+  if (isUser && highlight) {
     const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const parts   = msg.content.split(new RegExp(`(${escaped})`, 'gi'))
-    content = parts.map((part, i) =>
+    userContent   = parts.map((part, i) =>
       part.toLowerCase() === highlight.toLowerCase()
         ? <mark key={i} className="rounded bg-yellow-200 text-slate-900">{part}</mark>
         : part,
@@ -159,7 +144,7 @@ function MessageBubble({ msg, highlight }: { msg: ChatMsg; highlight?: string })
               : 'rounded-bl-sm border border-slate-200 bg-white text-slate-700 shadow-sm',
           ].join(' ')}
         >
-          {content}
+          {isUser ? userContent : <MarkdownMessage content={msg.content} />}
         </div>
         <span className="text-[11px] text-slate-400">
           {formatTimestamp(msg.createdAt)}
@@ -172,35 +157,55 @@ function MessageBubble({ msg, highlight }: { msg: ChatMsg; highlight?: string })
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  const { user }                       = useAuthStore()
-  const { clearUnread, setHistoryLoaded } = useChatStore()
+  const { user } = useAuthStore()
+  const {
+    messages:      storeMessages,
+    isTyping:      storeIsTyping,
+    historyLoaded,
+    pagination:    storePagination,
+    addMessage,
+    setMessages,
+    prependMessages,
+    setTyping,
+    setHistoryLoaded,
+    setPagination,
+    clearUnread,
+  } = useChatStore()
+
   const isAdmin = user?.role === 'TENANT_ADMIN'
 
-  // ── Estado de mensajes ───────────────────────────────────────────────────────
-  const [messages,    setMessages]    = useState<ChatMsg[]>([])
-  const [pagination,  setPagination]  = useState<PaginationMeta>({ page: 1, pages: 1, total: 0, limit: PAGE_LIMIT })
-  const [loading,     setLoading]     = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
+  // ── Carga inicial del historial propio ───────────────────────────────────────
+  // Inicia en false si el store ya tiene datos (FloatingChat los cargó antes)
+  const [initialLoading,  setInitialLoading]  = useState(() => !useChatStore.getState().historyLoaded)
+  const [loadingMore,     setLoadingMore]     = useState(false)
 
   // ── Búsqueda ─────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
 
-  // ── Envío ────────────────────────────────────────────────────────────────────
-  const [isTyping,   setIsTyping]   = useState(false)
-  const isSendingRef                = useRef(false)
-
-  // ── Supervisión admin ────────────────────────────────────────────────────────
+  // ── Supervisión admin (local — no afecta el store) ───────────────────────────
   const [tenantUsers,   setTenantUsers]   = useState<TenantUser[]>([])
   const [viewingUserId, setViewingUserId] = useState('')
   const isSupervising = isAdmin && viewingUserId !== '' && viewingUserId !== user?.id
   const viewedUser    = tenantUsers.find((u) => u.id === viewingUserId)
 
+  const [supervisionMessages,    setSupervisionMessages]    = useState<ChatMessage[]>([])
+  const [supervisionPagination,  setSupervisionPagination]  = useState<PaginationMeta>(DEFAULT_PAGINATION)
+  const [supervisionLoading,     setSupervisionLoading]     = useState(false)
+  const [supervisionLoadingMore, setSupervisionLoadingMore] = useState(false)
+
+  // ── Derivados: qué fuente de datos usar ──────────────────────────────────────
+  const messages        = isSupervising ? supervisionMessages  : storeMessages
+  const pagination      = isSupervising ? supervisionPagination : (storePagination ?? DEFAULT_PAGINATION)
+  const loading         = isSupervising ? supervisionLoading   : initialLoading
+  const isTyping        = isSupervising ? false                : storeIsTyping
+  const loadingMoreNow  = isSupervising ? supervisionLoadingMore : loadingMore
+
   // ── Refs ─────────────────────────────────────────────────────────────────────
+  const isSendingRef     = useRef(false)
   const messagesEndRef   = useRef<HTMLDivElement>(null)
   const inputRef         = useRef<HTMLTextAreaElement>(null)
   const didInitialScroll = useRef(false)
 
-  /** Devuelve el contenedor scrollable del dashboard (el <main> del AppShell). */
   function getScrollContainer(): HTMLElement | null {
     return document.querySelector('main')
   }
@@ -209,6 +214,24 @@ export default function ChatPage() {
   useEffect(() => {
     clearUnread()
   }, [clearUnread])
+
+  // ── Cargar historial propio al montar (una sola vez) ─────────────────────────
+  useEffect(() => {
+    if (historyLoaded) {
+      setInitialLoading(false)
+      return
+    }
+    apiClient
+      .get<HistoryResponse>(`/v1/chat/history?limit=${PAGE_LIMIT}&sort=desc`)
+      .then((res) => {
+        setMessages([...res.data].reverse())
+        setPagination(res.pagination)
+        setHistoryLoaded(true)
+      })
+      .catch(() => {})
+      .finally(() => setInitialLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Cargar usuarios del tenant para admin ────────────────────────────────────
   useEffect(() => {
@@ -219,66 +242,26 @@ export default function ChatPage() {
       .catch(() => {})
   }, [isAdmin])
 
-  // ── Cargar historial ─────────────────────────────────────────────────────────
-  // DESC: página 1 = últimos 50. Para "cargar anteriores" pedimos página 2, 3…
-  // Cada página DESC viene más nueva primero → la invertimos para mostrar
-  // más antiguo arriba, más reciente abajo (orden natural de chat).
-  const loadHistory = useCallback(
-    async (targetUserId: string, page: number, prepend: boolean) => {
-      if (!prepend) setLoading(true)
-      else          setLoadingMore(true)
-
-      try {
-        const params = new URLSearchParams({
-          page:  String(page),
-          limit: String(PAGE_LIMIT),
-          sort:  'desc',
-        })
-        const url = targetUserId && targetUserId !== user?.id
-          ? `/v1/chat/history/${targetUserId}?${params.toString()}`
-          : `/v1/chat/history?${params.toString()}`
-
-        const res = await apiClient.get<HistoryResponse>(url)
-
-        // Invertir para mostrar orden cronológico (más antiguo arriba)
-        const ordered = [...res.data].reverse()
-
-        if (prepend) {
-          // Preservar posición de scroll al agregar mensajes viejos arriba
-          const container  = getScrollContainer()
-          const prevHeight = container?.scrollHeight ?? 0
-
-          setMessages((prev) => [...ordered, ...prev])
-
-          // Restaurar posición después del re-render
-          requestAnimationFrame(() => {
-            if (container) {
-              container.scrollTop += container.scrollHeight - prevHeight
-            }
-          })
-        } else {
-          setMessages(ordered)
-          didInitialScroll.current = false
-        }
-
-        setPagination(res.pagination)
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false)
-        setLoadingMore(false)
-      }
-    },
-    [user?.id],
-  )
-
-  // ── Re-cargar al cambiar usuario supervisado ─────────────────────────────────
+  // ── Supervisión: recargar al cambiar usuario ──────────────────────────────────
   useEffect(() => {
-    didInitialScroll.current = false
-    setMessages([])
     setSearch('')
-    void loadHistory(viewingUserId, 1, false)
-  }, [viewingUserId, loadHistory])
+    didInitialScroll.current = false
+
+    if (!isSupervising) return
+
+    setSupervisionMessages([])
+    setSupervisionPagination(DEFAULT_PAGINATION)
+    setSupervisionLoading(true)
+
+    apiClient
+      .get<HistoryResponse>(`/v1/chat/history/${viewingUserId}?limit=${PAGE_LIMIT}&sort=desc`)
+      .then((res) => {
+        setSupervisionMessages([...res.data].reverse())
+        setSupervisionPagination(res.pagination)
+      })
+      .catch(() => {})
+      .finally(() => setSupervisionLoading(false))
+  }, [viewingUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll al fondo tras carga inicial ──────────────────────────────────────
   useEffect(() => {
@@ -305,14 +288,13 @@ export default function ChatPage() {
     isSendingRef.current = true
     if (inputRef.current) inputRef.current.value = ''
 
-    const userMsg: ChatMsg = {
+    addMessage({
       id:        `tmp-${Date.now()}`,
       role:      'user',
       content:   text,
       createdAt: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setIsTyping(true)
+    })
+    setTyping(true)
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
     try {
@@ -320,37 +302,29 @@ export default function ChatPage() {
         '/v1/chat/message',
         { message: text },
       )
-      setMessages((prev) => [
-        ...prev,
-        {
-          id:        `tmp-${Date.now()}-a`,
-          role:      'assistant',
-          content:   res.reply,
-          module:    res.module,
-          createdAt: new Date().toISOString(),
-        },
-      ])
-      // FloatingChat debe recargar la próxima vez que se abra
-      setHistoryLoaded(false)
+      addMessage({
+        id:        `tmp-${Date.now()}-a`,
+        role:      'assistant',
+        content:   res.reply,
+        module:    res.module,
+        createdAt: new Date().toISOString(),
+      })
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id:        `tmp-${Date.now()}-err`,
-          role:      'assistant',
-          content:   'No pude procesar tu mensaje. Inténtalo de nuevo.',
-          createdAt: new Date().toISOString(),
-        },
-      ])
+      addMessage({
+        id:        `tmp-${Date.now()}-err`,
+        role:      'assistant',
+        content:   'No pude procesar tu mensaje. Inténtalo de nuevo.',
+        createdAt: new Date().toISOString(),
+      })
     } finally {
-      setIsTyping(false)
+      setTyping(false)
       isSendingRef.current = false
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         inputRef.current?.focus()
       }, 50)
     }
-  }, [isSupervising, setHistoryLoaded])
+  }, [isSupervising, addMessage, setTyping])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -361,15 +335,45 @@ export default function ChatPage() {
 
   // ── Cargar mensajes anteriores ───────────────────────────────────────────────
   async function handleLoadMore() {
-    if (loadingMore || pagination.page >= pagination.pages) return
-    await loadHistory(viewingUserId, pagination.page + 1, true)
+    if (loadingMoreNow) return
+
+    const container  = getScrollContainer()
+    const prevHeight = container?.scrollHeight ?? 0
+    const restoreScroll = () =>
+      requestAnimationFrame(() => {
+        if (container) container.scrollTop += container.scrollHeight - prevHeight
+      })
+
+    if (isSupervising) {
+      if (supervisionPagination.page >= supervisionPagination.pages) return
+      setSupervisionLoadingMore(true)
+      try {
+        const res = await apiClient.get<HistoryResponse>(
+          `/v1/chat/history/${viewingUserId}?limit=${PAGE_LIMIT}&sort=desc&page=${supervisionPagination.page + 1}`,
+        )
+        setSupervisionMessages((prev) => [...[...res.data].reverse(), ...prev])
+        setSupervisionPagination(res.pagination)
+        restoreScroll()
+      } catch { /* silent */ }
+      finally { setSupervisionLoadingMore(false) }
+    } else {
+      if (!storePagination || storePagination.page >= storePagination.pages) return
+      setLoadingMore(true)
+      try {
+        const res = await apiClient.get<HistoryResponse>(
+          `/v1/chat/history?limit=${PAGE_LIMIT}&sort=desc&page=${storePagination.page + 1}`,
+        )
+        prependMessages([...res.data].reverse())
+        setPagination(res.pagination)
+        restoreScroll()
+      } catch { /* silent */ }
+      finally { setLoadingMore(false) }
+    }
   }
 
   // ── Filtro de búsqueda (client-side) ─────────────────────────────────────────
   const displayMessages = search.trim()
-    ? messages.filter((m) =>
-        m.content.toLowerCase().includes(search.toLowerCase()),
-      )
+    ? messages.filter((m) => m.content.toLowerCase().includes(search.toLowerCase()))
     : messages
 
   const canLoadMore = !search.trim() && pagination.page < pagination.pages
@@ -466,10 +470,10 @@ export default function ChatPage() {
           <div className="mb-5 flex justify-center">
             <button
               onClick={() => void handleLoadMore()}
-              disabled={loadingMore}
+              disabled={loadingMoreNow}
               className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-60"
             >
-              {loadingMore
+              {loadingMoreNow
                 ? 'Cargando…'
                 : `Cargar mensajes anteriores (${(pagination.pages - pagination.page) * PAGE_LIMIT}+)`}
             </button>

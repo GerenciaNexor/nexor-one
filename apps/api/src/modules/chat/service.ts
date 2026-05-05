@@ -19,17 +19,20 @@ import type { AgentModule } from '../agents/types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA']
+const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA']
 
 const KEYWORDS: Partial<Record<AgentModule, string[]>> = {
   KIRA:   ['stock', 'inventario', 'producto', 'entrada', 'salida', 'unidades',
-            'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía'],
+            'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía', 'lote', 'rotación'],
   NIRA:   ['compra', 'proveedor', 'orden', 'cotización', 'precio', 'pedido',
             'factura', 'surtir', ' oc ', 'suministro', 'abastec'],
   ARI:    ['cliente', 'venta', 'cotizar', 'lead', 'oportunidad', 'oferta',
-            'presupuesto', 'negocio', 'contrato'],
+            'presupuesto', 'negocio', 'contrato', 'deal', 'pipeline'],
   AGENDA: ['cita', 'turno', 'agendar', 'horario', 'disponibilidad', 'reservar',
             'appointment', 'agenda'],
+  VERA:   ['transacción', 'transacciones', 'financiero', 'finanzas', 'ingreso',
+            'egreso', 'gasto', 'utilidad', 'margen', 'flujo', 'caja', 'presupuesto vera',
+            'balance', 'rentabilidad', 'kpi financiero'],
 }
 
 /** Elige el módulo con mayor score de keywords; en empate respeta PRIORITY. */
