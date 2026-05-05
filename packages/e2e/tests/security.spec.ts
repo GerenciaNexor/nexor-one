@@ -76,6 +76,7 @@ test.beforeAll(async () => {
   const po = await c.post<WithId>('/v1/nira/purchase-orders', {
     supplierId,
     notes: 'OC seguridad HU-086',
+    items: [{ productId: 'seed-e2e-product-001', quantityOrdered: 1, unitCost: 10000 }],
   })
   poId = po.id
 
