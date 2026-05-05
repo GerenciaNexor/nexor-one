@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 
@@ -76,13 +75,6 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString('es-CO', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
-}
-
-function fmtSize(bytes: number | null) {
-  if (!bytes) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(2)} MB`
 }
 
 function fmtDuration(createdAt: string, finishedAt: string | null) {

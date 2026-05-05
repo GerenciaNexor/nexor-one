@@ -7,7 +7,8 @@
       "Bash(pkill -f \"tsx src/app.ts\")",
       "Bash(pkill -f \"node.*app.js\")",
       "Bash(pnpm remove *)",
-      "Bash(node -e \"const rm = require\\('./apps/web/node_modules/react-markdown/index.js'\\); console.log\\('CJS ok'\\)\")"
+      "Bash(node -e \"const rm = require\\('./apps/web/node_modules/react-markdown/index.js'\\); console.log\\('CJS ok'\\)\")",
+      "Bash(npx next *)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [

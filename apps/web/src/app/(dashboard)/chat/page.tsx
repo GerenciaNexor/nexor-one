@@ -354,7 +354,7 @@ export default function ChatPage() {
         setSupervisionMessages((prev) => [...[...res.data].reverse(), ...prev])
         setSupervisionPagination(res.pagination)
         restoreScroll()
-      } catch {}
+      } catch { /* silent */ }
       finally { setSupervisionLoadingMore(false) }
     } else {
       if (!storePagination || storePagination.page >= storePagination.pages) return
@@ -366,7 +366,7 @@ export default function ChatPage() {
         prependMessages([...res.data].reverse())
         setPagination(res.pagination)
         restoreScroll()
-      } catch {}
+      } catch { /* silent */ }
       finally { setLoadingMore(false) }
     }
   }

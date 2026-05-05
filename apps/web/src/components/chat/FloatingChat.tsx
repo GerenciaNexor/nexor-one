@@ -151,7 +151,7 @@ export function FloatingChat() {
       .catch(() => {
         setHistoryLoaded(true)   // falló — no reintentar en bucle
       })
-  }, [isOpen, historyLoaded, setMessages, setHistoryLoaded])
+  }, [isOpen, historyLoaded, setMessages, setHistoryLoaded, setPagination])
 
   // ── Cerrar al hacer click fuera (solo desktop) ────────────────────────────────
   useEffect(() => {
