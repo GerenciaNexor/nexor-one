@@ -55,11 +55,20 @@ test.describe('OpenAPI — HU-087', () => {
     const spec  = await res.json() as { paths?: Record<string, unknown> }
     const paths = Object.keys(spec.paths ?? {})
 
-    // Rutas permitidas sin /v1/: health, webhooks, cancel de agenda
-    const ALLOWED_WITHOUT_V1 = ['/health', '/webhook']
+    // Rutas permitidas sin /v1/: infraestructura y webhooks
+    const SPECIAL_PATHS = [
+      '/documentation',
+      '/documentation/ui',
+      '/health',
+      '/webhook/whatsapp',
+      '/webhook/gmail',
+      '/v1/agenda/cancel/:token',
+    ]
 
     const unversioned = paths.filter(
-      (p) => !p.startsWith('/v1/') && !ALLOWED_WITHOUT_V1.some((a) => p.startsWith(a)),
+      (p) =>
+        !p.startsWith('/v1/') &&
+        !SPECIAL_PATHS.some((sp) => p.startsWith(sp.replace(':token', ''))),
     )
 
     expect(

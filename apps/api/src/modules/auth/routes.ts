@@ -10,7 +10,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/login', {
     config: {
       rateLimit: {
-        max: 10,
+        max: process.env['NODE_ENV'] === 'test' ? 200 : 10,
         timeWindow: '1 minute',
         keyGenerator: (req) => req.ip,
       },

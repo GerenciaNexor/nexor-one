@@ -50,30 +50,34 @@ Edita `apps/api/.env` y configura la conexión a la base de datos (ver opciones 
 
 ### 2.4 Levantar PostgreSQL y Redis
 
-**Opción A — Docker Compose (recomendado):**
+**Opción A — Docker Compose:**
 
 ```bash
 docker-compose up -d
 ```
 
-Esto levanta PostgreSQL 16 en `localhost:5432` y Redis 7 en `localhost:6379`.
+Esto levanta PostgreSQL 16 en `localhost:5433` (puerto 5433 para evitar conflictos) y Redis 7 en `localhost:6379`.
 
-Con Docker Compose, las credenciales en `apps/api/.env` son:
 ```env
 DATABASE_URL="postgresql://postgres:password@localhost:5433/nexor_dev"
 REDIS_URL="redis://localhost:6379"
 JWT_SECRET="dev_secret_32_chars_minimum_for_jwt_signing"
+ENCRYPTION_KEY="0000000000000000000000000000000000000000000000000000000000000000"
 ```
 
-> **Nota:** El Docker Compose usa el puerto `5433` (no `5432`) para evitar conflictos con PostgreSQL que ya pueda tener instalado en el sistema.
+> **Windows:** Docker Desktop requiere Hyper-V / Virtual Machine Platform habilitado. Si no puedes usar Docker, usa la Opción C.
 
-**Opción B — PostgreSQL instalado en el sistema:**
+**Opción B — PostgreSQL + Redis instalados en el sistema:**
 
 ```bash
 createdb nexor_dev
 ```
 
 Ajusta `DATABASE_URL` en `apps/api/.env` según tus credenciales locales.
+
+**Opción C — Railway (recomendado en Windows o si no tienes Docker):**
+
+Apunta directamente al ambiente de Railway configurando `DATABASE_URL` y `DIRECT_DATABASE_URL` con las credenciales de la base de datos en Railway. Útil para desarrollo rápido cuando no quieres levantar infraestructura local.
 
 ### 2.5 Ejecutar migraciones, RLS y seed (todo en un comando)
 
@@ -82,7 +86,7 @@ pnpm --filter @nexor/api db:setup
 ```
 
 Este comando hace tres cosas en orden:
-1. `prisma migrate dev` — crea las 24 tablas en la BD
+1. `prisma migrate dev` — crea los 31 modelos en la BD
 2. `tsx prisma/setup-rls.ts` — habilita Row-Level Security en las 19 tablas de negocio
 3. `prisma db seed` — carga los datos de prueba
 
@@ -173,13 +177,17 @@ Todas las variables están documentadas en [`.env.example`](./.env.example) con 
 |----------|-------------|
 | `DATABASE_URL` | Conexión a PostgreSQL |
 | `REDIS_URL` | Conexión a Redis |
-| `JWT_SECRET` | Clave para firmar tokens JWT |
+| `JWT_SECRET` | Clave para firmar tokens JWT (mínimo 32 caracteres) |
+| `ENCRYPTION_KEY` | 32 bytes en hex para AES-256 (integraciones). En dev: `0000...0000` (64 ceros) |
 | `NEXT_PUBLIC_API_URL` | URL de la API que usa el frontend |
+
+> `ENCRYPTION_KEY` es **obligatoria** — la API llama a `validateEncryptionKey()` en el arranque y hace `process.exit(1)` si no está definida. Para desarrollo local puedes usar 64 ceros: `0000000000000000000000000000000000000000000000000000000000000000`.
 
 **Variables opcionales** (solo se necesitan si trabajas esas integraciones):
 - `ANTHROPIC_API_KEY` — para probar los agentes de IA
 - `WHATSAPP_ACCESS_TOKEN` — para probar el webhook de WhatsApp
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — para la integración con Gmail
+- `GMAIL_WEBHOOK_SECRET` — secreto para verificar webhooks de Gmail (requerido en producción)
 - `RESEND_API_KEY` — para envío de emails
 
 ---

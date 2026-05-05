@@ -302,6 +302,295 @@ const crearSolicitudCompra: AgentTool = {
   },
 }
 
+// ─── consultar_movimientos ────────────────────────────────────────────────────
+
+function df(from?: unknown, to?: unknown) {
+  const gte = from ? new Date(from as string) : undefined
+  const lte = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : undefined
+  return (!gte && !lte) ? undefined : { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) }
+}
+
+const consultarMovimientos: AgentTool = {
+  definition: {
+    name: 'consultar_movimientos',
+    description: 'Returns stock movement history with optional filters by product, movement type and date range. Use to audit what happened with a product.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        productName: { type: 'string', description: 'Product name or partial match' },
+        productId:   { type: 'string', description: 'Exact product ID (alternative to productName)' },
+        tipo:        { type: 'string', enum: ['ENTRADA', 'SALIDA', 'AJUSTE'], description: 'Movement type filter' },
+        branchId:    { type: 'string', description: 'Filter by branch ID' },
+        from:        { type: 'string', description: 'Start date YYYY-MM-DD (inclusive)' },
+        to:          { type: 'string', description: 'End date YYYY-MM-DD (inclusive)' },
+        limit:       { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+
+  async execute({ productName, productId, tipo, branchId, from, to, limit }, tenantId) {
+    let resolvedProductId = productId as string | undefined
+
+    if (!resolvedProductId && productName) {
+      const p = await prisma.product.findFirst({
+        where:  { tenantId, name: { contains: productName as string, mode: 'insensitive' } },
+        select: { id: true },
+      })
+      if (!p) return { error: `No se encontró producto que coincida con "${String(productName)}".` }
+      resolvedProductId = p.id
+    }
+
+    const take       = Math.min(50, Math.max(1, Number(limit ?? 20)))
+    const dateFilter = df(from, to)
+
+    const movements = await prisma.stockMovement.findMany({
+      where: {
+        product: { tenantId },
+        ...(resolvedProductId ? { productId: resolvedProductId }          : {}),
+        ...(tipo              ? { type: (tipo as string).toUpperCase() }   : {}),
+        ...(branchId          ? { branchId: branchId as string }           : {}),
+        ...(dateFilter        ? { createdAt: dateFilter }                  : {}),
+      },
+      include: {
+        product: { select: { name: true, sku: true, unit: true } },
+        branch:  { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    })
+
+    if (movements.length === 0) return { total: 0, movimientos: [], message: 'No se encontraron movimientos con los filtros indicados.' }
+
+    return {
+      total: movements.length,
+      movimientos: movements.map((m) => ({
+        id:          m.id,
+        producto:    m.product.name,
+        sku:         m.product.sku,
+        tipo:        m.type,
+        cantidad:    Number(m.quantity),
+        stockAntes:  Number(m.quantityBefore),
+        stockDespues: Number(m.quantityAfter),
+        sucursal:    m.branch.name,
+        lote:        m.lotNumber ?? null,
+        caducidad:   m.expiryDate ? m.expiryDate.toISOString().split('T')[0] : null,
+        notas:       m.notes ?? null,
+        fecha:       m.createdAt.toISOString(),
+      })),
+    }
+  },
+}
+
+// ─── consultar_rotacion_productos ─────────────────────────────────────────────
+
+const consultarRotacionProductos: AgentTool = {
+  definition: {
+    name: 'consultar_rotacion_productos',
+    description: 'Returns products ranked by units moved in a date range. High rotation = high demand. Defaults to SALIDA movements as proxy for demand. Use to identify fast vs slow movers.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from:     { type: 'string', description: 'Start date YYYY-MM-DD (default: first day of current month)' },
+        to:       { type: 'string', description: 'End date YYYY-MM-DD (default: today)' },
+        tipo:     { type: 'string', enum: ['ENTRADA', 'SALIDA', 'AJUSTE'], description: 'Movement type to measure (default: SALIDA)' },
+        branchId: { type: 'string', description: 'Filter by branch' },
+        limit:    { type: 'number', description: 'Top N products (default 10, max 50)' },
+      },
+    },
+  },
+
+  async execute({ from, to, tipo, branchId, limit }, tenantId) {
+    const now = new Date()
+    const gte = from ? new Date(from as string) : new Date(now.getFullYear(), now.getMonth(), 1)
+    const lte = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : now
+    const take = Math.min(50, Math.max(1, Number(limit ?? 10)))
+    const tipoFinal = tipo ? (tipo as string).toUpperCase() : 'SALIDA'
+
+    const grouped = await prisma.stockMovement.groupBy({
+      by:    ['productId'],
+      where: {
+        product: { tenantId },
+        type:    tipoFinal,
+        createdAt: { gte, lte },
+        ...(branchId ? { branchId: branchId as string } : {}),
+      },
+      _sum:    { quantity: true },
+      _count:  { id: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take,
+    })
+
+    if (grouped.length === 0) return { total: 0, productos: [], message: 'Sin movimientos en el período indicado.' }
+
+    const productIds = grouped.map((r) => r.productId)
+    const products   = await prisma.product.findMany({
+      where:  { id: { in: productIds } },
+      select: { id: true, name: true, sku: true, unit: true },
+    })
+    const prodMap = new Map(products.map((p) => [p.id, p]))
+
+    return {
+      periodo:  { desde: gte.toISOString().split('T')[0], hasta: lte.toISOString().split('T')[0] },
+      tipo:     tipoFinal,
+      total:    grouped.length,
+      productos: grouped.map((r, idx) => {
+        const p = prodMap.get(r.productId)
+        return {
+          posicion:   idx + 1,
+          producto:   p?.name   ?? r.productId,
+          sku:        p?.sku    ?? null,
+          unidades:   Number(r._sum.quantity ?? 0),
+          movimientos: r._count.id,
+          unidad:     p?.unit   ?? null,
+        }
+      }),
+    }
+  },
+}
+
+// ─── consultar_lotes ──────────────────────────────────────────────────────────
+
+const consultarLotes: AgentTool = {
+  definition: {
+    name: 'consultar_lotes',
+    description: 'Returns batches (lots) that have an expiry date within the next N days. Use to detect near-expiry inventory before it becomes a problem.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        expiringInDays: { type: 'number', description: 'Show batches expiring within N days (default 30). Use 0 to see already-expired lots.' },
+        branchId:       { type: 'string', description: 'Filter by branch' },
+      },
+    },
+  },
+
+  async execute({ expiringInDays, branchId }, tenantId) {
+    const days      = expiringInDays !== undefined ? Number(expiringInDays) : 30
+    const cutoff    = new Date()
+    cutoff.setDate(cutoff.getDate() + days)
+
+    const movements = await prisma.stockMovement.findMany({
+      where: {
+        product:    { tenantId },
+        type:       'ENTRADA',
+        lotNumber:  { not: null },
+        expiryDate: { not: null, lte: cutoff },
+        ...(branchId ? { branchId: branchId as string } : {}),
+      },
+      include: {
+        product: { select: { name: true, sku: true, unit: true } },
+        branch:  { select: { name: true } },
+      },
+      orderBy: { expiryDate: 'asc' },
+      take: 50,
+    })
+
+    if (movements.length === 0) {
+      return { total: 0, lotes: [], message: `No hay lotes con vencimiento en los próximos ${days} días.` }
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return {
+      total: movements.length,
+      consultadoHasta: cutoff.toISOString().split('T')[0],
+      lotes: movements.map((m) => {
+        const expiry      = m.expiryDate!
+        const diasRestantes = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000)
+        return {
+          producto:       m.product.name,
+          sku:            m.product.sku,
+          lote:           m.lotNumber!,
+          caducidad:      expiry.toISOString().split('T')[0],
+          diasRestantes,
+          estado:         diasRestantes < 0 ? 'VENCIDO' : diasRestantes <= 7 ? 'CRÍTICO' : 'PRÓXIMO',
+          cantidadEntrada: Number(m.quantity),
+          unidad:         m.product.unit,
+          sucursal:       m.branch.name,
+        }
+      }),
+    }
+  },
+}
+
+// ─── consultar_reporte_abc ────────────────────────────────────────────────────
+
+const consultarReporteAbc: AgentTool = {
+  definition: {
+    name: 'consultar_reporte_abc',
+    description: 'Returns ABC inventory classification based on stock value (quantity × sale price). A = top 80% of value, B = next 15%, C = remaining 5%. Use to prioritize management effort.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        branchId: { type: 'string', description: 'Filter by branch (omit for all branches combined)' },
+        limit:    { type: 'number', description: 'Max products to include (default 50)' },
+      },
+    },
+  },
+
+  async execute({ branchId, limit }, tenantId) {
+    const take = Math.min(200, Math.max(1, Number(limit ?? 50)))
+
+    const stocks = await prisma.stock.findMany({
+      where: {
+        product: { tenantId, salePrice: { gt: 0 } },
+        quantity: { gt: 0 },
+        ...(branchId ? { branchId: branchId as string } : {}),
+      },
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true, salePrice: true } },
+      },
+    })
+
+    if (stocks.length === 0) return { message: 'No hay productos con stock y precio de venta configurados.' }
+
+    // Agrupar por producto (suma de sucursales si no se filtra)
+    const byProduct = new Map<string, { name: string; sku: string; unit: string; valor: number; cantidad: number }>()
+    for (const s of stocks) {
+      const qty   = Number(s.quantity)
+      const price = Number(s.product.salePrice ?? 0)
+      const valor = qty * price
+      const existing = byProduct.get(s.product.id)
+      if (existing) {
+        existing.valor    += valor
+        existing.cantidad += qty
+      } else {
+        byProduct.set(s.product.id, { name: s.product.name, sku: s.product.sku, unit: s.product.unit, valor, cantidad: qty })
+      }
+    }
+
+    const sorted    = [...byProduct.values()].sort((a, b) => b.valor - a.valor).slice(0, take)
+    const totalValor = sorted.reduce((sum, p) => sum + p.valor, 0)
+
+    let cumulative = 0
+    const result = sorted.map((p, idx) => {
+      cumulative += p.valor
+      const pct        = totalValor > 0 ? (cumulative / totalValor) * 100 : 0
+      const clase: 'A' | 'B' | 'C' = pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C'
+      return {
+        posicion:   idx + 1,
+        clase,
+        producto:   p.name,
+        sku:        p.sku,
+        cantidad:   p.cantidad,
+        unidad:     p.unit,
+        valorTotal: p.valor.toFixed(2),
+        pctAcumulado: pct.toFixed(1) + '%',
+      }
+    })
+
+    const resumen = { A: 0, B: 0, C: 0 }
+    result.forEach((r) => resumen[r.clase]++)
+
+    return {
+      totalProductos: result.length,
+      valorTotalInventario: totalValor.toFixed(2),
+      resumen,
+      productos: result,
+    }
+  },
+}
+
 // ─── Catálogo KIRA ────────────────────────────────────────────────────────────
 
 export const KIRA_TOOLS: AgentTool[] = [
@@ -310,4 +599,8 @@ export const KIRA_TOOLS: AgentTool[] = [
   registrarMovimiento,
   alertarEquipo,
   crearSolicitudCompra,
+  consultarMovimientos,
+  consultarRotacionProductos,
+  consultarLotes,
+  consultarReporteAbc,
 ]

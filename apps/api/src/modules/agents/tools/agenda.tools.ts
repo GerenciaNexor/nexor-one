@@ -337,6 +337,132 @@ const cancelarCita: AgentTool = {
   },
 }
 
+// ─── consultar_citas ──────────────────────────────────────────────────────────
+
+const consultarCitas: AgentTool = {
+  definition: {
+    name: 'consultar_citas',
+    description: 'Returns appointments with optional filters by date, service, status and branch. Use to see what appointments are scheduled or to review past appointments.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fecha:     { type: 'string', description: 'Exact date YYYY-MM-DD (alternative to from/to)' },
+        from:      { type: 'string', description: 'Start date YYYY-MM-DD' },
+        to:        { type: 'string', description: 'End date YYYY-MM-DD' },
+        serviceId: { type: 'string', description: 'Filter by service type ID' },
+        estado:    { type: 'string', enum: ['confirmed', 'completed', 'cancelled', 'no_show'], description: 'Appointment status' },
+        branchId:  { type: 'string', description: 'Filter by branch' },
+        limit:     { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+
+  async execute({ fecha, from, to, serviceId, estado, branchId, limit }, tenantId) {
+    const take = Math.min(50, Math.max(1, Number(limit ?? 20)))
+
+    // Rango de fecha: si se pasa fecha exacta, filtrar ese día
+    let gte: Date | undefined
+    let lte: Date | undefined
+    if (fecha) {
+      gte = new Date(fecha as string)
+      lte = new Date(new Date(fecha as string).setHours(23, 59, 59, 999))
+    } else {
+      if (from) gte = new Date(from as string)
+      if (to)   lte = new Date(new Date(to as string).setHours(23, 59, 59, 999))
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        tenantId,
+        ...(estado    ? { status:        estado    as string } : {}),
+        ...(serviceId ? { serviceTypeId: serviceId as string } : {}),
+        ...(branchId  ? { branchId:      branchId  as string } : {}),
+        ...((gte || lte) ? { startAt: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {}),
+      },
+      include: {
+        serviceType: { select: { name: true } },
+        branch:      { select: { name: true } },
+        professional: { select: { name: true } },
+      },
+      orderBy: { startAt: 'asc' },
+      take,
+    })
+
+    if (appointments.length === 0) return { total: 0, citas: [], message: 'No se encontraron citas con los filtros indicados.' }
+
+    return {
+      total: appointments.length,
+      citas: appointments.map((a) => ({
+        id:          a.id,
+        cliente:     a.clientName,
+        servicio:    a.serviceType?.name ?? null,
+        profesional: a.professional?.name ?? null,
+        sucursal:    a.branch.name,
+        estado:      a.status,
+        inicio:      a.startAt.toISOString(),
+        fin:         a.endAt.toISOString(),
+        canal:       a.channel ?? null,
+        createdByAgent: a.createdByAgent,
+      })),
+    }
+  },
+}
+
+// ─── consultar_disponibilidad_hoy ─────────────────────────────────────────────
+
+const consultarDisponibilidadHoy: AgentTool = {
+  definition: {
+    name: 'consultar_disponibilidad_hoy',
+    description: 'Returns available time slots for today for a specific service and branch. Use when someone asks what appointments are available today without a specific date.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string', description: 'Service type ID' },
+        branchId:  { type: 'string', description: 'Branch ID' },
+      },
+      required: ['serviceId', 'branchId'],
+    },
+  },
+
+  async execute({ serviceId, branchId }, tenantId) {
+    const today = new Date().toISOString().split('T')[0]!
+
+    try {
+      const result = await getAvailableSlots(tenantId, {
+        serviceId: serviceId as string,
+        branchId:  branchId  as string,
+        date:      today,
+      })
+
+      if (result.slots.length === 0) {
+        const isBlocked = 'blocked' in result && result.blocked
+        return {
+          fecha:       today,
+          disponibles: 0,
+          horarios:    [],
+          mensaje:     isBlocked
+            ? `Hoy (${today}) está bloqueado en la agenda.`
+            : `No hay horarios disponibles para hoy (${today}). Prueba mañana o consulta otra fecha.`,
+        }
+      }
+
+      return {
+        fecha:           today,
+        duracionMinutos: result.durationMinutes,
+        disponibles:     result.total,
+        horarios:        result.slots.map((s) => ({
+          horaInicio: s.startTime,
+          horaFin:    s.endTime,
+          startAt:    s.startAt,
+        })),
+      }
+    } catch (err) {
+      const e = err as { message?: string; code?: string }
+      return { error: e.code ?? 'ERROR', mensaje: e.message ?? 'Error consultando disponibilidad de hoy.' }
+    }
+  },
+}
+
 // ─── Catálogo AGENDA ──────────────────────────────────────────────────────────
 
 export const AGENDA_TOOLS: AgentTool[] = [
@@ -345,4 +471,6 @@ export const AGENDA_TOOLS: AgentTool[] = [
   verHorarios,
   crearCita,
   cancelarCita,
+  consultarCitas,
+  consultarDisponibilidadHoy,
 ]

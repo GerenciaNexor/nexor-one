@@ -76,6 +76,18 @@ jobs:
       - name: Ejecutar migraciones
         run: pnpm --filter @nexor/api exec prisma migrate deploy
 
+      - name: Configurar rol RLS en base de datos de test
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432/nexor_test -c "
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nexor_app') THEN
+                CREATE ROLE nexor_app;
+              END IF;
+            END \$\$;
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO nexor_app;
+            GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO nexor_app;
+          "
+
       - name: Seed principal
         run: pnpm --filter @nexor/api db:seed
 
@@ -85,36 +97,47 @@ jobs:
       - name: Build API
         run: pnpm --filter @nexor/api build
 
+      - name: Verificar secrets
+        run: |
+          echo "ENCRYPTION_KEY length: ${#ENCRYPTION_KEY}"
+          echo "JWT_SECRET length: ${#JWT_SECRET}"
+          if [ -z "$ENCRYPTION_KEY" ]; then echo "ERROR: ENCRYPTION_KEY está vacío"; exit 1; fi
+          if [ -z "$JWT_SECRET" ]; then echo "ERROR: JWT_SECRET está vacío"; exit 1; fi
+          echo "Secrets OK"
+
       - name: Iniciar API en background
-        run: node apps/api/dist/app.js &
+        run: node apps/api/dist/app.js > /tmp/api.log 2>&1 &
         env:
-          DATABASE_URL:         ${{ env.DATABASE_URL }}
-          DIRECT_DATABASE_URL:  ${{ env.DIRECT_DATABASE_URL }}
-          REDIS_URL:            ${{ env.REDIS_URL }}
-          JWT_SECRET:           ${{ env.JWT_SECRET }}
-          JWT_EXPIRES_IN:       ${{ env.JWT_EXPIRES_IN }}
-          REFRESH_TOKEN_EXPIRES_DAYS: ${{ env.REFRESH_TOKEN_EXPIRES_DAYS }}
-          ENCRYPTION_KEY:       ${{ env.ENCRYPTION_KEY }}
-          GMAIL_WEBHOOK_SECRET: ${{ env.GMAIL_WEBHOOK_SECRET }}
-          PORT:                 ${{ env.PORT }}
-          HOST:                 ${{ env.HOST }}
-          CORS_ORIGIN:          ${{ env.CORS_ORIGIN }}
-          NODE_ENV:             ${{ env.NODE_ENV }}
-          LOG_LEVEL:            ${{ env.LOG_LEVEL }}
+          DATABASE_URL:               postgresql://postgres:postgres@localhost:5432/nexor_test
+          DIRECT_DATABASE_URL:        postgresql://postgres:postgres@localhost:5432/nexor_test
+          REDIS_URL:                  redis://localhost:6379
+          JWT_SECRET:                 e2e-test-secret-32-chars-minimum-here
+          JWT_EXPIRES_IN:             7d
+          REFRESH_TOKEN_EXPIRES_DAYS: 30
+          ENCRYPTION_KEY:             ${{ secrets.ENCRYPTION_KEY }}
+          GMAIL_WEBHOOK_SECRET:       e2e-test-gmail-webhook-secret
+          PORT:                       3001
+          HOST:                       0.0.0.0
+          CORS_ORIGIN:                http://localhost:3000
+          NODE_ENV:                   test
+          LOG_LEVEL:                  error
 
       - name: Esperar que la API responda
         run: |
           echo "Esperando API en puerto 3001..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3001/health; then
-              echo "API lista en intento $i"
+          for i in $(seq 1 60); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:3001/health 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "API lista en intento $i (HTTP 200)"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "Error: API no respondió después de 60 segundos"
+            if [ "$i" -eq 60 ]; then
+              echo "Error: API no respondió después de 120 segundos (último código: $HTTP_CODE)"
+              echo "=== API startup log ==="
+              cat /tmp/api.log || true
               exit 1
             fi
-            echo "Intento $i/30 — esperando..."
+            echo "Intento $i/60 — HTTP $HTTP_CODE — esperando..."
             sleep 2
           done
 
@@ -162,6 +185,10 @@ jobs:
           name: playwright-report
           path: packages/e2e/playwright-report/
           retention-days: 14
+
+      - name: Imprimir logs de la API (en caso de fallo)
+        if: failure()
+        run: cat /tmp/api.log || true
 
       - name: Subir capturas de pantalla de fallos
         if: failure()

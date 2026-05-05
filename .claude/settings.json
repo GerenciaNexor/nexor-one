@@ -1,39 +1,30 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/node_modules/.bin/tsc\" --noEmit --project \"/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/tsconfig.json\")",
-      "Bash(/c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/node_modules/.bin/tsc --noEmit --project apps/web/tsconfig.json)",
-      "Bash(./apps/web/node_modules/.bin/tsc --noEmit -p apps/web/tsconfig.json)",
-      "Read(//c/Users/jeikd/.claude/projects/c--Users-jeikd-OneDrive-Documentos-nexor-one/memory/**)",
-      "Bash(mkdir -p apps/web/src/components/ari)",
-      "Bash(mkdir -p \"apps/web/src/app/\\(dashboard\\)/ari/clients/[id]\")",
-      "Bash(railway --version)",
-      "Bash(export DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\")",
-      "Bash(export DIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\")",
-      "Bash(xargs grep *)",
-      "Bash(npx eslint *)",
-      "Bash(echo 'DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"')",
-      "Bash(npx dotenv-cli *)",
-      "Bash(rm -f .env.prod)",
-      "Bash(mv .env .env.bak)",
-      "Bash(mv .env.bak .env)",
-      "Bash(printf 'DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\nDIRECT_DATABASE_URL=\"postgresql://postgres:xpjNzEoMJEdFrVuEPdSqKVrezdEmhHba@turntable.proxy.rlwy.net:28927/railway\"\\\\n')",
-      "PowerShell(Stop-Process -Force)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && cat {}')",
+      "Bash(awk '{print $2}')",
+      "Bash(Start-Sleep -Seconds 2)",
+      "Bash(pkill -f \"tsx src/app.ts\")",
+      "Bash(pkill -f \"node.*app.js\")",
+      "Bash(pnpm remove *)",
+      "Bash(node -e \"const rm = require\\('./apps/web/node_modules/react-markdown/index.js'\\); console.log\\('CJS ok'\\)\")",
       "Bash(npx next *)",
+      "Bash(npx eslint *)",
+      "Read(//tmp/**)",
+      "Bash(NEXT_PUBLIC_API_URL=http://localhost:3001 npx next dev --port 3000)",
+      "Bash(echo \"Web dev PID: $!\")",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test)",
       "Bash(npx playwright *)",
-      "Bash(node -e \"const f = require\\('fastify'\\); console.log\\(Object.keys\\(f\\(\\)\\).filter\\(k => k.includes\\('Schema'\\)\\)\\)\")",
-      "Bash(node -e \"console.log\\(require\\('fastify/package.json'\\).version\\)\")",
-      "Bash(sed -n '443,475p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(sed -n '475,530p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(sed -n '573,605p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(sed -n '279,340p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(sed -n '701,760p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(sed -n '759,800p' \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\prisma\\\\schema.prisma\")",
-      "Bash(grep -r \"offset\\\\|limit\\\\|page\\\\|pagination\\\\|search\\\\|filter\" /c/Users/jeikd/OneDrive/Documentos/nexor-one/apps/web/src/app/\\\\\\(dashboard\\\\\\)/ari/clients -include=\"*.tsx\")",
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 pnpm --filter @nexor/e2e exec playwright test)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/nira.spec.ts tests/ari.spec.ts --project=chromium --reporter=line)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/ari.spec.ts --project=chromium --reporter=line)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test --project=chromium --reporter=line)"
     ],
+    "defaultMode": "bypassPermissions",
     "additionalDirectories": [
-      "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory"
+      "c:\\Users\\jeikd\\.claude\\projects\\c--Users-jeikd-OneDrive-Documentos-nexor-one\\memory",
+      "c:\\Users\\jeikd\\OneDrive\\Documentos\\nexor-one\\apps\\web\\src\\app\\(dashboard)\\settings\\bulk-upload",
+      "c:\\Users\\jeikd\\OneDrive\\Documentos\\nexor-one\\apps\\web\\src\\app\\(dashboard)\\admin\\bulk-uploads"
     ]
   }
 }

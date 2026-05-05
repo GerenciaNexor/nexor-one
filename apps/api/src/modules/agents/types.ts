@@ -6,7 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 // ─── Input / Output del AgentRunner ──────────────────────────────────────────
 
-export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA'
+export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA'
 export type AgentChannel = 'whatsapp' | 'gmail' | 'internal'
 /** Razón por la que el agente respondió con el mensaje de fallback. */
 export type FallbackReason = 'max_turns' | 'api_error'
@@ -21,6 +21,10 @@ export interface AgentRunnerInput {
   senderId:      string
   /** ID de integración activa del canal */
   integrationId: string
+  /** ID del usuario autenticado (solo canal internal) */
+  userId?:       string
+  /** Rol del usuario — permite a las tools aplicar restricciones de acceso */
+  userRole?:     string
 }
 
 export interface AgentRunnerResult {
@@ -46,11 +50,19 @@ export interface ToolDetail {
   timestamp: string
 }
 
+// ─── Contexto de ejecución ────────────────────────────────────────────────────
+
+/** Contexto del usuario pasado a cada tool para control de acceso por rol. */
+export interface ExecutionContext {
+  userId?:   string
+  userRole?: string
+}
+
 // ─── Definición de una Tool ───────────────────────────────────────────────────
 
 export interface AgentTool {
   /** Esquema que Claude lee para decidir cuándo y cómo llamar la tool */
   definition: Anthropic.Tool
   /** Función real que ejecuta la lógica contra la DB */
-  execute: (input: Record<string, unknown>, tenantId: string) => Promise<unknown>
+  execute: (input: Record<string, unknown>, tenantId: string, ctx?: ExecutionContext) => Promise<unknown>
 }

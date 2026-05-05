@@ -26,25 +26,30 @@ test.describe('Autenticación y protección de rutas', () => {
 
   test('login con credenciales incorrectas muestra error', async ({ page }) => {
     await page.goto('/login')
+    await page.waitForSelector('#email', { timeout: 15000 })
     await page.locator('#email').fill('noexiste@nexor.co')
     await page.locator('#password').fill('contrasena-incorrecta')
     await page.getByRole('button', { name: 'Ingresar' }).click()
-    await expect(page.getByRole('alert')).toBeVisible()
-    await expect(page.getByRole('alert')).toContainText('Correo o contrasena incorrectos')
+    const alert = page.locator('[role="alert"]:not(#__next-route-announcer__)')
+    await expect(alert).toBeVisible()
+    await expect(alert).toContainText('Correo o contrasena incorrectos')
   })
 
   test('login con email inválido muestra validación del cliente', async ({ page }) => {
     await page.goto('/login')
+    await page.waitForSelector('#email', { timeout: 15000 })
     await page.locator('#email').fill('no-es-un-email')
     await page.locator('#password').fill('password123')
     await page.getByRole('button', { name: 'Ingresar' }).click()
     // La validación del cliente impide llamar al servidor
-    await expect(page.getByRole('alert')).toBeVisible()
+    const alert = page.locator('[role="alert"]:not(#__next-route-announcer__)')
+    await expect(alert).toBeVisible()
     await expect(page).toHaveURL(/\/login/) // no redirige
   })
 
   test('login exitoso redirige al dashboard', async ({ page }) => {
     await page.goto('/login')
+    await page.waitForSelector('#email', { timeout: 15000 })
     await page.locator('#email').fill(DEMO_EMAIL)
     await page.locator('#password').fill(DEMO_PASSWORD)
     await page.getByRole('button', { name: 'Ingresar' }).click()
