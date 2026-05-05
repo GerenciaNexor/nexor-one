@@ -44,9 +44,12 @@ Genera un registro inmutable en bulk_upload_logs.`,
     const tenantId   = request.user.tenantId
     const userId     = request.user.userId
 
-    let headers: string[], rows: Record<string, unknown>[]
+    let headers: string[]
+    let rows: Record<string, unknown>[]
     try {
-      ;({ headers, rows } = await parseExcel(fileBuffer))
+      const parsed = await parseExcel(fileBuffer)
+      headers = parsed.headers
+      rows    = parsed.rows
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 400).send({ error: e.message ?? 'No se pudo leer el archivo', code: e.code ?? 'INVALID_FILE' })
@@ -104,9 +107,12 @@ Solo TENANT_ADMIN.`,
     const tenantId   = request.user.tenantId
     const userId     = request.user.userId
 
-    let headers: string[], rows: Record<string, unknown>[]
+    let headers: string[]
+    let rows: Record<string, unknown>[]
     try {
-      ;({ headers, rows } = await parseExcel(fileBuffer))
+      const parsed = await parseExcel(fileBuffer)
+      headers = parsed.headers
+      rows    = parsed.rows
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 400).send({ error: e.message ?? 'No se pudo leer el archivo', code: e.code ?? 'INVALID_FILE' })
