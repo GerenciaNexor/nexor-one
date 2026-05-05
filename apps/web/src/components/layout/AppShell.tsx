@@ -282,13 +282,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={m.key}
                 href={m.href}
                 className={[
-                  'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                  'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
                   pathname.startsWith(m.href)
                     ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
                 ].join(' ')}
               >
-                {m.label}
+                <span>{m.label}</span>
+                <span className={[
+                  'text-[10px] font-bold tracking-wide',
+                  pathname.startsWith(m.href)
+                    ? 'text-blue-400 dark:text-blue-500'
+                    : 'text-slate-300 dark:text-slate-600',
+                ].join(' ')}>
+                  {m.key}
+                </span>
               </Link>
             ))}
 
@@ -299,13 +307,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href="/settings/integrations"
                   className={[
                     'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
-                    pathname.startsWith('/settings')
+                    pathname.startsWith('/settings/integrations')
                       ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
                   ].join(' ')}
                 >
                   Integraciones
                 </Link>
+                {(user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                  <Link
+                    href="/settings/bulk-upload"
+                    className={[
+                      'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                      pathname.startsWith('/settings/bulk-upload')
+                        ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+                    ].join(' ')}
+                  >
+                    Carga masiva
+                  </Link>
+                )}
               </>
             )}
 
@@ -322,6 +343,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   ].join(' ')}
                 >
                   Administracion
+                </Link>
+              </>
+            )}
+
+            {user?.role === 'SUPER_ADMIN' && (
+              <>
+                <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
+                <Link
+                  href="/admin/bulk-uploads"
+                  className={[
+                    'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                    pathname.startsWith('/admin')
+                      ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+                  ].join(' ')}
+                >
+                  Supervisión
                 </Link>
               </>
             )}

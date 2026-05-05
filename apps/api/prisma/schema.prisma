@@ -94,6 +94,7 @@ model Tenant {
   costCenters           CostCenter[]
   monthlyBudgets        MonthlyBudget[]
   chatMessages          ChatMessage[]
+  bulkUploadLogs        BulkUploadLog[]
 
   @@map("tenants")
 }
@@ -852,6 +853,38 @@ model MonthlyBudget {
   @@unique([tenantId, branchId, year, month])
   @@index([tenantId])
   @@map("monthly_budgets")
+}
+
+// =============================================================================
+// CARGA MASIVA — Auditoría de importaciones en lote
+// =============================================================================
+
+/// Registro de auditoría de cada carga masiva de datos (importación Excel).
+/// APPEND-ONLY: nunca se modifica ni elimina un registro.
+/// status: preview | failed | success
+model BulkUploadLog {
+  id           String   @id @default(cuid()) @db.VarChar(30)
+  tenantId     String   @db.VarChar(30) @map("tenant_id")
+  userId       String   @db.VarChar(30) @map("user_id")
+  type         String   @db.VarChar(50)
+  fileName     String   @db.VarChar(500) @map("file_name")
+  fileSize     Int?     @map("file_size")
+  rowCount     Int?     @map("row_count")
+  recordCount  Int      @default(0) @map("record_count")
+  status       String   @db.VarChar(20)
+  errors       Json?    @db.JsonB
+  fileData     Bytes?   @map("file_data")
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([createdAt(sort: Desc)])
+  @@map("bulk_upload_logs")
 }
 
 /// Historial de conversación del chat interno del dashboard.

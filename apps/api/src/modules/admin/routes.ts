@@ -258,6 +258,159 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
+   * GET /v1/admin/bulk-upload/logs
+   * Historial global de cargas masivas — todos los tenants.
+   */
+  app.get('/bulk-upload/logs', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Historial global de cargas masivas',
+      description: 'Todas las cargas masivas de todos los tenants. Filtrable por tenant, tipo y estado. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          type:     { type: 'string' },
+          status:   { type: 'string' },
+          from:     { type: 'string' },
+          to:       { type: 'string' },
+          page:     { type: 'string' },
+          limit:    { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const q     = request.query as { tenantId?: string; type?: string; status?: string; from?: string; to?: string; page?: string; limit?: string }
+    const page  = Math.max(1, Number(q.page  ?? 1))
+    const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
+
+    const where = {
+      ...(q.tenantId ? { tenantId: q.tenantId } : {}),
+      ...(q.type     ? { type:     q.type     } : {}),
+      ...(q.status   ? { status:   q.status   } : {}),
+      ...((q.from || q.to) ? {
+        createdAt: {
+          ...(q.from ? { gte: new Date(q.from) } : {}),
+          ...(q.to   ? { lte: new Date(q.to)   } : {}),
+        },
+      } : {}),
+    }
+
+    const { prisma } = await import('../../lib/prisma')
+    const [data, total] = await Promise.all([
+      prisma.bulkUploadLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip:    (page - 1) * limit,
+        take:    limit,
+        select: {
+          id:          true,
+          tenantId:    true,
+          userId:      true,
+          type:        true,
+          fileName:    true,
+          fileSize:    true,
+          rowCount:    true,
+          recordCount: true,
+          status:      true,
+          errors:      true,
+          createdAt:   true,
+          finishedAt:  true,
+          tenant:      { select: { name: true, slug: true } },
+        },
+      }),
+      prisma.bulkUploadLog.count({ where }),
+    ])
+
+    return reply.code(200).send({ data, total, page, limit })
+  })
+
+  /**
+   * GET /v1/admin/bulk-upload/logs/:id
+   * Detalle completo de una carga masiva — sin restricción de tenant.
+   */
+  app.get('/bulk-upload/logs/:id', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Detalle de una carga masiva (global)',
+      description: 'Devuelve el detalle completo de cualquier carga masiva de cualquier tenant. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      response: { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { prisma } = await import('../../lib/prisma')
+
+    const log = await prisma.bulkUploadLog.findUnique({
+      where:  { id },
+      select: {
+        id:          true,
+        tenantId:    true,
+        userId:      true,
+        type:        true,
+        fileName:    true,
+        fileSize:    true,
+        rowCount:    true,
+        recordCount: true,
+        status:      true,
+        errors:      true,
+        createdAt:   true,
+        finishedAt:  true,
+        tenant:      { select: { name: true, slug: true } },
+      },
+    })
+
+    if (!log) return reply.code(404).send({ error: 'Registro no encontrado', code: 'NOT_FOUND' })
+    return reply.code(200).send(log)
+  })
+
+  /**
+   * GET /v1/admin/bulk-upload/logs/:id/file
+   * Descarga el archivo Excel original de cualquier carga masiva.
+   */
+  app.get('/bulk-upload/logs/:id/file', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Descargar archivo original de carga masiva',
+      description: 'Descarga el archivo Excel exacto que el tenant subió. Útil para auditoría y resolución de disputas. Solo SUPER_ADMIN.',
+      security:    bearerAuth,
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const { prisma } = await import('../../lib/prisma')
+    const log = await prisma.bulkUploadLog.findUnique({
+      where:  { id },
+      select: { id: true, fileName: true, fileData: true },
+    })
+
+    if (!log) return reply.code(404).send({ error: 'Registro no encontrado', code: 'NOT_FOUND' })
+    if (!log.fileData) return reply.code(404).send({ error: 'El archivo original no está disponible para este registro', code: 'FILE_NOT_FOUND' })
+
+    const safeFileName = log.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const buffer = Buffer.from(log.fileData)
+
+    return reply
+      .code(200)
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="NEXOR_Auditoria_${safeFileName}"`)
+      .header('Content-Length', buffer.length)
+      .send(buffer)
+  })
+
+  /**
    * GET /v1/admin/agent-logs
    */
   app.get('/agent-logs', {
