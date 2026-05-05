@@ -9,7 +9,16 @@
       "Bash(pnpm remove *)",
       "Bash(node -e \"const rm = require\\('./apps/web/node_modules/react-markdown/index.js'\\); console.log\\('CJS ok'\\)\")",
       "Bash(npx next *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Read(//tmp/**)",
+      "Bash(NEXT_PUBLIC_API_URL=http://localhost:3001 npx next dev --port 3000)",
+      "Bash(echo \"Web dev PID: $!\")",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test)",
+      "Bash(npx playwright *)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 pnpm --filter @nexor/e2e exec playwright test)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/nira.spec.ts tests/ari.spec.ts --project=chromium --reporter=line)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/ari.spec.ts --project=chromium --reporter=line)",
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test --project=chromium --reporter=line)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [

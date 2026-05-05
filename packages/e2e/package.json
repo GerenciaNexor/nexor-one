@@ -7,6 +7,8 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
+    "test:local": "playwright test",
+    "test:local:headed": "playwright test --headed",
     "report": "playwright show-report"
   },
   "devDependencies": {
