@@ -20,10 +20,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma, directPrisma } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
-import { KIRA_TOOLS   } from './tools/kira.tools'
-import { NIRA_TOOLS   } from './tools/nira.tools'
-import { ARI_TOOLS    } from './tools/ari.tools'
-import { AGENDA_TOOLS } from './tools/agenda.tools'
+import { KIRA_TOOLS    } from './tools/kira.tools'
+import { NIRA_TOOLS    } from './tools/nira.tools'
+import { ARI_TOOLS     } from './tools/ari.tools'
+import { AGENDA_TOOLS  } from './tools/agenda.tools'
+import { VERA_TOOLS    } from './tools/vera.tools'
+import { EMPRESA_TOOLS } from './tools/empresa.tools'
 import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, AgentTool, ToolDetail, FallbackReason } from './types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -35,12 +37,17 @@ const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un ases
 // ─── Selector de tools por módulo ─────────────────────────────────────────────
 
 function getToolsForModule(module: AgentModule): AgentTool[] {
-  switch (module) {
-    case 'KIRA':   return KIRA_TOOLS
-    case 'NIRA':   return NIRA_TOOLS
-    case 'ARI':    return ARI_TOOLS
-    case 'AGENDA': return AGENDA_TOOLS
-  }
+  const moduleTools: AgentTool[] = (() => {
+    switch (module) {
+      case 'KIRA':   return KIRA_TOOLS
+      case 'NIRA':   return NIRA_TOOLS
+      case 'ARI':    return ARI_TOOLS
+      case 'AGENDA': return AGENDA_TOOLS
+      case 'VERA':   return VERA_TOOLS
+    }
+  })()
+  // Las tools de empresa (sucursales, usuarios) se agregan a todos los módulos
+  return [...moduleTools, ...EMPRESA_TOOLS]
 }
 
 // ─── Cliente Anthropic (singleton lazy) ───────────────────────────────────────
@@ -269,7 +276,11 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
           if (!toolsUsed.includes(block.name)) toolsUsed.push(block.name)
 
           try {
-            const output = await tool.execute(block.input as Record<string, unknown>, input.tenantId)
+            const output = await tool.execute(
+              block.input as Record<string, unknown>,
+              input.tenantId,
+              { userId: input.userId, userRole: input.userRole },
+            )
             const content = JSON.stringify(output)
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
             toolDetails.push({ tool: block.name, input: block.input, output, timestamp })

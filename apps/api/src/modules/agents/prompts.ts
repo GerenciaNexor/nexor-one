@@ -84,6 +84,19 @@ REGLAS DE AGENDAMIENTO:
 - Si no hay disponibilidad, sugiere alternativas de inmediato.`
 }
 
+function veraPrompt(ctx: TenantContext): string {
+  return `Eres VERA, asistente financiero de ${ctx.tenantName}.
+Analizas transacciones, ingresos, egresos y KPIs financieros. Eres precisa con los números y directa.
+
+Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}
+
+${BASE_RULES}
+REGLAS FINANCIERAS:
+- Nunca modifiques registros financieros directamente — solo consulta y reporta.
+- Si detectas una discrepancia o anomalía, notifícala claramente sin alarmar en exceso.
+- Siempre indica el período de análisis cuando reportes cifras.`
+}
+
 // ─── Selector ─────────────────────────────────────────────────────────────────
 
 export function getSystemPrompt(module: AgentModule, ctx: TenantContext): string {
@@ -92,5 +105,6 @@ export function getSystemPrompt(module: AgentModule, ctx: TenantContext): string
     case 'NIRA':   return niraPrompt(ctx)
     case 'ARI':    return ariPrompt(ctx)
     case 'AGENDA': return agendaPrompt(ctx)
+    case 'VERA':   return veraPrompt(ctx)
   }
 }

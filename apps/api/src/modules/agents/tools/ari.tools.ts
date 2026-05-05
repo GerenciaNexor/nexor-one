@@ -393,6 +393,289 @@ const notificarVendedor: AgentTool = {
   },
 }
 
+// ─── consultar_clientes ───────────────────────────────────────────────────────
+
+function df(from?: unknown, to?: unknown) {
+  const gte = from ? new Date(from as string) : undefined
+  const lte = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : undefined
+  return (!gte && !lte) ? undefined : { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) }
+}
+
+const consultarClientes: AgentTool = {
+  definition: {
+    name: 'consultar_clientes',
+    description: 'Searches for clients by name, email or phone. Returns basic info plus the count of active deals. Use when the user asks about a specific client or wants to see the client list.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre:   { type: 'string', description: 'Partial client name search' },
+        email:    { type: 'string', description: 'Exact or partial email' },
+        telefono: { type: 'string', description: 'Phone or WhatsApp number' },
+        limit:    { type: 'number', description: 'Max results (default 10, max 30)' },
+      },
+    },
+  },
+
+  async execute({ nombre, email, telefono, limit }, tenantId) {
+    const take = Math.min(30, Math.max(1, Number(limit ?? 10)))
+    const OR: object[] = []
+
+    if (nombre)   OR.push({ name:      { contains: nombre   as string, mode: 'insensitive' } })
+    if (email)    OR.push({ email:     { contains: email    as string, mode: 'insensitive' } })
+    if (telefono) OR.push({ phone:     { contains: telefono as string } })
+    if (telefono) OR.push({ whatsappId:{ contains: telefono as string } })
+
+    const clients = await prisma.client.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        ...(OR.length > 0 ? { OR } : {}),
+      },
+      select: {
+        id:           true,
+        name:         true,
+        email:        true,
+        phone:        true,
+        company:      true,
+        source:       true,
+        assignedUser: { select: { name: true } },
+        _count:       { select: { deals: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    })
+
+    if (clients.length === 0) return { total: 0, clientes: [], message: 'No se encontraron clientes con los filtros indicados.' }
+
+    return {
+      total: clients.length,
+      clientes: clients.map((c) => ({
+        id:       c.id,
+        nombre:   c.name,
+        empresa:  c.company   ?? null,
+        email:    c.email     ?? null,
+        telefono: c.phone     ?? null,
+        fuente:   c.source    ?? null,
+        vendedor: c.assignedUser?.name ?? null,
+        deals:    c._count.deals,
+      })),
+    }
+  },
+}
+
+// ─── consultar_deals ──────────────────────────────────────────────────────────
+
+const consultarDeals: AgentTool = {
+  definition: {
+    name: 'consultar_deals',
+    description: 'Returns deals with optional filters by pipeline stage, assigned salesperson and creation date range. Use to get a pipeline overview or review specific deals.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stageId:    { type: 'string', description: 'Filter by specific pipeline stage ID' },
+        stageName:  { type: 'string', description: 'Filter by stage name (partial match)' },
+        vendedorId: { type: 'string', description: 'Filter by assigned salesperson user ID' },
+        from:       { type: 'string', description: 'Created from YYYY-MM-DD' },
+        to:         { type: 'string', description: 'Created to YYYY-MM-DD' },
+        limit:      { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+
+  async execute({ stageId, stageName, vendedorId, from, to, limit }, tenantId) {
+    const take       = Math.min(50, Math.max(1, Number(limit ?? 20)))
+    const dateFilter = df(from, to)
+
+    // Resolver stageId por nombre si se pasa stageName
+    let resolvedStageId = stageId as string | undefined
+    if (!resolvedStageId && stageName) {
+      const stage = await prisma.pipelineStage.findFirst({
+        where:  { tenantId, name: { contains: stageName as string, mode: 'insensitive' } },
+        select: { id: true },
+      })
+      if (!stage) return { error: `No se encontró etapa con nombre "${String(stageName)}".` }
+      resolvedStageId = stage.id
+    }
+
+    const deals = await prisma.deal.findMany({
+      where: {
+        tenantId,
+        ...(resolvedStageId ? { stageId: resolvedStageId }         : {}),
+        ...(vendedorId      ? { assignedTo: vendedorId as string } : {}),
+        ...(dateFilter      ? { createdAt: dateFilter }            : {}),
+      },
+      include: {
+        stage:        { select: { name: true, isFinalWon: true, isFinalLost: true } },
+        client:       { select: { name: true } },
+        assignedUser: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    })
+
+    if (deals.length === 0) return { total: 0, deals: [], message: 'No se encontraron deals con los filtros indicados.' }
+
+    return {
+      total: deals.length,
+      deals: deals.map((d) => ({
+        id:       d.id,
+        titulo:   d.title,
+        etapa:    d.stage.name,
+        ganado:   d.stage.isFinalWon,
+        perdido:  d.stage.isFinalLost,
+        cliente:  d.client.name,
+        vendedor: d.assignedUser?.name ?? null,
+        valor:    d.value != null ? Number(d.value).toFixed(2) : null,
+        cerrado:  d.closedAt ? d.closedAt.toISOString().split('T')[0] : null,
+        creado:   d.createdAt.toISOString().split('T')[0],
+      })),
+    }
+  },
+}
+
+// ─── consultar_cotizaciones ───────────────────────────────────────────────────
+
+const consultarCotizaciones: AgentTool = {
+  definition: {
+    name: 'consultar_cotizaciones',
+    description: 'Returns quotes (cotizaciones) with optional filters by status and client. Use to review sent quotes, check acceptance rates or find a specific quote.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        estado:   { type: 'string', enum: ['draft', 'sent', 'accepted', 'rejected', 'expired'], description: 'Quote status' },
+        clientId: { type: 'string', description: 'Filter by client ID' },
+        from:     { type: 'string', description: 'Created from YYYY-MM-DD' },
+        to:       { type: 'string', description: 'Created to YYYY-MM-DD' },
+        limit:    { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+
+  async execute({ estado, clientId, from, to, limit }, tenantId) {
+    const take       = Math.min(50, Math.max(1, Number(limit ?? 20)))
+    const dateFilter = df(from, to)
+
+    const quotes = await prisma.quote.findMany({
+      where: {
+        tenantId,
+        ...(estado   ? { status:   estado    as string } : {}),
+        ...(clientId ? { clientId: clientId  as string } : {}),
+        ...(dateFilter ? { createdAt: dateFilter }        : {}),
+      },
+      include: {
+        client:  { select: { name: true } },
+        creator: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    })
+
+    if (quotes.length === 0) return { total: 0, cotizaciones: [], message: 'No se encontraron cotizaciones con los filtros indicados.' }
+
+    return {
+      total: quotes.length,
+      cotizaciones: quotes.map((q) => ({
+        id:        q.id,
+        numero:    q.quoteNumber,
+        estado:    q.status,
+        cliente:   q.client.name,
+        creador:   q.creator.name,
+        subtotal:  Number(q.subtotal).toFixed(2),
+        total:     Number(q.total).toFixed(2),
+        vence:     q.validUntil ? q.validUntil.toISOString().split('T')[0] : null,
+        creado:    q.createdAt.toISOString().split('T')[0],
+      })),
+    }
+  },
+}
+
+// ─── consultar_reporte_ventas ─────────────────────────────────────────────────
+
+const consultarReporteVentas: AgentTool = {
+  definition: {
+    name: 'consultar_reporte_ventas',
+    description: 'Returns sales KPIs for a period: won deals, won value, accepted quotes, conversion rate and top salesperson. Use for a sales performance overview.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start date YYYY-MM-DD (default: first day of current month)' },
+        to:   { type: 'string', description: 'End date YYYY-MM-DD (default: today)' },
+      },
+    },
+  },
+
+  async execute({ from, to }, tenantId) {
+    const now  = new Date()
+    const gte  = from ? new Date(from as string) : new Date(now.getFullYear(), now.getMonth(), 1)
+    const lte  = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : now
+
+    const wonStages  = await prisma.pipelineStage.findMany({
+      where:  { tenantId, isFinalWon: true },
+      select: { id: true },
+    })
+    const lostStages = await prisma.pipelineStage.findMany({
+      where:  { tenantId, isFinalLost: true },
+      select: { id: true },
+    })
+
+    const wonIds  = wonStages.map((s) => s.id)
+    const lostIds = lostStages.map((s) => s.id)
+    const dateFilter = { createdAt: { gte, lte } }
+
+    const [wonAgg, lostCount, totalCount, quoteAccepted, byVendor] = await Promise.all([
+      prisma.deal.aggregate({
+        where: { tenantId, stageId: { in: wonIds }, ...dateFilter },
+        _sum:  { value: true },
+        _count: { id: true },
+      }),
+      prisma.deal.count({
+        where: { tenantId, stageId: { in: lostIds }, ...dateFilter },
+      }),
+      prisma.deal.count({
+        where: { tenantId, ...dateFilter },
+      }),
+      prisma.quote.aggregate({
+        where: { tenantId, status: 'accepted', ...dateFilter },
+        _sum:  { total: true },
+        _count: { id: true },
+      }),
+      prisma.deal.groupBy({
+        by:    ['assignedTo'],
+        where: { tenantId, stageId: { in: wonIds }, ...dateFilter },
+        _count: { id: true },
+        _sum:  { value: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 3,
+      }),
+    ])
+
+    const dealsGanados = wonAgg._count.id
+    const conversion   = totalCount > 0 ? Math.round((dealsGanados / totalCount) * 10000) / 100 : 0
+
+    const topIds = byVendor.map((r) => r.assignedTo).filter(Boolean) as string[]
+    const topUsers = topIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: topIds } }, select: { id: true, name: true } })
+      : []
+    const topMap  = new Map(topUsers.map((u) => [u.id, u.name]))
+
+    return {
+      periodo:         { desde: gte.toISOString().split('T')[0], hasta: lte.toISOString().split('T')[0] },
+      dealsGanados,
+      valorGanado:     Number(wonAgg._sum.value ?? 0).toFixed(2),
+      dealsPerdidos:   lostCount,
+      dealsTotal:      totalCount,
+      tasaConversion:  `${conversion}%`,
+      cotizacionesAceptadas: quoteAccepted._count.id,
+      valorCotizaciones: Number(quoteAccepted._sum.total ?? 0).toFixed(2),
+      topVendedores:   byVendor.map((r) => ({
+        vendedor: r.assignedTo ? (topMap.get(r.assignedTo) ?? r.assignedTo) : 'Sin asignar',
+        dealsGanados: r._count.id,
+        valorTotal: Number(r._sum.value ?? 0).toFixed(2),
+      })),
+    }
+  },
+}
+
 // ─── Catálogo ARI ─────────────────────────────────────────────────────────────
 
 export const ARI_TOOLS: AgentTool[] = [
@@ -400,4 +683,8 @@ export const ARI_TOOLS: AgentTool[] = [
   crearLead,
   consultarStockProducto,
   notificarVendedor,
+  consultarClientes,
+  consultarDeals,
+  consultarCotizaciones,
+  consultarReporteVentas,
 ]

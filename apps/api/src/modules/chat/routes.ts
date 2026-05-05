@@ -70,6 +70,8 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       message,
       senderId:      userId,
       integrationId: userId,
+      userId,
+      userRole:      role,
     })
 
     const timeoutPromise = new Promise<null>((resolve) =>
