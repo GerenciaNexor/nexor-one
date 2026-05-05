@@ -1,14 +1,17 @@
 import { chromium } from '@playwright/test'
-import { mkdirSync, existsSync } from 'fs'
+import { mkdirSync, existsSync, writeFileSync } from 'fs'
 import path from 'path'
 
-const API_URL   = process.env['API_URL']   ?? 'http://localhost:3001'
-const BASE_URL  = process.env['BASE_URL']  ?? 'http://localhost:3000'
-const AUTH_FILE = path.join(__dirname, 'playwright/.auth/user.json')
-const MODULES   = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
+const API_URL     = process.env['API_URL']   ?? 'http://localhost:3001'
+const BASE_URL    = process.env['BASE_URL']  ?? 'http://localhost:3000'
+const AUTH_FILE   = path.join(__dirname, 'playwright/.auth/user.json')
+const TOKENS_FILE = path.join(__dirname, 'playwright/.auth/tokens.json')
+const MODULES     = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 
 const TEST_EMAIL    = 'admin@demo.nexor.co'
 const TEST_PASSWORD = 'Admin123!'
+const B_EMAIL       = 'admin@empresa-b.nexor.co'
+const B_PASSWORD    = 'AdminB456!'
 
 async function apiPost(path: string, body: unknown, token?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -54,13 +57,17 @@ export default async function globalSetup() {
   await apiGet('/v1/vera/categories', token)
   console.log('   ✓ Categorías VERA aseguradas')
 
-  // ── 4. Almacenar token para tests de API ──────────────────────────────────
-  process.env['E2E_TOKEN'] = token
-
-  // ── 5. Login vía UI y guardar storageState ────────────────────────────────
+  // ── 4. Obtener token Tenant B y persistir ambos para los workers ─────────────
+  // Los workers E2E (fullyParallel) no heredan process.env del setup.
+  // Guardamos los tokens en disco para que cada beforeAll los lea sin llamar login().
+  const loginB  = await apiPost('/v1/auth/login', { email: B_EMAIL, password: B_PASSWORD })
+  const tokenB  = (loginB['token'] as string) || ''
   const dir = path.dirname(AUTH_FILE)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(TOKENS_FILE, JSON.stringify({ tokenA: token, tokenB }, null, 2))
+  console.log('   ✓ Tokens guardados en', TOKENS_FILE)
 
+  // ── 5. Login vía UI y guardar storageState ────────────────────────────────
   const browser = await chromium.launch()
   const page    = await browser.newPage()
 
