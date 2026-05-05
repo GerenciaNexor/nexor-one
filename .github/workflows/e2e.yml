@@ -76,6 +76,18 @@ jobs:
       - name: Ejecutar migraciones
         run: pnpm --filter @nexor/api exec prisma migrate deploy
 
+      - name: Configurar rol RLS en base de datos de test
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432/nexor_test -c "
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nexor_app') THEN
+                CREATE ROLE nexor_app;
+              END IF;
+            END \$\$;
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO nexor_app;
+            GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO nexor_app;
+          "
+
       - name: Seed principal
         run: pnpm --filter @nexor/api db:seed
 

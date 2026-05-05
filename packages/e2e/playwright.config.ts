@@ -41,7 +41,7 @@ export default defineConfig({
       testMatch: '**/auth.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: undefined,
+        storageState: { cookies: [], origins: [] },
       },
     },
     // Suite de seguridad multi-tenant — API-only, sin browser
