@@ -11,6 +11,18 @@ import { FloatingChat } from '@/components/chat/FloatingChat'
 import { useChatStore } from '@/store/chat'
 import { useTheme } from '@/hooks/useTheme'
 
+// ─── Normalización de links de notificaciones (compatibilidad con links legacy) ─
+
+function resolveNotifLink(link: string): string {
+  if (link.startsWith('/bulk-upload/logs/')) {
+    return link.replace('/bulk-upload/logs/', '/settings/bulk-upload/')
+  }
+  if (link.startsWith('/admin/bulk-upload/logs/')) {
+    return link.replace('/admin/bulk-upload/logs/', '/admin/bulk-uploads/')
+  }
+  return link
+}
+
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
 const MODULES = [
@@ -191,7 +203,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setUnreadCount((c) => Math.max(0, c - 1))
     if (n.link) {
       setNotifOpen(false)
-      router.push(n.link)
+      router.push(resolveNotifLink(n.link))
     }
   }
 

@@ -729,7 +729,7 @@ async function notifyFailure(
         type:    'bulk_upload_failed',
         title:   'Carga masiva con errores',
         message: `El archivo "${fileName}" (${type}) tuvo ${errorCount} error(es). Revisa el detalle para corregirlos.`,
-        link:    `/bulk-upload/logs/${logId}`,
+        link:    `/settings/bulk-upload/${logId}`,
       })),
       ...superAdmins.map((sa) => ({
         tenantId: sa.tenantId,
@@ -737,7 +737,7 @@ async function notifyFailure(
         type:     'bulk_upload_failed',
         title:    `Carga masiva fallida — tenant ${tenantId}`,
         message:  `El archivo "${fileName}" (${type}) tuvo ${errorCount} error(es).`,
-        link:     `/admin/bulk-upload/logs/${logId}`,
+        link:     `/admin/bulk-uploads/${logId}`,
       })),
     ]
 
@@ -773,7 +773,7 @@ async function notifySuccess(
           type:     'bulk_upload_success',
           title:    `Carga masiva completada — tenant ${tenantId}`,
           message:  `"${fileName}" (${type}): ${count} registros en ${durationSec}s. Log: ${logId}`,
-          link:     `/admin/bulk-upload/logs/${logId}`,
+          link:     `/admin/bulk-uploads/${logId}`,
         })),
       })
     }
