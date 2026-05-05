@@ -166,6 +166,66 @@ async function main(): Promise<void> {
   }
   console.log(`✅ AGENDA: service type + disponibilidad (lun-dom 08-20) para demo`)
 
+  // ── 5. NIRA seed — proveedor, producto y OC de prueba ───────────────────
+  const adminUser = await prisma.user.findUnique({ where: { email: 'admin@demo.nexor.co' } })
+  if (!adminUser) throw new Error('Admin user not found — ejecuta primero db:seed')
+
+  await prisma.supplier.upsert({
+    where:  { id: 'seed-e2e-supplier-001' },
+    update: {},
+    create: {
+      id:       'seed-e2e-supplier-001',
+      tenantId: demo.id,
+      name:     'Proveedor E2E Demo',
+      email:    'proveedor@demo-e2e.co',
+    },
+  })
+
+  await prisma.product.upsert({
+    where:  { id: 'seed-e2e-product-001' },
+    update: {},
+    create: {
+      id:        'seed-e2e-product-001',
+      tenantId:  demo.id,
+      sku:       'SKU-E2E-001',
+      name:      'Producto E2E Demo',
+      unit:      'unidad',
+      costPrice: 10000,
+    },
+  })
+
+  const seedPO = await prisma.purchaseOrder.upsert({
+    where:  { id: 'seed-e2e-po-001' },
+    update: {},
+    create: {
+      id:          'seed-e2e-po-001',
+      tenantId:    demo.id,
+      supplierId:  'seed-e2e-supplier-001',
+      createdBy:   adminUser.id,
+      orderNumber: 'PO-E2E-001',
+      status:      'draft',
+      subtotal:    10000,
+      tax:         0,
+      total:       10000,
+    },
+  })
+
+  const existingItem = await prisma.purchaseOrderItem.findFirst({
+    where: { purchaseOrderId: seedPO.id },
+  })
+  if (!existingItem) {
+    await prisma.purchaseOrderItem.create({
+      data: {
+        purchaseOrderId: seedPO.id,
+        productId:       'seed-e2e-product-001',
+        quantityOrdered: 1,
+        unitCost:        10000,
+        total:           10000,
+      },
+    })
+  }
+  console.log(`✅ NIRA: proveedor, producto y OC (PO-E2E-001) creados`)
+
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(55))
   console.log('🎉 Seed E2E completado.')
