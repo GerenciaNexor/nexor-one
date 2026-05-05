@@ -9,6 +9,51 @@ jobs:
     name: Lint, Type-check y Build
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER:     nexor
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB:       nexor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL:           postgresql://nexor:testpass@localhost:5432/nexor_test
+      DIRECT_DATABASE_URL:    postgresql://nexor:testpass@localhost:5432/nexor_test
+      REDIS_URL:              redis://localhost:6379
+      ENCRYPTION_KEY:         ${{ secrets.ENCRYPTION_KEY }}
+      JWT_SECRET:             ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN:         7d
+      REFRESH_TOKEN_EXPIRES_DAYS: 30
+      NODE_ENV:               test
+      PORT:                   3001
+      HOST:                   0.0.0.0
+      CORS_ORIGIN:            http://localhost:3000
+      LOG_LEVEL:              error
+      ANTHROPIC_API_KEY:      sk-ant-test-key
+      WHATSAPP_VERIFY_TOKEN:  test-token
+      WHATSAPP_APP_SECRET:    test-secret
+      GMAIL_WEBHOOK_SECRET:   test-gmail-secret
+      RESEND_API_KEY:         re_test_key
+      NEXT_PUBLIC_API_URL:    http://localhost:3001
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +72,9 @@ jobs:
 
       - name: Generar Prisma Client
         run: pnpm --filter @nexor/api exec prisma generate
+
+      - name: Ejecutar migraciones
+        run: pnpm --filter @nexor/api exec prisma migrate deploy
 
       - name: Lint
         run: pnpm lint
