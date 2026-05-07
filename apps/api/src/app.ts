@@ -53,6 +53,8 @@ import agendaModule from './modules/agenda/index'
 import veraModule from './modules/vera/index'
 import dashboardModule from './modules/dashboard/index'
 import bulkUploadModule from './modules/bulk-upload/index'
+import inboxModule from './modules/inbox/index'
+import ocrModule from './modules/ocr/index'
 import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
 
 const app = Fastify({
@@ -167,6 +169,8 @@ app.register(
     api.register(veraModule,          { prefix: '/vera' })
     api.register(dashboardModule,     { prefix: '/dashboard' })
     api.register(bulkUploadModule,    { prefix: '/bulk-upload' })
+    api.register(inboxModule,         { prefix: '/inbox' })
+    api.register(ocrModule,           { prefix: '/ocr' })
   },
   { prefix: '/v1' },
 )

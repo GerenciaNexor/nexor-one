@@ -125,6 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
   const [unreadCount, setUnreadCount] = useState(0)
+  const [inboxUnread, setInboxUnread] = useState(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifLoading, setNotifLoading] = useState(false)
@@ -163,6 +164,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
+
+  // Polling del conteo de conversaciones abiertas en bandeja cada 30s.
+  useEffect(() => {
+    const role = user?.role
+    if (!role || role === 'OPERATIVE') return
+    let mounted = true
+    async function fetchInboxCount() {
+      if (typeof document !== 'undefined' && document.hidden) return
+      try {
+        const data = await apiClient.get<{ count: number }>('/v1/inbox/unread-count')
+        if (mounted) setInboxUnread(data.count)
+      } catch { /* silenciar error de red — se reintenta en el intervalo */ }
+    }
+    fetchInboxCount()
+    const interval = setInterval(fetchInboxCount, 30_000)
+    function onVisibility() { if (!document.hidden) fetchInboxCount() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [user?.role])
 
   // Cerrar notificaciones al hacer click fuera
   useEffect(() => {
@@ -284,6 +308,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               )}
             </Link>
+
+            {user?.role !== 'OPERATIVE' && (
+              <Link
+                href="/inbox"
+                className={[
+                  'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
+                  pathname.startsWith('/inbox')
+                    ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+                ].join(' ')}
+              >
+                <span>Bandeja</span>
+                {inboxUnread > 0 && (
+                  <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-white">
+                    {inboxUnread > 9 ? '9+' : inboxUnread}
+                  </span>
+                )}
+              </Link>
+            )}
 
             {activeModules.length > 0 && (
               <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
