@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { QuoteFormModal, type Quote, type QuoteItem } from '@/components/ari/QuoteFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { Portal } from '@/components/ui/Portal'
+import type { QuoteExtraction } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -413,6 +414,11 @@ export default function QuotesPage() {
   const [confirming, setConfirming]    = useState<{ quote: Quote; nextStatus: string } | null>(null)
   const [statusLoading, setStatusLoad] = useState(false)
 
+  const ocrInputRef                    = useRef<HTMLInputElement>(null)
+  const [ocrLoading, setOcrLoading]    = useState(false)
+  const [ocrError, setOcrError]        = useState<string | null>(null)
+  const [ocrData, setOcrData]          = useState<QuoteExtraction | null>(null)
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
   function fetchQuotes() {
@@ -457,6 +463,47 @@ export default function QuotesPage() {
     setQuotes((prev) => prev.map((q) => q.id === updated.id ? { ...q, status: updated.status } : q))
   }
 
+  // ── Importar desde documento (OCR) ───────────────────────────────────────
+
+  async function handleOcrFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (ocrInputRef.current) ocrInputRef.current.value = ''
+
+    setOcrLoading(true)
+    setOcrError(null)
+    setOcrData(null)
+
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('type', 'quote')
+
+      const token  = useAuthStore.getState().token
+      const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
+
+      const res = await fetch(`${apiUrl}/v1/ocr/extract`, {
+        method:  'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body:    form,
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? 'Error al procesar el documento')
+      }
+
+      const json = await res.json() as { data: QuoteExtraction }
+      setOcrData(json.data)
+      setShowCreate(true)
+    } catch (err: unknown) {
+      const e = err as { message?: string }
+      setOcrError(e.message ?? 'No se pudo procesar el documento. Intenta con una imagen de mayor calidad.')
+    } finally {
+      setOcrLoading(false)
+    }
+  }
+
   // ── Helpers de urgencia ───────────────────────────────────────────────────
 
   function getExpiryState(q: Quote): 'soon' | 'expired-date' | null {
@@ -482,14 +529,70 @@ export default function QuotesPage() {
             {loading ? 'Cargando…' : `${total} ${total === 1 ? 'cotización' : 'cotizaciones'}`}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-        >
-          <span className="text-base leading-none">+</span>
-          Nueva cotización
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Input oculto para seleccionar imagen/PDF */}
+          <input
+            ref={ocrInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+            className="sr-only"
+            onChange={handleOcrFile}
+            disabled={ocrLoading}
+            aria-label="Seleccionar documento para importar cotización"
+          />
+          <button
+            onClick={() => ocrInputRef.current?.click()}
+            disabled={ocrLoading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-60 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-400 dark:hover:bg-violet-900/40"
+          >
+            {ocrLoading ? (
+              <>
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700 dark:border-violet-600 dark:border-t-violet-300" />
+                <span>Leyendo documento...</span>
+              </>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                  <line x1="7" y1="12" x2="17" y2="12"/>
+                </svg>
+                <span>Importar desde documento</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+          >
+            <span className="text-base leading-none">+</span>
+            Nueva cotización
+          </button>
+        </div>
       </div>
+
+      {/* Error OCR */}
+      {ocrError && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span className="flex-1">{ocrError}</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => ocrInputRef.current?.click()}
+              className="rounded px-2 py-1 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40"
+            >
+              Reintentar
+            </button>
+            <button
+              onClick={() => { setOcrError(null); setShowCreate(true) }}
+              className="rounded px-2 py-1 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40"
+            >
+              Crear manualmente
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Filtro de estado ──────────────────────────────────────────────── */}
       <div className="mt-4">
@@ -714,9 +817,11 @@ export default function QuotesPage() {
       {/* ── Modal crear cotización ────────────────────────────────────────── */}
       {showCreate && (
         <QuoteFormModal
-          onClose={() => setShowCreate(false)}
+          onClose={() => { setShowCreate(false); setOcrData(null) }}
+          initialData={ocrData ?? undefined}
           onSuccess={(quote) => {
             setShowCreate(false)
+            setOcrData(null)
             setQuotes((prev) => [quote, ...prev])
             setTotal((n) => n + 1)
           }}

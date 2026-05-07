@@ -63,6 +63,12 @@ export interface WhatsAppIncomingJob {
   messageId:     string
   /** Unix timestamp del mensaje (string, según API de Meta) */
   timestamp:     string
+  /** Media ID de Meta — presente si el mensaje tiene imagen o documento adjunto */
+  mediaId?:       string
+  /** MIME type del adjunto (image/jpeg, image/png, image/webp, application/pdf) */
+  mediaType?:     string
+  /** Nombre del archivo (solo para documentos) */
+  mediaFileName?: string
   /** Payload completo del change.value para compatibilidad futura */
   rawPayload:    unknown
 }
