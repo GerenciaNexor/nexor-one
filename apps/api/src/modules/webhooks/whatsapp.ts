@@ -27,6 +27,8 @@ interface WaMessage {
   timestamp: string
   type:      string
   text?:     { body: string }
+  image?:    { id: string; mime_type?: string; caption?: string }
+  document?: { id: string; mime_type?: string; filename?: string; caption?: string }
 }
 
 interface WaChangeValue {
@@ -170,9 +172,12 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance): Promi
             integrationId: integration.id,
             phoneNumberId,
             from:          msg.from,
-            content:       msg.text?.body ?? '',
+            content:       msg.text?.body ?? msg.image?.caption ?? msg.document?.caption ?? '',
             messageId:     msg.id,
             timestamp:     msg.timestamp,
+            mediaId:       msg.image?.id ?? msg.document?.id ?? undefined,
+            mediaType:     msg.image?.mime_type ?? msg.document?.mime_type ?? undefined,
+            mediaFileName: msg.document?.filename ?? undefined,
             rawPayload:    value,
           }
 

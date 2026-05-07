@@ -18,7 +18,15 @@
       "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 pnpm --filter @nexor/e2e exec playwright test)",
       "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/nira.spec.ts tests/ari.spec.ts --project=chromium --reporter=line)",
       "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test tests/ari.spec.ts --project=chromium --reporter=line)",
-      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test --project=chromium --reporter=line)"
+      "Bash(BASE_URL=http://localhost:3000 API_URL=http://localhost:3001 npx playwright test --project=chromium --reporter=line)",
+      "Bash(grep -E \"^-.*\\\\.\\(ts|js\\)$\")",
+      "Bash(dir -R src)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\web\\\\src\\\\app\" -Recurse -Name)",
+      "Bash(Select-Object -First 50)",
+      "Bash(xargs grep -l \"quote\\\\|cotizacion\" -i)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\jeikd\\\\OneDrive\\\\Documentos\\\\nexor-one\\\\apps\\\\api\\\\src\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(Select-String -Pattern \"dev|start\")"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [

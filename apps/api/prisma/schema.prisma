@@ -95,6 +95,8 @@ model Tenant {
   monthlyBudgets        MonthlyBudget[]
   chatMessages          ChatMessage[]
   bulkUploadLogs        BulkUploadLog[]
+  conversations         Conversation[]
+  conversationMessages  ConversationMessage[]
 
   @@map("tenants")
 }
@@ -165,6 +167,8 @@ model User {
   serviceProfessionals     ServiceProfessional[]
   refreshTokens            RefreshToken[]
   chatMessages             ChatMessage[]
+  assignedConversations    Conversation[]         @relation("ConversationAssignee")
+  conversationMessages     ConversationMessage[]
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -907,4 +911,68 @@ model ChatMessage {
   /// Índice compuesto principal — historial paginado por usuario
   @@index([tenantId, userId, createdAt(sort: Desc)])
   @@map("chat_messages")
+}
+
+// =============================================================================
+// BANDEJA DE ENTRADA — Conversaciones agrupadas por canal
+// =============================================================================
+
+/// Hilo de conversación que agrupa mensajes de un mismo remitente por canal.
+/// WhatsApp: mensajes del mismo número en ventana de 24 horas de inactividad.
+/// Gmail: mensajes del mismo email sin límite de tiempo.
+/// El estado lo actualiza el equipo humano — el agente nunca cambia el status.
+model Conversation {
+  id               String     @id @default(cuid()) @db.VarChar(30)
+  tenantId         String     @db.VarChar(30) @map("tenant_id")
+  channel          Channel
+  senderIdentifier String     @db.VarChar(255) @map("sender_identifier")
+  senderName       String?    @db.VarChar(255) @map("sender_name")
+  relatedModule    ModuleName? @map("related_module")
+  /// open | replied | resolved | reassigned
+  status           String     @default("open") @db.VarChar(20)
+  assignedTo       String?    @db.VarChar(30) @map("assigned_to")
+  lastMessageAt    DateTime   @map("last_message_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt       @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedUser User?                  @relation("ConversationAssignee", fields: [assignedTo], references: [id])
+  messages     ConversationMessage[]
+
+  @@index([tenantId, channel, senderIdentifier])
+  @@index([tenantId, status])
+  @@index([lastMessageAt(sort: Desc)])
+  @@map("conversations")
+}
+
+/// Mensaje individual dentro de una conversación. APPEND-ONLY.
+/// direction: inbound (remitente → sistema) | outbound (sistema → remitente).
+/// isFromAgent: true cuando lo generó el AgentRunner; false cuando lo envió un humano.
+model ConversationMessage {
+  id                String  @id @default(cuid()) @db.VarChar(30)
+  conversationId    String  @db.VarChar(30) @map("conversation_id")
+  tenantId          String  @db.VarChar(30) @map("tenant_id")
+  /// inbound | outbound
+  direction         String  @db.VarChar(10)
+  content           String  @db.Text
+  /// text | image | document
+  messageType       String  @default("text") @db.VarChar(20) @map("message_type")
+  isFromAgent       Boolean @default(false) @map("is_from_agent")
+  /// userId presente solo cuando direction=outbound y isFromAgent=false
+  userId            String? @db.VarChar(30) @map("user_id")
+  /// ID externo del mensaje (wamid de Meta o messageId de Gmail)
+  externalMessageId String? @db.VarChar(255) @map("external_message_id")
+  timestamp         DateTime @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([conversationId, timestamp(sort: Asc)])
+  @@index([tenantId])
+  @@index([externalMessageId])
+  @@map("conversation_messages")
 }

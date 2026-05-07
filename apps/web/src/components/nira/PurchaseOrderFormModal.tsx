@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import type { Supplier } from './SupplierFormModal'
+import { OcrExtractButton } from '@/components/ocr/OcrExtractButton'
+import type { OcrResult, Confidence, OrderExtraction } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -25,18 +27,24 @@ interface LineItem {
   productLabel:    string  // "SKU — Nombre"
   quantityOrdered: string
   unitCost:        string
+  ocrDescription?: string  // descripción extraída por OCR — visible como hint al usuario
+  _conf?: {
+    quantityOrdered?: Confidence
+    unitCost?:        Confidence
+  }
 }
 
 interface Props {
-  onClose: () => void
-  onSuccess: () => void
+  onClose:      () => void
+  onSuccess:    () => void
+  initialData?: OrderExtraction
 }
 
 const EMPTY_LINE: LineItem = { productId: '', productLabel: '', quantityOrdered: '1', unitCost: '0' }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
+export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Props) {
   // Datos del formulario
   const [supplierId,       setSupplierId]       = useState('')
   const [branchId,         setBranchId]         = useState('')
@@ -51,9 +59,29 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
   const [products,  setProducts]  = useState<Product[]>([])
 
   // UI
-  const [submitting, setSubmitting] = useState(false)
-  const [apiError,   setApiError]   = useState<string | null>(null)
-  const [lineErrors, setLineErrors] = useState<string[]>([])
+  const [submitting,    setSubmitting]    = useState(false)
+  const [apiError,      setApiError]      = useState<string | null>(null)
+  const [lineErrors,    setLineErrors]    = useState<string[]>([])
+  const [supplierHint,  setSupplierHint]  = useState<string | null>(null)
+
+  // ── Pre-llenado desde OCR (initialData) ───────────────────────────────────
+  useEffect(() => {
+    if (!initialData || initialData.documentType !== 'order') return
+    if (initialData.items.length > 0) {
+      setLines(initialData.items.map((item) => ({
+        productId:       '',
+        productLabel:    '',
+        quantityOrdered: String(item.quantity.value || 1),
+        unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
+        ocrDescription:  item.description.value,
+        _conf: {
+          quantityOrdered: item.quantity.confidence,
+          unitCost:        item.unitPrice?.confidence ?? 'low',
+        },
+      })))
+    }
+    if (initialData.notes?.value) setNotes(initialData.notes.value)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cargar datos de referencia ─────────────────────────────────────────────
   useEffect(() => {
@@ -61,6 +89,26 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
     apiClient.get<{ data: Branch[] }>('/v1/branches').then((r) => setBranches(r.data)).catch(() => null)
     apiClient.get<{ data: Product[] }>('/v1/kira/products?pageSize=500').then((r) => setProducts(r.data)).catch(() => null)
   }, [])
+
+  // ── Auto-match proveedor desde OCR cuando la lista carga ─────────────────
+  useEffect(() => {
+    if (!initialData?.supplier?.value || !suppliers.length || supplierId) return
+    const searchName = initialData.supplier.value.toLowerCase()
+    const searchNit  = initialData.supplierNit?.value?.toLowerCase() ?? ''
+    const matched = suppliers.find((s) => {
+      const name = s.name.toLowerCase()
+      const nit  = (s.taxId ?? '').toLowerCase().replace(/[^0-9]/g, '')
+      const qNit = searchNit.replace(/[^0-9]/g, '')
+      return name.includes(searchName) || searchName.includes(name) ||
+             (qNit && nit && nit === qNit)
+    })
+    if (matched) {
+      setSupplierId(matched.id)
+      setSupplierHint(null)
+    } else {
+      setSupplierHint(initialData.supplier.value)
+    }
+  }, [suppliers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Totales calculados ────────────────────────────────────────────────────
   const subtotal = lines.reduce((acc, l) => {
@@ -75,7 +123,13 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
   function updateLine(idx: number, field: keyof LineItem, value: string) {
     setLines((prev) => {
       const next = [...prev]
-      next[idx] = { ...next[idx]!, [field]: value }
+      const base = { ...next[idx]!, [field]: value }
+      if (base._conf && field in base._conf) {
+        const cleared = { ...base._conf }
+        delete (cleared as Record<string, unknown>)[field as string]
+        base._conf = cleared
+      }
+      next[idx] = base
       return next
     })
   }
@@ -90,12 +144,31 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
         productId,
         productLabel: `${product.sku} — ${product.name}`,
         unitCost:     product.costPrice != null ? String(product.costPrice) : '0',
+        _conf:        undefined,  // el usuario eligió explícitamente — ya no necesita verificar
       }
       return next
     })
   }
 
   function addLine() { setLines((prev) => [...prev, { ...EMPTY_LINE }]) }
+
+  function handleOcrExtracted(result: OcrResult) {
+    if (result.documentType !== 'order') return
+    if (result.items.length > 0) {
+      setLines(result.items.map((item) => ({
+        productId:       '',
+        productLabel:    '',
+        quantityOrdered: String(item.quantity.value || 1),
+        unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
+        ocrDescription:  item.description.value,
+        _conf: {
+          quantityOrdered: item.quantity.confidence,
+          unitCost:        item.unitPrice?.confidence ?? 'low',
+        },
+      })))
+    }
+    if (result.notes?.value) setNotes(result.notes.value)
+  }
 
   function removeLine(idx: number) {
     if (lines.length === 1) return
@@ -147,8 +220,10 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
   }
 
   const inp    = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+  const inpLow = 'w-full rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100'
   const sel    = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
   const inpErr = 'w-full rounded-lg border border-red-400 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-red-100'
+  const confInp = (conf?: Confidence) => conf === 'low' ? inpLow : inp
 
   return (
     <Portal>
@@ -157,9 +232,9 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <div>
+          <div className="flex flex-col gap-1.5">
             <h2 className="text-base font-semibold text-slate-900">Nueva orden de compra</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Se creará en estado borrador</p>
+            <OcrExtractButton docType="order" onExtracted={handleOcrExtracted} label="Extraer desde PDF / imagen" />
           </div>
           <button type="button" onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
@@ -178,13 +253,18 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-600">Proveedor *</label>
-                  <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
+                  <select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setSupplierHint(null) }}
                     className={!supplierId && apiError ? inpErr : sel}>
                     <option value="">Seleccionar proveedor…</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
+                  {supplierHint && !supplierId && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      OCR detectó "{supplierHint}" — no encontrado en el catálogo. Créalo primero o selecciónalo manualmente.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-600">Sucursal destino</label>
@@ -250,6 +330,11 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
                           <option key={p.id} value={p.id}>{p.sku} — {p.name} ({p.unit})</option>
                         ))}
                       </select>
+                      {line.ocrDescription && !line.productId && (
+                        <p className="mt-1 text-[11px] text-violet-600 dark:text-violet-400">
+                          📄 OCR: {line.ocrDescription}
+                        </p>
+                      )}
                       {lineErrors[idx] && <p className="mt-1 text-xs text-red-500">{lineErrors[idx]}</p>}
                     </div>
 
@@ -258,7 +343,9 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
                       <input type="number" min="0.01" step="0.01"
                         value={line.quantityOrdered}
                         onChange={(e) => updateLine(idx, 'quantityOrdered', e.target.value)}
-                        className={`${inp} text-right`} placeholder="1" />
+                        className={`${confInp(line._conf?.quantityOrdered)} text-right`}
+                        title={line._conf?.quantityOrdered === 'low' ? 'Verificar este valor' : undefined}
+                        placeholder="1" />
                     </div>
 
                     {/* Costo */}
@@ -268,7 +355,9 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
                         <input type="number" min="0" step="1"
                           value={line.unitCost}
                           onChange={(e) => updateLine(idx, 'unitCost', e.target.value)}
-                          className={`${inp} pl-7 text-right`} placeholder="0" />
+                          className={`${confInp(line._conf?.unitCost)} pl-7 text-right`}
+                          title={line._conf?.unitCost === 'low' ? 'Verificar este valor' : undefined}
+                          placeholder="0" />
                       </div>
                     </div>
 
@@ -324,7 +413,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess }: Props) {
           </button>
           <button type="submit" form="po-form" disabled={submitting}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-60">
-            {submitting ? 'Creando…' : 'Crear borrador'}
+            {submitting ? 'Creando…' : initialData ? 'Confirmar y crear borrador' : 'Crear borrador'}
           </button>
         </div>
       </div>

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
+import { OcrExtractButton } from '@/components/ocr/OcrExtractButton'
+import type { OcrResult, Confidence, QuoteExtraction } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -66,11 +68,18 @@ interface LineItem {
   quantity:    string
   unitPrice:   string
   discountPct: string
+  _conf?: {
+    description?: Confidence
+    quantity?:    Confidence
+    unitPrice?:   Confidence
+    discountPct?: Confidence
+  }
 }
 
 interface Props {
-  onClose:   () => void
-  onSuccess: (quote: Quote) => void
+  onClose:      () => void
+  onSuccess:    (quote: Quote) => void
+  initialData?: QuoteExtraction
 }
 
 const EMPTY_LINE: LineItem = {
@@ -172,7 +181,7 @@ function ProductSearchInput({
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 
-export function QuoteFormModal({ onClose, onSuccess }: Props) {
+export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
   const [clientId, setClientId]     = useState('')
   const [dealId, setDealId]         = useState('')
   const [validUntil, setValidUntil] = useState('')
@@ -188,6 +197,28 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
   const [apiError, setApiError]     = useState<string | null>(null)
   const [lineErrors, setLineErrors] = useState<string[]>([])
 
+  // ── Pre-llenado desde OCR (initialData) ───────────────────────────────────
+
+  useEffect(() => {
+    if (!initialData || initialData.documentType !== 'quote') return
+    if (initialData.items.length > 0) {
+      setItems(initialData.items.map((item) => ({
+        productId:   '',
+        description: item.description.value,
+        quantity:    String(item.quantity.value || 1),
+        unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
+        discountPct: String(item.discount?.value || 0),
+        _conf: {
+          description: item.description.confidence,
+          quantity:    item.quantity.confidence,
+          unitPrice:   item.unitPrice?.confidence ?? 'low',
+          discountPct: item.discount?.confidence,
+        },
+      })))
+    }
+    if (initialData.notes?.value) setNotes(initialData.notes.value)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Carga inicial ──────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -195,6 +226,18 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
       .then((res) => setClients(res.data))
       .catch(() => {})
   }, [])
+
+  // Auto-match cliente desde OCR cuando la lista de clientes carga
+  useEffect(() => {
+    if (!initialData?.client?.value || !clients.length || clientId) return
+    const search = initialData.client.value.toLowerCase()
+    const matched = clients.find((c) =>
+      c.name.toLowerCase().includes(search) ||
+      search.includes(c.name.toLowerCase()) ||
+      (c.company ? c.company.toLowerCase().includes(search) : false),
+    )
+    if (matched) setClientId(matched.id)
+  }, [clients]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cuando cambia el cliente, cargar sus deals
   useEffect(() => {
@@ -224,7 +267,15 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
   function setLine(idx: number, patch: Partial<LineItem>) {
     setItems((prev) => {
       const next = [...prev]
-      next[idx] = { ...next[idx]!, ...patch }
+      const base = { ...next[idx]!, ...patch }
+      if (base._conf) {
+        const cleared = { ...base._conf }
+        for (const key of Object.keys(patch) as (keyof LineItem)[]) {
+          if (key in cleared) delete (cleared as Record<string, unknown>)[key as string]
+        }
+        base._conf = cleared
+      }
+      next[idx] = base
       return next
     })
   }
@@ -268,6 +319,26 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
   function removeLine(idx: number) {
     if (items.length === 1) return
     setItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function handleOcrExtracted(result: OcrResult) {
+    if (result.documentType !== 'quote') return
+    if (result.items.length > 0) {
+      setItems(result.items.map((item) => ({
+        productId:   '',
+        description: item.description.value,
+        quantity:    String(item.quantity.value || 1),
+        unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
+        discountPct: String(item.discount?.value || 0),
+        _conf: {
+          description: item.description.confidence,
+          quantity:    item.quantity.confidence,
+          unitPrice:   item.unitPrice?.confidence ?? 'low',
+          discountPct: item.discount?.confidence,
+        },
+      })))
+    }
+    if (result.notes?.value) setNotes(result.notes.value)
   }
 
   // ── Cálculo de totales ────────────────────────────────────────────────────
@@ -337,18 +408,20 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
 
   // ── Clases compartidas ────────────────────────────────────────────────────
 
-  const inp = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
+  const inp    = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
+  const inpLow = 'w-full rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 dark:border-amber-500 dark:bg-amber-900/10 dark:text-slate-100'
+  const confInp = (conf?: Confidence) => conf === 'low' ? inpLow : inp
 
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <div className="flex w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
+        <div className="flex w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700 max-h-[calc(100vh-2rem)]">
 
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-5">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Nueva cotización</h2>
-              <p className="mt-0.5 text-xs text-slate-400">El número se genera automáticamente (COT-YYYY-NNN)</p>
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Nueva cotización <span className="text-xs font-normal text-slate-400">(COT-YYYY-NNN)</span></h2>
+              <OcrExtractButton docType="quote" onExtracted={handleOcrExtracted} label="Extraer desde PDF / imagen" />
             </div>
             <button
               type="button"
@@ -473,12 +546,18 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
 
                           {/* Descripción */}
                           <div className="col-span-12 sm:col-span-5">
-                            <label className="mb-1 block text-xs text-slate-500">Descripción *</label>
+                            <label className="mb-1 block text-xs text-slate-500">
+                              Descripción *
+                              {line._conf?.description === 'low' && (
+                                <span className="ml-2 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Verificar</span>
+                              )}
+                            </label>
                             <input
                               type="text"
                               value={line.description}
                               onChange={(e) => setLine(idx, { description: e.target.value })}
-                              className={inp}
+                              className={confInp(line._conf?.description)}
+                              title={line._conf?.description === 'low' ? 'Verificar este valor' : undefined}
                               placeholder="Producto o servicio…"
                             />
                           </div>
@@ -492,7 +571,8 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                               step={0.001}
                               value={line.quantity}
                               onChange={(e) => setLine(idx, { quantity: e.target.value })}
-                              className={inp}
+                              className={confInp(line._conf?.quantity)}
+                              title={line._conf?.quantity === 'low' ? 'Verificar este valor' : undefined}
                             />
                           </div>
 
@@ -505,7 +585,8 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                               step={1}
                               value={line.unitPrice}
                               onChange={(e) => setLine(idx, { unitPrice: e.target.value })}
-                              className={inp}
+                              className={confInp(line._conf?.unitPrice)}
+                              title={line._conf?.unitPrice === 'low' ? 'Verificar este valor' : undefined}
                             />
                           </div>
 
@@ -519,7 +600,8 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                               step={0.1}
                               value={line.discountPct}
                               onChange={(e) => setLine(idx, { discountPct: e.target.value })}
-                              className={inp}
+                              className={confInp(line._conf?.discountPct)}
+                              title={line._conf?.discountPct === 'low' ? 'Verificar este valor' : undefined}
                             />
                           </div>
 
@@ -637,7 +719,7 @@ export function QuoteFormModal({ onClose, onSuccess }: Props) {
                 disabled={submitting}
                 className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
               >
-                {submitting ? 'Creando…' : 'Crear cotización'}
+                {submitting ? 'Creando…' : initialData ? 'Confirmar y crear cotización' : 'Crear cotización'}
               </button>
             </div>
           </form>
