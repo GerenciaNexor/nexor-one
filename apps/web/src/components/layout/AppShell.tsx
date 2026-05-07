@@ -175,7 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       try {
         const data = await apiClient.get<{ count: number }>('/v1/inbox/unread-count')
         if (mounted) setInboxUnread(data.count)
-      } catch {}
+      } catch { /* silenciar error de red — se reintenta en el intervalo */ }
     }
     fetchInboxCount()
     const interval = setInterval(fetchInboxCount, 30_000)

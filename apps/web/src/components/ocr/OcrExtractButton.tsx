@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { apiClient } from '@/lib/api-client'
 
 // ─── Tipos de datos extraídos ─────────────────────────────────────────────────
 

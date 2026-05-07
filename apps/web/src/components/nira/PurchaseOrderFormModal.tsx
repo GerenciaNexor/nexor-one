@@ -262,7 +262,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
                   </select>
                   {supplierHint && !supplierId && (
                     <p className="mt-1 text-[11px] text-amber-700">
-                      OCR detectó "{supplierHint}" — no encontrado en el catálogo. Créalo primero o selecciónalo manualmente.
+                      OCR detectó &ldquo;{supplierHint}&rdquo; — no encontrado en el catálogo. Créalo primero o selecciónalo manualmente.
                     </p>
                   )}
                 </div>
