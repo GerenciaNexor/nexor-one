@@ -414,7 +414,7 @@ async function createNiraDraftFromOcr(params: {
     const unmatchedDesc: string[] = []
 
     for (const item of ocrResult.items) {
-      const desc = item.description.value.trim()
+      const desc = item.description?.value?.trim() ?? ''
       if (!desc) continue
       const product = await directPrisma.product.findFirst({
         where:  { tenantId, isActive: true, name: { contains: desc, mode: 'insensitive' } },
@@ -423,11 +423,11 @@ async function createNiraDraftFromOcr(params: {
       if (product) {
         matchedItems.push({
           productId:       product.id,
-          quantityOrdered: item.quantity.value || 1,
+          quantityOrdered: item.quantity?.value || 1,
           unitCost:        item.unitPrice?.value || Number(product.costPrice ?? 0),
         })
       } else {
-        unmatchedDesc.push(`${desc} (cant: ${item.quantity.value || 1}, precio: ${item.unitPrice?.value || 0})`)
+        unmatchedDesc.push(`${desc} (cant: ${item.quantity?.value || 1}, precio: ${item.unitPrice?.value || 0})`)
       }
     }
 
@@ -557,12 +557,12 @@ async function createAriDraftFromOcr(params: {
     }
 
     const items = ocrResult.items.map((item) => {
-      const qty   = item.quantity.value || 1
+      const qty   = item.quantity?.value || 1
       const price = item.unitPrice?.value || 0
       const disc  = item.discount?.value || 0
       return {
         productId:   null as string | null,
-        description: item.description.value || '(sin descripción)',
+        description: item.description?.value || '(sin descripción)',
         quantity:    qty,
         unitPrice:   price,
         discountPct: disc,

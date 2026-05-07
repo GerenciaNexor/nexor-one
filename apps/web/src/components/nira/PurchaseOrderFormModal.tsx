@@ -71,11 +71,11 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
       setLines(initialData.items.map((item) => ({
         productId:       '',
         productLabel:    '',
-        quantityOrdered: String(item.quantity.value || 1),
+        quantityOrdered: String(item.quantity?.value || 1),
         unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
-        ocrDescription:  item.description.value,
+        ocrDescription:  item.description?.value ?? '',
         _conf: {
-          quantityOrdered: item.quantity.confidence,
+          quantityOrdered: item.quantity?.confidence,
           unitCost:        item.unitPrice?.confidence ?? 'low',
         },
       })))
@@ -158,11 +158,11 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
       setLines(result.items.map((item) => ({
         productId:       '',
         productLabel:    '',
-        quantityOrdered: String(item.quantity.value || 1),
+        quantityOrdered: String(item.quantity?.value || 1),
         unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
-        ocrDescription:  item.description.value,
+        ocrDescription:  item.description?.value ?? '',
         _conf: {
-          quantityOrdered: item.quantity.confidence,
+          quantityOrdered: item.quantity?.confidence,
           unitCost:        item.unitPrice?.confidence ?? 'low',
         },
       })))

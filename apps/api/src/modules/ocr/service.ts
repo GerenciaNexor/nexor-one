@@ -16,8 +16,8 @@ export interface FieldValue<T = string> {
 }
 
 export interface LineItem {
-  description: FieldValue
-  quantity:    FieldValue<number>
+  description: FieldValue | null
+  quantity:    FieldValue<number> | null
   unitPrice:   FieldValue<number> | null
   discount:    FieldValue<number> | null
 }

@@ -204,13 +204,13 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
     if (initialData.items.length > 0) {
       setItems(initialData.items.map((item) => ({
         productId:   '',
-        description: item.description.value,
-        quantity:    String(item.quantity.value || 1),
+        description: item.description?.value ?? '',
+        quantity:    String(item.quantity?.value || 1),
         unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
         discountPct: String(item.discount?.value || 0),
         _conf: {
-          description: item.description.confidence,
-          quantity:    item.quantity.confidence,
+          description: item.description?.confidence,
+          quantity:    item.quantity?.confidence,
           unitPrice:   item.unitPrice?.confidence ?? 'low',
           discountPct: item.discount?.confidence,
         },
@@ -326,13 +326,13 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
     if (result.items.length > 0) {
       setItems(result.items.map((item) => ({
         productId:   '',
-        description: item.description.value,
-        quantity:    String(item.quantity.value || 1),
+        description: item.description?.value ?? '',
+        quantity:    String(item.quantity?.value || 1),
         unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
         discountPct: String(item.discount?.value || 0),
         _conf: {
-          description: item.description.confidence,
-          quantity:    item.quantity.confidence,
+          description: item.description?.confidence,
+          quantity:    item.quantity?.confidence,
           unitPrice:   item.unitPrice?.confidence ?? 'low',
           discountPct: item.discount?.confidence,
         },
