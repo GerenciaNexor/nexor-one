@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { directPrisma } from '../../lib/prisma'
 
 const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
 
@@ -20,16 +21,18 @@ export interface LineItem {
   quantity:    FieldValue<number> | null
   unitPrice:   FieldValue<number> | null
   discount:    FieldValue<number> | null
+  productId?:  string | null
 }
 
 interface BaseExtraction {
-  canRead:           boolean
-  readabilityIssues: string | null
-  confidence:        Confidence
-  date:              FieldValue | null
-  items:             LineItem[]
-  total:             FieldValue<number> | null
-  notes:             FieldValue | null
+  canRead:            boolean
+  readabilityIssues:  string | null
+  confidence:         Confidence
+  date:               FieldValue | null
+  items:              LineItem[]
+  total:              FieldValue<number> | null
+  notes:              FieldValue | null
+  unrecognizedItems?: string[]
 }
 
 export interface QuoteExtraction extends BaseExtraction {
@@ -42,11 +45,12 @@ export interface OrderExtraction extends BaseExtraction {
   supplier:     FieldValue | null
   supplierNit:  FieldValue | null
   paymentTerms: FieldValue | null
+  supplierId?:  string | null
 }
 
 export type ExtractionResult = QuoteExtraction | OrderExtraction
 
-// ─── Prompt ───────────────────────────────────────────────────────────────────
+// ─── Prompt OCR ───────────────────────────────────────────────────────────────
 
 function buildPrompt(docType: DocumentType | null): string {
   const typeInstruction = docType
@@ -121,7 +125,36 @@ Reglas estrictas:
 - PDFs de varias páginas: analiza solo la primera página`
 }
 
-// ─── Función principal ────────────────────────────────────────────────────────
+// ─── Prompt de matching semántico ─────────────────────────────────────────────
+
+type CatalogEntry = { id: string; name: string; sku: string }
+
+function buildMatchPrompt(
+  descriptions: Array<{ index: number; description: string }>,
+  products: CatalogEntry[],
+): string {
+  return `Analiza estas descripciones extraídas de un documento comercial y compáralas con el catálogo de productos.
+
+Descripciones del documento:
+${JSON.stringify(descriptions)}
+
+Catálogo de productos (id, nombre, sku):
+${JSON.stringify(products)}
+
+Para cada descripción indica:
+1. ¿Es un producto o servicio facturable? (isProduct: true/false). Marca false para texto no-producto: garantías, notas de envío, condiciones de pago, texto genérico.
+2. Si isProduct es true, ¿cuál producto del catálogo coincide mejor? (productId: string o null si no hay coincidencia suficiente)
+
+Responde ÚNICAMENTE con un JSON array:
+[
+  { "index": 0, "isProduct": true, "productId": "clxxx..." },
+  { "index": 1, "isProduct": false, "productId": null }
+]
+
+Usa coincidencia semántica difusa: "Papel Bond A4" coincide con "Papel carta bond A4 75g". El productId debe ser exactamente el id del catálogo o null.`
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveMediaType(mimeType: string, fileName: string): string {
   if (mimeType && mimeType !== 'application/octet-stream') return mimeType
@@ -143,6 +176,8 @@ const ALLOWED_TYPES = new Set([
   'application/pdf',
 ])
 
+// ─── extractDocument ──────────────────────────────────────────────────────────
+
 export async function extractDocument(params: {
   fileBuffer: Buffer
   mimeType:   string
@@ -150,7 +185,7 @@ export async function extractDocument(params: {
   docType:    DocumentType | null
   tenantId:   string
 }): Promise<ExtractionResult> {
-  const { fileBuffer, fileName, docType, tenantId } = params
+  const { fileBuffer, fileName, docType } = params
   const mimeType = resolveMediaType(params.mimeType, fileName)
 
   if (!ALLOWED_TYPES.has(mimeType)) {
@@ -169,11 +204,10 @@ export async function extractDocument(params: {
     }
   }
 
-  const base64   = fileBuffer.toString('base64')
-  const isPdf    = mimeType === 'application/pdf'
-  const prompt   = buildPrompt(docType)
+  const base64 = fileBuffer.toString('base64')
+  const isPdf  = mimeType === 'application/pdf'
+  const prompt = buildPrompt(docType)
 
-  // Construir el bloque de contenido según el tipo de archivo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fileBlock: any = isPdf
     ? {
@@ -203,18 +237,6 @@ export async function extractDocument(params: {
       },
     ],
   })
-
-  // Registrar uso de tokens para monitoreo de costos
-  console.info(JSON.stringify({
-    event:        'ocr_extract_done',
-    tenantId,
-    model:        OCR_MODEL,
-    mimeType,
-    docType,
-    inputTokens:  response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    fileBytes:    fileBuffer.length,
-  }))
 
   const rawText = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -246,4 +268,138 @@ export async function extractDocument(params: {
   }
 
   return parsed
+}
+
+// ─── enrichExtraction ─────────────────────────────────────────────────────────
+
+type MatchResult = { index: number; isProduct: boolean; productId: string | null }
+type CatalogProduct = {
+  id:        string
+  name:      string
+  sku:       string
+  salePrice: number | null
+  costPrice: number | null
+}
+
+export async function enrichExtraction(params: {
+  extraction: ExtractionResult
+  tenantId:   string
+}): Promise<ExtractionResult> {
+  const { extraction, tenantId } = params
+
+  // ── 1. Fetch catalog ────────────────────────────────────────────────────
+  let products: CatalogProduct[] = []
+  try {
+    const rows = await directPrisma.product.findMany({
+      where:  { tenantId, isActive: true },
+      select: { id: true, name: true, sku: true, salePrice: true, costPrice: true },
+      take:   500,
+    })
+    products = rows.map(r => ({
+      id:        r.id,
+      name:      r.name,
+      sku:       r.sku,
+      salePrice: r.salePrice !== null ? Number(r.salePrice) : null,
+      costPrice: r.costPrice !== null ? Number(r.costPrice) : null,
+    }))
+  } catch { /* catalog fetch failed — proceed without enrichment */ }
+
+  // ── 2. Semantic matching ────────────────────────────────────────────────
+  let matchResults: MatchResult[] = []
+
+  if (products.length > 0 && extraction.items.length > 0) {
+    const descriptions = extraction.items.map((item, i) => ({
+      index:       i,
+      description: item.description?.value ?? '',
+    }))
+
+    try {
+      const response = await client.messages.create({
+        model:       OCR_MODEL,
+        max_tokens:  1024,
+        temperature: 0,
+        messages: [{
+          role:    'user',
+          content: buildMatchPrompt(
+            descriptions,
+            products.map(p => ({ id: p.id, name: p.name, sku: p.sku })),
+          ),
+        }],
+      })
+      const rawText   = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+      const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+      matchResults    = JSON.parse((jsonMatch ? jsonMatch[1] : rawText).trim()) as MatchResult[]
+    } catch { /* matching failed — proceed without catalog enrichment */ }
+  }
+
+  // ── 3. Build enriched items ─────────────────────────────────────────────
+  const matchMap        = new Map(matchResults.map(r => [r.index, r]))
+  const recognizedItems: LineItem[] = []
+  const unrecognizedItems: string[] = []
+
+  for (let i = 0; i < extraction.items.length; i++) {
+    const item  = extraction.items[i]!
+    const match = matchMap.get(i)
+
+    if (match && !match.isProduct) {
+      unrecognizedItems.push(item.description?.value ?? '')
+      continue
+    }
+
+    const productId      = match?.productId ?? null
+    const catalogProduct = productId ? products.find(p => p.id === productId) : null
+
+    let enrichedItem: LineItem = { ...item, productId }
+
+    // Para cotizaciones (quote): precio de venta del catálogo sobreescribe el del documento
+    if (
+      extraction.documentType === 'quote' &&
+      catalogProduct != null &&
+      catalogProduct.salePrice !== null
+    ) {
+      enrichedItem = {
+        ...enrichedItem,
+        unitPrice: { value: catalogProduct.salePrice, confidence: 'high' },
+      }
+    }
+
+    recognizedItems.push(enrichedItem)
+  }
+
+  // ── 4. Supplier lookup for purchase orders ──────────────────────────────
+  if (extraction.documentType === 'order') {
+    let supplierId: string | null = null
+    if (extraction.supplier?.value) {
+      try {
+        const name = extraction.supplier.value.toLowerCase()
+        const rows = await directPrisma.supplier.findMany({
+          where:  { tenantId, isActive: true },
+          select: { id: true, name: true },
+          take:   100,
+        })
+        const supplierMatch = rows.find(
+          s => s.name.toLowerCase().includes(name) || name.includes(s.name.toLowerCase()),
+        )
+        supplierId = supplierMatch?.id ?? null
+      } catch {
+        supplierId = null
+      }
+    }
+
+    return {
+      ...(extraction as OrderExtraction),
+      items: recognizedItems,
+      unrecognizedItems,
+      supplierId,
+    }
+  }
+
+  return {
+    ...extraction,
+    items: recognizedItems,
+    unrecognizedItems,
+  }
 }

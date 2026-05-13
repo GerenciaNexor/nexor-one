@@ -63,11 +63,13 @@ interface StockInfo {
 }
 
 interface LineItem {
-  productId:   string
-  description: string
-  quantity:    string
-  unitPrice:   string
-  discountPct: string
+  productId:    string
+  description:  string
+  quantity:     string
+  unitPrice:    string
+  discountPct:  string
+  _ocrNoMatch?: boolean   // true cuando el backend buscó pero no encontró match en catálogo
+  _catalogName?: string   // nombre real del catálogo, para inicializar ProductSearchInput
   _conf?: {
     description?: Confidence
     quantity?:    Confidence
@@ -100,15 +102,17 @@ function fmtCOP(n: number) {
 
 function ProductSearchInput({
   selectedId,
+  initialLabel,
   onSelect,
 }: {
-  selectedId: string
-  onSelect: (id: string, name: string, price: number | null) => void
+  selectedId:    string
+  initialLabel?: string
+  onSelect:      (id: string, name: string, price: number | null) => void
 }) {
-  const [val, setVal]     = useState('')
+  const [val, setVal]     = useState(initialLabel ?? '')
   const [results, setRes] = useState<KiraProduct[]>([])
   const [open, setOpen]   = useState(false)
-  const isSelected        = useRef(false)
+  const isSelected        = useRef(!!initialLabel)
 
   // Si el padre limpia el selectedId (ej. reset de línea), limpiar el input también
   useEffect(() => {
@@ -193,28 +197,43 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
   const [deals, setDeals]           = useState<Deal[]>([])
   const [stockMap, setStockMap]     = useState<Record<string, StockInfo | null>>({})
 
+  // Catálogo de KIRA — se carga al abrir el modal para resolver productId del OCR
+  const kiraProductsRef = useRef<KiraProduct[]>([])
+
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError]     = useState<string | null>(null)
   const [lineErrors, setLineErrors] = useState<string[]>([])
+
+  // ── Helper: convierte un ítem OCR en LineItem resolviendo el catálogo ────────
+
+  function buildLineFromOcrItem(item: import('@/components/ocr/OcrExtractButton').OcrLineItem): LineItem {
+    const catalog     = kiraProductsRef.current
+    const catalogProd = (item.productId != null)
+      ? (catalog.find((p) => p.id === item.productId) ?? null)
+      : null
+    return {
+      productId:    item.productId ?? '',
+      description:  catalogProd?.name ?? item.description?.value ?? '',
+      quantity:     String(item.quantity?.value || 1),
+      unitPrice:    item.unitPrice ? String(item.unitPrice.value) : '',
+      discountPct:  String(item.discount?.value || 0),
+      _ocrNoMatch:  item.productId === null,
+      _catalogName: catalogProd?.name,
+      _conf: {
+        description: catalogProd ? undefined : item.description?.confidence,
+        quantity:    item.quantity?.confidence,
+        unitPrice:   item.unitPrice?.confidence ?? 'low',
+        discountPct: item.discount?.confidence,
+      },
+    }
+  }
 
   // ── Pre-llenado desde OCR (initialData) ───────────────────────────────────
 
   useEffect(() => {
     if (!initialData || initialData.documentType !== 'quote') return
     if (initialData.items.length > 0) {
-      setItems(initialData.items.map((item) => ({
-        productId:   '',
-        description: item.description?.value ?? '',
-        quantity:    String(item.quantity?.value || 1),
-        unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
-        discountPct: String(item.discount?.value || 0),
-        _conf: {
-          description: item.description?.confidence,
-          quantity:    item.quantity?.confidence,
-          unitPrice:   item.unitPrice?.confidence ?? 'low',
-          discountPct: item.discount?.confidence,
-        },
-      })))
+      setItems(initialData.items.map(buildLineFromOcrItem))
     }
     if (initialData.notes?.value) setNotes(initialData.notes.value)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -224,6 +243,9 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
   useEffect(() => {
     apiClient.get<{ data: Client[] }>('/v1/ari/clients')
       .then((res) => setClients(res.data))
+      .catch(() => {})
+    apiClient.get<{ data: KiraProduct[] }>('/v1/kira/products?pageSize=500&active=true')
+      .then((res) => { kiraProductsRef.current = res.data })
       .catch(() => {})
   }, [])
 
@@ -324,19 +346,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
   function handleOcrExtracted(result: OcrResult) {
     if (result.documentType !== 'quote') return
     if (result.items.length > 0) {
-      setItems(result.items.map((item) => ({
-        productId:   '',
-        description: item.description?.value ?? '',
-        quantity:    String(item.quantity?.value || 1),
-        unitPrice:   item.unitPrice ? String(item.unitPrice.value) : '',
-        discountPct: String(item.discount?.value || 0),
-        _conf: {
-          description: item.description?.confidence,
-          quantity:    item.quantity?.confidence,
-          unitPrice:   item.unitPrice?.confidence ?? 'low',
-          discountPct: item.discount?.confidence,
-        },
-      })))
+      setItems(result.items.map(buildLineFromOcrItem))
     }
     if (result.notes?.value) setNotes(result.notes.value)
   }
@@ -546,10 +556,15 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
 
                           {/* Descripción */}
                           <div className="col-span-12 sm:col-span-5">
-                            <label className="mb-1 block text-xs text-slate-500">
+                            <label className="mb-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
                               Descripción *
                               {line._conf?.description === 'low' && (
-                                <span className="ml-2 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Verificar</span>
+                                <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Verificar</span>
+                              )}
+                              {line._ocrNoMatch && !line.productId && (
+                                <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                                  No existe en catálogo
+                                </span>
                               )}
                             </label>
                             <input
@@ -587,6 +602,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
                               onChange={(e) => setLine(idx, { unitPrice: e.target.value })}
                               className={confInp(line._conf?.unitPrice)}
                               title={line._conf?.unitPrice === 'low' ? 'Verificar este valor' : undefined}
+                              placeholder={line._ocrNoMatch && !line.productId ? 'Producto no encontrado' : '0'}
                             />
                           </div>
 
@@ -630,6 +646,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
                             <p className="mb-1 text-xs text-slate-400">Producto catálogo (opcional)</p>
                             <ProductSearchInput
                               selectedId={line.productId}
+                              initialLabel={line._catalogName}
                               onSelect={(id, name, price) => handleProductChange(idx, id, name, price)}
                             />
                           </div>
