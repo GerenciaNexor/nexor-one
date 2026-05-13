@@ -16,28 +16,32 @@ export interface OcrLineItem {
   quantity:    FieldValue<number> | null
   unitPrice:   FieldValue<number> | null
   discount:    FieldValue<number> | null
+  productId?:  string | null
 }
 
 export interface QuoteExtraction {
-  documentType: 'quote'
-  confidence:   Confidence
-  client:       FieldValue | null
-  date:         FieldValue | null
-  items:        OcrLineItem[]
-  total:        FieldValue<number> | null
-  notes:        FieldValue | null
+  documentType:       'quote'
+  confidence:         Confidence
+  client:             FieldValue | null
+  date:               FieldValue | null
+  items:              OcrLineItem[]
+  total:              FieldValue<number> | null
+  notes:              FieldValue | null
+  unrecognizedItems?: string[]
 }
 
 export interface OrderExtraction {
-  documentType: 'order'
-  confidence:   Confidence
-  supplier:     FieldValue | null
-  supplierNit:  FieldValue | null
-  date:         FieldValue | null
-  items:        OcrLineItem[]
-  total:        FieldValue<number> | null
-  paymentTerms: FieldValue | null
-  notes:        FieldValue | null
+  documentType:       'order'
+  confidence:         Confidence
+  supplier:           FieldValue | null
+  supplierNit:        FieldValue | null
+  date:               FieldValue | null
+  items:              OcrLineItem[]
+  total:              FieldValue<number> | null
+  paymentTerms:       FieldValue | null
+  notes:              FieldValue | null
+  unrecognizedItems?: string[]
+  supplierId?:        string | null
 }
 
 export type OcrResult = QuoteExtraction | OrderExtraction

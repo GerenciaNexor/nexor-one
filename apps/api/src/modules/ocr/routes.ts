@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../../lib/guards'
-import { extractDocument } from './service'
+import { extractDocument, enrichExtraction } from './service'
 import type { DocumentType } from './service'
 import { objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -85,16 +85,16 @@ export async function ocrRoutes(app: FastifyInstance): Promise<void> {
       ? (docTypeRaw as DocumentType)
       : null
 
-    // ── Llamar al servicio de extracción ───────────────────────────────────
+    // ── Paso 1: extracción OCR con Claude Vision ───────────────────────────
+    let result
     try {
-      const result = await extractDocument({
+      result = await extractDocument({
         fileBuffer,
         mimeType,
         fileName,
         docType,
         tenantId: request.user.tenantId,
       })
-      return reply.code(200).send({ data: result })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       const status = e.statusCode ?? 500
@@ -104,5 +104,17 @@ export async function ocrRoutes(app: FastifyInstance): Promise<void> {
       }
       return reply.code(status).send({ error: e.message ?? 'Error al procesar', code: e.code ?? 'OCR_ERROR' })
     }
+
+    // ── Paso 2: enriquecimiento con catálogo (no bloquea si falla) ─────────
+    try {
+      result = await enrichExtraction({
+        extraction: result,
+        tenantId:   request.user.tenantId,
+      })
+    } catch {
+      // No re-throw: el resultado sin enriquecimiento sigue siendo válido
+    }
+
+    return reply.code(200).send({ data: result })
   })
 }
