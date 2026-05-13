@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { OcrExtractButton } from '@/components/ocr/OcrExtractButton'
-import type { OcrResult, Confidence, QuoteExtraction } from '@/components/ocr/OcrExtractButton'
+import type { OcrResult, Confidence, QuoteExtraction, OcrLineItem } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -206,7 +206,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
 
   // ── Helper: convierte un ítem OCR en LineItem resolviendo el catálogo ────────
 
-  function buildLineFromOcrItem(item: import('@/components/ocr/OcrExtractButton').OcrLineItem): LineItem {
+  function buildLineFromOcrItem(item: OcrLineItem): LineItem {
     const catalog     = kiraProductsRef.current
     const catalogProd = (item.productId != null)
       ? (catalog.find((p) => p.id === item.productId) ?? null)

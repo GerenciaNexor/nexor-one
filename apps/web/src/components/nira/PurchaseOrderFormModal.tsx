@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import type { Supplier } from './SupplierFormModal'
 import { OcrExtractButton } from '@/components/ocr/OcrExtractButton'
-import type { OcrResult, Confidence, OrderExtraction } from '@/components/ocr/OcrExtractButton'
+import type { OcrResult, Confidence, OrderExtraction, OcrLineItem } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
 
   // ── Helper: convierte ítem OCR en LineItem resolviendo el catálogo ───────────
 
-  function buildOrderLineFromOcrItem(item: import('@/components/ocr/OcrExtractButton').OcrLineItem): LineItem {
+  function buildOrderLineFromOcrItem(item: OcrLineItem): LineItem {
     const product = (item.productId != null)
       ? (products.find((p) => p.id === item.productId) ?? null)
       : null
