@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import type { Supplier } from './SupplierFormModal'
 import { OcrExtractButton } from '@/components/ocr/OcrExtractButton'
-import type { OcrResult, Confidence, OrderExtraction } from '@/components/ocr/OcrExtractButton'
+import type { OcrResult, Confidence, OrderExtraction, OcrLineItem } from '@/components/ocr/OcrExtractButton'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,7 @@ interface LineItem {
   quantityOrdered: string
   unitCost:        string
   ocrDescription?: string  // descripción extraída por OCR — visible como hint al usuario
+  _ocrNoMatch?:    boolean  // true cuando el backend buscó pero no encontró match en catálogo
   _conf?: {
     quantityOrdered?: Confidence
     unitCost?:        Confidence
@@ -64,23 +65,39 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   const [lineErrors,    setLineErrors]    = useState<string[]>([])
   const [supplierHint,  setSupplierHint]  = useState<string | null>(null)
 
+  // ── Helper: convierte ítem OCR en LineItem resolviendo el catálogo ───────────
+
+  function buildOrderLineFromOcrItem(item: OcrLineItem): LineItem {
+    const product = (item.productId != null)
+      ? (products.find((p) => p.id === item.productId) ?? null)
+      : null
+    return {
+      productId:       product?.id ?? '',
+      productLabel:    product ? `${product.sku} — ${product.name}` : '',
+      quantityOrdered: String(item.quantity?.value || 1),
+      // Para órdenes: el precio del proveedor viene del documento, no del catálogo
+      unitCost:        item.unitPrice ? String(item.unitPrice.value) : '0',
+      ocrDescription:  item.description?.value ?? '',
+      _ocrNoMatch:     item.productId === null,
+      _conf:           product ? undefined : {
+        quantityOrdered: item.quantity?.confidence,
+        unitCost:        item.unitPrice?.confidence ?? 'low',
+      },
+    }
+  }
+
   // ── Pre-llenado desde OCR (initialData) ───────────────────────────────────
   useEffect(() => {
     if (!initialData || initialData.documentType !== 'order') return
     if (initialData.items.length > 0) {
-      setLines(initialData.items.map((item) => ({
-        productId:       '',
-        productLabel:    '',
-        quantityOrdered: String(item.quantity?.value || 1),
-        unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
-        ocrDescription:  item.description?.value ?? '',
-        _conf: {
-          quantityOrdered: item.quantity?.confidence,
-          unitCost:        item.unitPrice?.confidence ?? 'low',
-        },
-      })))
+      setLines(initialData.items.map(buildOrderLineFromOcrItem))
     }
     if (initialData.notes?.value) setNotes(initialData.notes.value)
+    // Si el backend ya identificó el supplierId, usarlo directamente
+    if (initialData.supplierId && !supplierId) {
+      setSupplierId(initialData.supplierId)
+      setSupplierHint(null)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cargar datos de referencia ─────────────────────────────────────────────
@@ -155,19 +172,22 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   function handleOcrExtracted(result: OcrResult) {
     if (result.documentType !== 'order') return
     if (result.items.length > 0) {
-      setLines(result.items.map((item) => ({
-        productId:       '',
-        productLabel:    '',
-        quantityOrdered: String(item.quantity?.value || 1),
-        unitCost:        item.unitPrice ? String(item.unitPrice.value) : '',
-        ocrDescription:  item.description?.value ?? '',
-        _conf: {
-          quantityOrdered: item.quantity?.confidence,
-          unitCost:        item.unitPrice?.confidence ?? 'low',
-        },
-      })))
+      setLines(result.items.map(buildOrderLineFromOcrItem))
     }
     if (result.notes?.value) setNotes(result.notes.value)
+    // Usar supplierId del backend si ya hizo el match
+    if (result.supplierId) {
+      setSupplierId(result.supplierId)
+      setSupplierHint(null)
+    } else if (result.supplier?.value) {
+      // Fallback: intentar match local por nombre
+      const name    = result.supplier.value.toLowerCase()
+      const matched = suppliers.find(
+        (s) => s.name.toLowerCase().includes(name) || name.includes(s.name.toLowerCase()),
+      )
+      if (matched) { setSupplierId(matched.id); setSupplierHint(null) }
+      else setSupplierHint(result.supplier.value)
+    }
   }
 
   function removeLine(idx: number) {
@@ -330,9 +350,14 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
                           <option key={p.id} value={p.id}>{p.sku} — {p.name} ({p.unit})</option>
                         ))}
                       </select>
+                      {line._ocrNoMatch && !line.productId && (
+                        <span className="mt-1 inline-flex items-center rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                          No existe en catálogo
+                        </span>
+                      )}
                       {line.ocrDescription && !line.productId && (
                         <p className="mt-1 text-[11px] text-violet-600 dark:text-violet-400">
-                          📄 OCR: {line.ocrDescription}
+                          OCR: {line.ocrDescription}
                         </p>
                       )}
                       {lineErrors[idx] && <p className="mt-1 text-xs text-red-500">{lineErrors[idx]}</p>}
@@ -357,7 +382,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
                           onChange={(e) => updateLine(idx, 'unitCost', e.target.value)}
                           className={`${confInp(line._conf?.unitCost)} pl-7 text-right`}
                           title={line._conf?.unitCost === 'low' ? 'Verificar este valor' : undefined}
-                          placeholder="0" />
+                          placeholder={line._ocrNoMatch && !line.productId ? 'Producto no encontrado' : '0'} />
                       </div>
                     </div>
 

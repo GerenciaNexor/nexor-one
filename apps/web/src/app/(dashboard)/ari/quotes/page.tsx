@@ -296,8 +296,12 @@ function QuoteDetailModal({
                           <tr key={item.id} className="bg-white dark:bg-slate-900">
                             <td className="px-3 py-2">
                               <p className="text-slate-800 dark:text-slate-200">{item.description}</p>
-                              {item.product && (
+                              {item.product ? (
                                 <p className="text-xs text-slate-400">{item.product.sku} · {item.product.unit}</p>
+                              ) : (
+                                <span className="mt-0.5 inline-flex items-center rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                                  Sin producto en catálogo
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">
