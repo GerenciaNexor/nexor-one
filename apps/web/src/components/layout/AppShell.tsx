@@ -26,11 +26,11 @@ function resolveNotifLink(link: string): string {
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
 const MODULES = [
-  { key: 'ARI',    label: 'Ventas',     href: '/ari' },
-  { key: 'NIRA',   label: 'Compras',    href: '/nira' },
-  { key: 'KIRA',   label: 'Inventario', href: '/kira' },
-  { key: 'AGENDA', label: 'Agenda',     href: '/agenda' },
-  { key: 'VERA',   label: 'Finanzas',   href: '/vera' },
+  { key: 'ARI',    label: 'Ventas',     href: '/ari',    badge: 'ARI'  },
+  { key: 'NIRA',   label: 'Compras',    href: '/nira',   badge: 'NIRA' },
+  { key: 'KIRA',   label: 'Inventario', href: '/kira',   badge: 'KIRA' },
+  { key: 'AGENDA', label: 'Agenda',     href: '/agenda', badge: 'REI'  },
+  { key: 'VERA',   label: 'Finanzas',   href: '/vera',   badge: 'VERA' },
 ] as const
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -270,10 +270,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Logo */}
         <div className="flex h-16 items-center border-b border-slate-200 px-5 dark:border-slate-700">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600">
-              <span className="text-sm font-black text-white">N</span>
-            </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">NEXOR</span>
+            {/* Símbolo: versión clara para tema light, vibrante para tema dark */}
+            <img src="/logos/icon-light.png" alt="NEXOR ONE" className="h-9 w-auto object-contain dark:hidden" />
+            <img src="/logos/icon-dark.png" alt="" aria-hidden="true" className="hidden h-9 w-auto object-contain dark:block" />
+            <span className="font-wordmark text-2xl font-semibold tracking-tight text-[#6b2c91] [word-spacing:-0.2em] dark:text-slate-300">nexor one</span>
           </div>
         </div>
 
@@ -350,7 +350,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     ? 'text-blue-400 dark:text-blue-500'
                     : 'text-slate-300 dark:text-slate-600',
                 ].join(' ')}>
-                  {m.key}
+                  {m.badge}
                 </span>
               </Link>
             ))}
