@@ -140,7 +140,7 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
     schema: {
       tags:        ['NIRA'],
       summary:     'Enviar a aprobación',
-      description: 'Cambia el estado de la OC de draft → pending_approval.',
+      description: 'Cambia el estado de la OC de draft → submitted.',
       security:    bearerAuth,
       params:      idParam,
       response:    { 200: objRes, ...stdErrors },
@@ -164,7 +164,7 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
     schema: {
       tags:        ['NIRA'],
       summary:     'Aprobar orden de compra',
-      description: 'Aprueba la OC (pending_approval → approved). Genera egreso en VERA y notifica al comprador. Requiere AREA_MANAGER.NIRA.',
+      description: 'Aprueba la OC (submitted → approved). Genera egreso en VERA y notifica al comprador. Requiere AREA_MANAGER.NIRA.',
       security:    bearerAuth,
       params:      idParam,
       response:    { 200: objRes, ...stdErrors },

@@ -7,6 +7,111 @@ Las versiones corresponden a los sprints de desarrollo del producto.
 
 ---
 
+## [Sprint 12] — Endurecimiento de seguridad y consistencia (cerrado)
+
+> **Gate de cierre (HU-120).** El sprint se cierra tras verificar de extremo a extremo los tres
+> bloqueantes: (1) **orden de migraciones** — las migraciones de HU-114/HU-116 ya tenían prefijo
+> 2026 correcto; el gate además detectó y corrigió una **deuda oculta**: faltaba la migración de
+> creación de `bulk_upload_logs` (existía por `db push`), que hacía fallar `migrate deploy` desde
+> cero — añadida (`20260506000002_add_bulk_upload_logs`, idempotente) y verificada con un
+> `migrate deploy` completo (19 migraciones en orden) + `db:rls` (23 tablas) sobre una **BD
+> temporal**; (2) **E2E de autenticación** de HU-113 corrida en verde (5/5) con el limiter en Redis,
+> más un ajuste de aislamiento del entorno de test (flush de las claves `nexor:login:*` en el
+> `global-setup`); (3) **regla de backup**: el PO confirmó que la BD de Railway es **producción** y
+> que **existía un backup verificado** previo a las migraciones de HU-114/HU-116 (invariante #5
+> respetada). Hallazgo crítico pre-piloto: producción conecta como rol `postgres` (superusuario),
+> que **bypasea RLS** — la coraza RLS de HU-114 y la defensa en profundidad de HU-115/HU-119 no
+> protegen hasta que la app use un rol no-superusuario (`nexor_app`). Pendiente para una HU previa al piloto.
+
+### Added
+- **Bloqueo de login por IP en Redis** (HU-113): el conteo de fallos y el estado de bloqueo se
+  movieron de un `Map` en memoria a **Redis**, consistentes entre reinicios e instancias del API.
+  TTL en vez de barrido con `setInterval`; umbrales configurables por entorno
+  (`LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_SECONDS`, `LOGIN_BLOCK_DURATION_SECONDS`) y
+  comportamiento ante caída de Redis vía `LOGIN_LIMITER_FAIL_OPEN` (default fail-open). Se conserva
+  el contrato `429 / IP_BLOCKED / retryAfter`. Nueva dependencia directa `ioredis`.
+- **Cobertura RLS de bandeja y carga masiva** (HU-114): RLS + política `tenant_isolation` en
+  `conversations`, `conversation_messages` y `bulk_upload_logs` (migración
+  `20260618000000_rls_inbox_bulkupload` + `setup-rls.ts`). Las tablas de negocio con RLS pasan de
+  **19 a 22**. La vista global del SUPER_ADMIN de carga masiva pasó a `directPrisma` (cross-tenant).
+  Nuevos tests E2E de aislamiento (inbox y bulk-upload, incluso forzando IDs).
+- **`chat_messages` en `setup-rls.ts`** (HU-117): se incluyó `chat_messages` en el script de RLS
+  (antes solo la cubría su migración), llevando el total a **23 tablas**. `db:rls` queda como la
+  **fuente única de verdad** del RLS y re-aplica su política tras un restore. Idempotente.
+
+### Fixed
+- **BUG-004 — contexto de sucursales del agente en webhooks** (HU-115): el AgentRunner corre desde
+  el worker sin `tenantHook`, por lo que `prisma.branch.findMany` (tabla con RLS) devolvía vacío y el
+  agente desconocía las sucursales. Se centralizó la carga en el helper `getAgentTenantContext(tenantId)`
+  (`agents/tenant-context.ts`) usando `withTenantContext`. Test unitario de aislamiento incluido.
+  Evidencia E2E (HU-118): corrida real del AgentRunner contra un tenant con 2 sucursales (fixture
+  en `seed-e2e.ts`); el `agent_log` muestra al agente listando ambas sedes del tenant, sin filtrar
+  las de otro. Cierra el criterio end-to-end de HU-115.
+- **BUG-004, 2ª instancia — `saveLog` y `notifyFallback`** (HU-119): ambas escrituras del AgentRunner
+  usaban el cliente `prisma` (sujeto a RLS) sin contexto de tenant; bajo el rol de aplicación
+  `nexor_app` RLS bloquearía el `INSERT` y se perdería la auditoría obligatoria del `agent_log`.
+  Ahora escriben vía `withTenantContext(tenantId, ...)`. Validado con un test unitario
+  (`agent-log-save.test.ts`) y con evidencia bajo un rol `NOBYPASSRLS` (insert sin contexto
+  bloqueado, con contexto permitido). Invariante preservada: el AgentLog siempre se guarda.
+
+### Changed (arquitectura)
+- **Contexto de tenant confiable por-request, pooling-safe** (HU-122 · prerrequisito de HU-121):
+  el `tenantHook` ya no usa `set_config('app.current_tenant_id', …, false)` de sesión sobre el pool
+  (que podía dejar queries sin contexto o reusar el tenant de otra request → fuga). Ahora cada handler
+  protegido corre dentro de una **transacción interactiva** con `SET LOCAL`, y el cliente transaccional
+  se expone vía **AsyncLocalStorage**; el `prisma` exportado es un proxy que enruta cada query por esa
+  transacción (misma conexión + RLS confiable). `withTenantContext` sigue para escrituras fuera de
+  request (worker/agente/seeds) — un solo mecanismo. Rutas con I/O externo o transacciones propias
+  (dashboard/kpis, ocr) optan por salir con `config: { tenantTx: false }`. Corrige **BUG-006**.
+  Verificado con la suite E2E de seguridad (41/41) y un **test de concurrencia** (6000 requests, 100
+  en vuelo, 2 tenants → 0 cruces) bajo la app conectada como `nexor_app`.
+
+### Security
+- Restablecida la segunda capa de defensa (aplicación + base de datos) sobre la invariante #1
+  (aislamiento por `tenant_id`) en bandeja y carga masiva. Endurecimiento defensivo, sin fuga conocida.
+- **RLS efectivo en producción** (HU-122 + HU-121): con el contexto por-request confiable, el
+  aislamiento por RLS protege incluso ante un filtro olvidado en un servicio, también bajo concurrencia.
+
+---
+
+## [Sin versionar] — Post-Sprint 11 · Bandeja, chat persistente, OCR, carga masiva y landing
+
+> Trabajo posterior al último sprint documentado. Las fechas provienen de las migraciones Prisma.
+> Varios puntos quedan marcados como PENDIENTE de confirmar (ver más abajo).
+
+### Added
+- **Bandeja de conversaciones (módulo `inbox`)**: modelos `Conversation` y `ConversationMessage`
+  (migraciones `20260506000000_conversations` y `20260506000001_conversation_system_message`).
+  Bandeja unificada de WhatsApp y Gmail bajo `/v1/inbox/*`; el equipo humano puede tomar el control,
+  responder manualmente, cambiar estado (`open|replied|resolved|reassigned`) y reasignar. Acceso AREA_MANAGER+.
+- **Chat interno persistente (módulo `chat`)**: modelo `ChatMessage`
+  (migración `20260411131542_chat_messages_rls_and_index`). Historial del asistente IA del dashboard,
+  enrutado por módulo.
+- **OCR de documentos (módulo `ocr`)**: `POST /v1/ocr/extract` extrae datos estructurados de imágenes/PDF
+  (facturas, cotizaciones) usando Claude con visión. Modelo configurable por `OCR_MODEL`.
+- **Carga masiva (módulo `bulk-upload`)**: modelo `BulkUploadLog` (append-only). Importación por Excel
+  con validación + preview, plantillas por tipo e historial bajo `/v1/bulk-upload/*`. Acceso TENANT_ADMIN.
+- **Landing pública y branding**: nueva página de presentación en `/`, símbolo de marca por tema
+  (`apps/web/public/logos/icon-{light,dark}.png`) y tipografía de marca **Eight One** (`.font-wordmark`)
+  para el wordmark "nexor one". (PENDIENTE: confirmar inclusión en el próximo release.)
+
+### Docs
+- **Auditoría y actualización de documentación**: nuevos `README_FRONTEND.md` y `CONTRIBUTING.md`;
+  actualizados `README_ENDPOINTS`, `README_DATABASE`, `README_MODULES`, `README_AGENTS`,
+  `README_ARCHITECTURE`, `README_DEVELOPMENT`, `README_ROLES`, `README_INTEGRATIONS`, `README` y
+  `docs/LAUNCH_CHECKLIST` para reflejar los módulos `inbox/ocr/bulk-upload/chat` y datos verificados
+  contra el código.
+
+### PENDIENTE — a confirmar / alinear
+- **`CLAUDE_MODEL`**: el código usa por defecto `claude-opus-4-6` (`agent.runner.ts`), mientras
+  `.env.example` sugiere `claude-opus-4-5`. Unificar.
+- ~~**Cobertura RLS**: `conversations`, `conversation_messages` y `bulk_upload_logs` no aparecen en
+  `setup-rls.ts`.~~ ✅ **RESUELTO (HU-114, Sprint 12)** — RLS habilitada en las tres tablas.
+- **`.env.example` incompleto**: el backend lee `GMAIL_WEBHOOK_SECRET`, `OCR_MODEL` y `API_BASE_URL`,
+  ausentes del `.env.example`.
+
+---
+
 ## [Sprint 11] — 2026-04 · Feature flags, Super Admin y optimizaciones de rendimiento
 
 ### Added
@@ -136,7 +241,7 @@ Las versiones corresponden a los sprints de desarrollo del producto.
 ### Added
 - **Módulo NIRA** — Compras (`/v1/nira`):
   - Proveedores con ficha técnica y score calculado diariamente (precio histórico + puntualidad + calidad).
-  - Órdenes de compra con flujo `draft → submitted → approved → sent → partial → delivered`.
+  - Órdenes de compra con flujo `draft → submitted → approved → sent → partial → received`.
   - Solo el `AREA_MANAGER` de NIRA puede aprobar OC.
   - Al aprobar una OC: genera `transaction` de egreso en VERA automáticamente.
   - Al recibir mercancía: genera `stock_movement` de entrada en KIRA por cada ítem.

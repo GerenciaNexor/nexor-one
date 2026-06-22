@@ -67,9 +67,10 @@ export async function tenantHook(
     })
   }
 
-  // 4. Inyectar tenant_id en la sesion de PostgreSQL para activar RLS.
-  // set_config(name, value, is_local=false) establece el parametro a nivel de sesion.
-  // Como cada request autentica y sobreescribe el valor antes de cualquier query,
-  // la sesion de la conexion siempre tendra el tenant correcto.
-  await prisma.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, false)`
+  // 4. El contexto de RLS ya NO se inyecta aquí (HU-122).
+  // `set_config(..., is_local=false)` sobre el pool de Prisma era inseguro: el valor
+  // quedaba en una conexión y las queries siguientes podían tomar otra (RLS las vaciaba)
+  // o reusar una con el tenant de otra request (fuga cross-tenant). Ahora cada handler
+  // protegido corre dentro de una transacción con `SET LOCAL` (ver el wrapper onRoute en
+  // app.ts → runInTenantTransaction), garantizando que contexto y queries comparten conexión.
 }

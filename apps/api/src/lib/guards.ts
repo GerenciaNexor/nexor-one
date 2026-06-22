@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import type { Role } from '@nexor/shared'
-import { prisma } from './prisma'
+import { directPrisma } from './prisma'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Jerarquia de roles
@@ -129,7 +129,10 @@ export function requireFeatureFlag(module: string): PreHandler {
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const flag = await prisma.featureFlag.findFirst({
+    // directPrisma (bypass RLS) con filtro tenantId explícito: este guard corre como
+    // preHandler ANTES de la transacción por-request (HU-122), así que no tiene contexto
+    // RLS. El WHERE tenantId garantiza el aislamiento. Mismo patrón que el AgentRunner.
+    const flag = await directPrisma.featureFlag.findFirst({
       where:  { tenantId: request.user.tenantId, module: module as never },
       select: { enabled: true },
     })

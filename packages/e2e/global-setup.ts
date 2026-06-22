@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test'
-import { mkdirSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'fs'
 import path from 'path'
+import Redis from 'ioredis'
 
 const API_URL     = process.env['API_URL']   ?? 'http://localhost:3001'
 const BASE_URL    = process.env['BASE_URL']  ?? 'http://localhost:3000'
@@ -38,8 +39,47 @@ async function apiGet(path: string, token: string) {
   })
 }
 
+/**
+ * Aislamiento del entorno de test (HU-120, criterio 5): el bloqueo de login por IP
+ * vive en Redis (HU-113) y persiste entre corridas. Para que un bloqueo de una
+ * ejecución no contamine la siguiente, limpiamos las claves del limiter antes de
+ * cada suite. La URL se toma de REDIS_URL o, en su defecto, del .env del backend.
+ */
+function resolveRedisUrl(): string | undefined {
+  if (process.env['REDIS_URL']) return process.env['REDIS_URL']
+  try {
+    const envPath = path.join(__dirname, '../../apps/api/.env')
+    const m = readFileSync(envPath, 'utf-8').match(/^REDIS_URL=["']?([^"'\n\r]+)/m)
+    return m?.[1]?.trim()
+  } catch {
+    return undefined
+  }
+}
+
+async function flushLoginLimiter(): Promise<void> {
+  const url = resolveRedisUrl()
+  if (!url) {
+    console.log('   ⚠ REDIS_URL no disponible — se omite la limpieza del login-limiter')
+    return
+  }
+  const redis = new Redis(url, { maxRetriesPerRequest: 1, lazyConnect: true })
+  try {
+    await redis.connect()
+    const keys = await redis.keys('nexor:login:*')
+    if (keys.length > 0) await redis.del(...keys)
+    console.log(`   ✓ Login-limiter: ${keys.length} clave(s) Redis limpiadas (aislamiento de test)`)
+  } catch (err) {
+    console.log('   ⚠ No se pudo limpiar el login-limiter:', (err as Error).message)
+  } finally {
+    redis.disconnect()
+  }
+}
+
 export default async function globalSetup() {
   console.log('\n🎭 Playwright global setup iniciando...')
+
+  // ── 0. Aislamiento: limpiar el bloqueo de login en Redis entre corridas ────
+  await flushLoginLimiter()
 
   // ── 1. Login vía API para obtener token ───────────────────────────────────
   const loginData = await apiPost('/v1/auth/login', { email: TEST_EMAIL, password: TEST_PASSWORD })

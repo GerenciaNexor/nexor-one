@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuthStore } from '@/store/auth'
 import { loginRequest, ApiRequestError } from '@/lib/auth-api'
 
@@ -37,11 +38,7 @@ function Spinner() {
       aria-hidden="true"
     >
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
   )
 }
@@ -98,30 +95,52 @@ export default function LoginPage() {
     }
   }
 
+  const inputBase = [
+    'mt-1.5 block w-full rounded-lg border bg-white/5 px-3.5 py-2.5 text-sm text-slate-100',
+    'placeholder:text-slate-500 backdrop-blur transition-shadow',
+    'focus:outline-none focus:ring-2 focus:ring-offset-0',
+    'disabled:cursor-not-allowed disabled:opacity-50',
+  ].join(' ')
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-md">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b1020] px-4 text-slate-200">
+
+      {/* Resplandor de fondo — coherente con la landing */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-32 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 animate-glow rounded-full bg-purple-600/20 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-[24rem] w-[24rem] animate-glow rounded-full bg-cyan-500/10 blur-[120px]" />
+      </div>
+
+      <div className="relative w-full max-w-md animate-fade-up">
+
+        {/* Volver al inicio */}
+        <Link href="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 transition-colors hover:text-slate-200">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Volver al inicio
+        </Link>
 
         {/* Marca */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
-              <span className="text-lg font-black text-white">N</span>
-            </div>
-            <span className="text-2xl font-bold tracking-tight text-slate-900">NEXOR</span>
+          <div className="inline-flex items-center gap-2.5">
+            <img src="/logos/icon-dark.png" alt="NEXOR ONE" className="h-9 w-auto object-contain" />
+            <span className="font-wordmark text-2xl font-semibold tracking-tight text-slate-100 [word-spacing:-0.2em]">
+              nexor one
+            </span>
           </div>
-          <p className="mt-1.5 text-sm text-slate-500">Gestion empresarial con IA</p>
+          <p className="mt-2 text-sm text-slate-400">Gestion empresarial con IA</p>
         </div>
 
         {/* Tarjeta del formulario */}
-        <div className="rounded-2xl bg-white px-8 py-10 shadow-sm ring-1 ring-slate-200">
-          <h1 className="mb-6 text-xl font-semibold text-slate-900">Iniciar sesion</h1>
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-8 py-10 shadow-2xl backdrop-blur">
+          <h1 className="mb-6 text-xl font-semibold text-white">Iniciar sesion</h1>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
 
             {/* Campo: correo electronico */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+              <label htmlFor="email" className="block text-sm font-medium text-slate-300">
                 Correo electronico
               </label>
               <input
@@ -136,17 +155,14 @@ export default function LoginPage() {
                 placeholder="admin@tuempresa.com"
                 disabled={loading}
                 className={[
-                  'mt-1.5 block w-full rounded-lg border px-3.5 py-2.5 text-sm text-slate-900',
-                  'placeholder:text-slate-400 transition-shadow',
-                  'focus:outline-none focus:ring-2 focus:ring-offset-0',
-                  'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
+                  inputBase,
                   fieldErrors.email
-                    ? 'border-red-400 focus:ring-red-500'
-                    : 'border-slate-300 focus:ring-blue-600',
+                    ? 'border-red-400/60 focus:ring-red-500'
+                    : 'border-white/10 focus:ring-purple-500/70',
                 ].join(' ')}
               />
               {fieldErrors.email && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600" role="alert">
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400" role="alert">
                   {fieldErrors.email}
                 </p>
               )}
@@ -154,7 +170,7 @@ export default function LoginPage() {
 
             {/* Campo: contrasena */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+              <label htmlFor="password" className="block text-sm font-medium text-slate-300">
                 Contrasena
               </label>
               <input
@@ -169,17 +185,14 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 disabled={loading}
                 className={[
-                  'mt-1.5 block w-full rounded-lg border px-3.5 py-2.5 text-sm text-slate-900',
-                  'placeholder:text-slate-400 transition-shadow',
-                  'focus:outline-none focus:ring-2 focus:ring-offset-0',
-                  'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400',
+                  inputBase,
                   fieldErrors.password
-                    ? 'border-red-400 focus:ring-red-500'
-                    : 'border-slate-300 focus:ring-blue-600',
+                    ? 'border-red-400/60 focus:ring-red-500'
+                    : 'border-white/10 focus:ring-purple-500/70',
                 ].join(' ')}
               />
               {fieldErrors.password && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600" role="alert">
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-400" role="alert">
                   {fieldErrors.password}
                 </p>
               )}
@@ -188,7 +201,7 @@ export default function LoginPage() {
             {/* Error del servidor */}
             {serverError && (
               <div
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
                 role="alert"
               >
                 {serverError}
@@ -199,7 +212,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#0b1020] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
                 <>
@@ -214,7 +227,7 @@ export default function LoginPage() {
         </div>
 
         {/* Nota de pie */}
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-slate-500">
           ¿Necesitas acceso? Contacta al administrador de tu empresa.
         </p>
       </div>

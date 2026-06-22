@@ -10,7 +10,7 @@ import { ReceiveModal } from '@/components/nira/ReceiveModal'
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Status =
-  | 'draft' | 'pending_approval' | 'approved'
+  | 'draft' | 'submitted' | 'approved'
   | 'sent'  | 'partial'          | 'received' | 'cancelled'
 
 interface POItem {
@@ -45,7 +45,7 @@ interface PurchaseOrder {
 
 const STATUS_LABELS: Record<Status, string> = {
   draft:            'Borrador',
-  pending_approval: 'En aprobación',
+  submitted: 'En aprobación',
   approved:         'Aprobada',
   sent:             'Enviada',
   partial:          'Recibida parcial',
@@ -55,7 +55,7 @@ const STATUS_LABELS: Record<Status, string> = {
 
 const STATUS_COLORS: Record<Status, string> = {
   draft:            'bg-slate-100 text-slate-600',
-  pending_approval: 'bg-amber-100 text-amber-700',
+  submitted: 'bg-amber-100 text-amber-700',
   approved:         'bg-blue-100 text-blue-700',
   sent:             'bg-violet-100 text-violet-700',
   partial:          'bg-orange-100 text-orange-700',
@@ -184,8 +184,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
   }
 
   const canSubmit  = po.status === 'draft'
-  const canApprove = po.status === 'pending_approval' && isManager
-  const canCancel  = ['draft', 'pending_approval', 'approved', 'sent', 'partial'].includes(po.status) && isManager
+  const canApprove = po.status === 'submitted' && isManager
+  const canCancel  = ['draft', 'submitted', 'approved', 'sent', 'partial'].includes(po.status) && isManager
   const canReceive = ['approved', 'sent', 'partial'].includes(po.status)
 
   // ─── Render ───────────────────────────────────────────────────────────────

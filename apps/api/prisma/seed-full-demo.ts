@@ -403,7 +403,7 @@ const pinarPOs: PODef[] = [
     items: [{ skuIdx: 2, qty: 60, cost: 9500 }, { skuIdx: 6, qty: 30, cost: 15000 }],
   },
   {
-    supplierIdx: 0, status: 'pending_approval', expectedDays: 14, orderNumSuffix: '2026-003',
+    supplierIdx: 0, status: 'submitted', expectedDays: 14, orderNumSuffix: '2026-003',
     items: [{ skuIdx: 3, qty: 40, cost: 18000 }, { skuIdx: 9, qty: 20, cost: 22000 }, { skuIdx: 10, qty: 50, cost: 16500 }],
   },
   {
@@ -475,7 +475,7 @@ const saludPOs: PODef[] = [
     items: [{ skuIdx: 6, qty: 40, cost: 20000 }, { skuIdx: 7, qty: 30, cost: 13000 }],
   },
   {
-    supplierIdx: 0, status: 'pending_approval', expectedDays: 12, orderNumSuffix: '2026-003',
+    supplierIdx: 0, status: 'submitted', expectedDays: 12, orderNumSuffix: '2026-003',
     items: [{ skuIdx: 1, qty: 50, cost: 7800 }, { skuIdx: 4, qty: 60, cost: 10000 }, { skuIdx: 9, qty: 40, cost: 24000 }],
   },
   {

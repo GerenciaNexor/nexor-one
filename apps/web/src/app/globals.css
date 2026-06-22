@@ -3,6 +3,59 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   FUENTE DE MARCA — solo para el wordmark "NEXOR" (logotipo), nunca para la UI.
+   Eight One (Jerry Hodge, libre para uso comercial).
+   Coloca el archivo en apps/web/public/fonts/eight-one.ttf
+   Si el archivo no existe, el navegador cae a la fuente actual (no rompe nada).
+   ═══════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Eight One';
+  src: url('/fonts/eight-one.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-wordmark {
+  font-family: 'Eight One', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ANIMACIONES — landing y login. Respetan prefers-reduced-motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes nx-fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes nx-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+@keyframes nx-glow {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
+@keyframes nx-gradient {
+  to { background-position: 200% center; }
+}
+@keyframes nx-blink {
+  0%, 100% { opacity: 0.2; transform: translateY(0); }
+  50%      { opacity: 1;   transform: translateY(-3px); }
+}
+
+.animate-fade-up  { animation: nx-fade-up 0.8s ease-out both; }
+.animate-float    { animation: nx-float 6s ease-in-out infinite; }
+.animate-glow     { animation: nx-glow 6s ease-in-out infinite; }
+.animate-gradient { background-size: 200% auto; animation: nx-gradient 4s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-float,
+  .animate-glow,
+  .animate-gradient { animation: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    DARK MODE — overrides globales de contenido
    Activa con `class="dark"` en <html> (tailwind darkMode: 'class').
 

@@ -1,6 +1,10 @@
-import { prisma } from '../../lib/prisma'
+import { prisma, runInTenantTransaction } from '../../lib/prisma'
 
-const TIMEOUT_MS = 800
+// HU-122: cada KPI corre en su propia transacción (runInTenantTransaction) → conexiones
+// separadas en paralelo + SET LOCAL. El timeout contempla el overhead de BEGIN/COMMIT;
+// en dev (app local ↔ DB Railway remota) cada round-trip pesa ~300ms, en producción
+// (app y DB co-ubicadas) es despreciable. Configurable por entorno.
+const TIMEOUT_MS = Number(process.env['DASHBOARD_KPI_TIMEOUT_MS'] ?? 5_000)
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -79,7 +83,7 @@ async function niraKpis(tenantId: string): Promise<Record<string, unknown>> {
     prisma.purchaseOrder.aggregate({
       where: {
         tenantId,
-        status: { in: ['approved', 'delivered', 'partial'] },
+        status: { in: ['approved', 'received', 'partial'] },
         createdAt: { gte: monthStart() },
       },
       _sum: { total: true },
@@ -211,8 +215,12 @@ export async function getDashboardKpis(
 ): Promise<Record<string, ModuleKpiResult>> {
   const tasks = modules.filter((m) => MODULE_FNS[m])
 
+  // Cada módulo en su propia transacción de tenant (conexión propia → paralelas de verdad,
+  // sin serializar en una sola conexión) y con contexto RLS vía SET LOCAL.
   const settled = await Promise.allSettled(
-    tasks.map((m) => withTimeout(MODULE_FNS[m]!(tenantId), TIMEOUT_MS)),
+    tasks.map((m) =>
+      withTimeout(runInTenantTransaction(tenantId, () => MODULE_FNS[m]!(tenantId)), TIMEOUT_MS),
+    ),
   )
 
   const result: Record<string, ModuleKpiResult> = {}

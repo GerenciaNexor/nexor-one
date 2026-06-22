@@ -20,7 +20,11 @@ Este repositorio tiene documentación exhaustiva para que cualquier desarrollado
 | Qué puede hacer cada rol de usuario | [README_ROLES.md](./README_ROLES.md) |
 | Cómo funcionan los agentes de IA | [README_AGENTS.md](./README_AGENTS.md) |
 | Cómo funciona WhatsApp y Gmail | [README_INTEGRATIONS.md](./README_INTEGRATIONS.md) |
+| Cómo está construido el frontend (apps/web) | [README_FRONTEND.md](./README_FRONTEND.md) |
 | Cómo activar un nuevo cliente | [README_ONBOARDING_CLIENT.md](./README_ONBOARDING_CLIENT.md) |
+| Cómo contribuir al proyecto (flujo, convenciones, PRs) | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Checklist pre-lanzamiento del cliente piloto | [docs/LAUNCH_CHECKLIST.md](./docs/LAUNCH_CHECKLIST.md) |
+| Reporte de QA del Sprint 11 (riesgos y bugs) | [docs/QA_REPORT_SPRINT11.md](./docs/QA_REPORT_SPRINT11.md) |
 
 ---
 
@@ -57,6 +61,17 @@ Este repositorio tiene documentación exhaustiva para que cualquier desarrollado
 nexor/
 ├── apps/
 │   ├── api/          ← Backend Fastify (Railway)
+│   │   └── src/modules/
+│   │       ├── ari/          ← Ventas / CRM
+│   │       ├── nira/         ← Compras
+│   │       ├── kira/         ← Inventario
+│   │       ├── agenda/       ← Citas
+│   │       ├── vera/         ← Finanzas
+│   │       ├── agents/       ← Motor de agentes IA
+│   │       ├── inbox/        ← Bandeja unificada WhatsApp/Gmail
+│   │       ├── ocr/          ← Extracción de documentos
+│   │       ├── bulk-upload/  ← Carga masiva Excel
+│   │       └── chat/         ← Asistente interno del dashboard
 │   └── web/          ← Frontend Next.js (Vercel)
 ├── packages/
 │   ├── shared/       ← Tipos TypeScript compartidos
@@ -76,6 +91,8 @@ nexor/
 ├── README_ROLES.md
 ├── README_AGENTS.md
 ├── README_INTEGRATIONS.md
+├── README_FRONTEND.md               ← Arquitectura del frontend (apps/web)
 ├── README_ONBOARDING_CLIENT.md
-└── README_DEVELOPMENT.md
+├── README_DEVELOPMENT.md
+└── CONTRIBUTING.md                  ← Guía de contribución
 ```
