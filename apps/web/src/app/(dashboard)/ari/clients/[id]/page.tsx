@@ -40,6 +40,12 @@ interface QuoteSummary {
 
 interface ClientDetail extends Client {
   assignedUser: { id: string; name: string } | null
+  // HU-126 — calificación INTERNA del equipo (no CSAT)
+  internalRating?: {
+    average: number | null
+    count:   number
+    recent:  { rating: number; notes: string | null; createdAt: string; by: string | null }[]
+  }
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -314,6 +320,18 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
               {client.discountType && client.discountValue != null && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
                   Descuento {client.discountType === 'percent' ? `${client.discountValue}%` : `$${client.discountValue.toLocaleString('es-CO')}`}
+                </span>
+              )}
+              {client.internalRating && client.internalRating.count > 0 && client.internalRating.average != null && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700"
+                  title="Calificación interna del equipo (no es satisfacción del cliente / CSAT)"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                  {client.internalRating.average.toFixed(1)} interna
+                  <span className="font-normal text-blue-400">({client.internalRating.count})</span>
                 </span>
               )}
             </div>

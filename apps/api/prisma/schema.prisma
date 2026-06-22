@@ -78,6 +78,7 @@ model Tenant {
   agentLogs             AgentLog[]
   notifications         Notification[]
   clients               Client[]
+  clientRatings         ClientRating[]
   pipelineStages        PipelineStage[]
   deals                 Deal[]
   interactions          Interaction[]
@@ -174,6 +175,7 @@ model User {
   assignedConversations    Conversation[]        @relation("ConversationAssignee")
   conversationMessages     ConversationMessage[]
   supplierRatings          SupplierRating[]      @relation("SupplierRatingAuthor")
+  clientRatings            ClientRating[]        @relation("ClientRatingAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -312,13 +314,14 @@ model Client {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignedUser User?         @relation("ClientAssignee", fields: [assignedTo], references: [id])
-  branch       Branch?       @relation(fields: [branchId], references: [id])
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedUser User?          @relation("ClientAssignee", fields: [assignedTo], references: [id])
+  branch       Branch?        @relation(fields: [branchId], references: [id])
   deals        Deal[]
   interactions Interaction[]
   quotes       Quote[]
   appointments Appointment[]
+  ratings      ClientRating[]
 
   @@index([tenantId])
   @@index([tenantId, assignedTo])
@@ -372,6 +375,7 @@ model Deal {
   branch       Branch?       @relation(fields: [branchId], references: [id])
   interactions Interaction[]
   quotes       Quote[]
+  clientRating ClientRating?
 
   @@index([tenantId, stageId])
   @@index([tenantId, assignedTo])
@@ -449,6 +453,30 @@ model QuoteItem {
 
   @@index([quoteId])
   @@map("quote_items")
+}
+
+/// Calificacion INTERNA del equipo de ventas al cliente, al cerrar la venta (HU-126).
+/// Disparador (decision PO): deal en etapa GANADA (isFinalWon). Escala 1-5. Una por deal.
+/// NO es el CSAT del cliente hacia la empresa (eso es encuesta saliente, va aparte).
+model ClientRating {
+  id       String  @id @default(cuid()) @db.VarChar(30)
+  tenantId String  @map("tenant_id") @db.VarChar(30)
+  clientId String  @map("client_id") @db.VarChar(30)
+  dealId   String? @unique @map("deal_id") @db.VarChar(30)
+  rating   Int     @db.SmallInt
+  notes    String? @db.Text
+  ratedBy  String  @map("rated_by") @db.VarChar(30)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  deal        Deal?  @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  ratedByUser User   @relation("ClientRatingAuthor", fields: [ratedBy], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([createdAt(sort: Desc)])
+  @@map("client_ratings")
 }
 
 // =============================================================================

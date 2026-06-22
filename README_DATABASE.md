@@ -468,6 +468,27 @@ Líneas de cada cotización. Referencia al catálogo de productos al momento de 
 
 ---
 
+#### `client_ratings`
+
+Calificación **interna** del equipo de ventas al cliente al cerrar la venta (HU-126). Disparador:
+deal en etapa **ganada** (`isFinalWon`). Una por deal. **No** es el CSAT del cliente. RLS por
+`tenant_id` (alta en `setup-rls.ts`).
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `client_id` | `VARCHAR(30)` | FK → clients.id, NOT NULL | Cliente calificado |
+| `deal_id` | `VARCHAR(30)` | FK → deals.id, UNIQUE, NULL | Deal ganado (una calificación por deal) |
+| `rating` | `SMALLINT` | NOT NULL | Escala 1-5 (interna) |
+| `notes` | `TEXT` | NULL | Observaciones |
+| `rated_by` | `VARCHAR(30)` | FK → users.id, NOT NULL | Quién calificó |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha |
+
+**Índices:** `(deal_id)` UNIQUE, `(tenant_id, client_id)`, `(created_at DESC)`
+
+---
+
 ### MÓDULO NIRA — Compras
 
 ---

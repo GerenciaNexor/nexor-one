@@ -241,6 +241,14 @@ async function main(): Promise<void> {
       },
     }))
   }
+  // HU-126 — calificación interna del cliente para deals ganados (no es CSAT)
+  for (let i = 0; i < deals.length; i++) {
+    if (stages[dealDefs[i]!.stage]!.isFinalWon) {
+      await prisma.clientRating.create({
+        data: { tenantId: tenant.id, clientId: deals[i]!.clientId, dealId: deals[i]!.id, rating: 5, notes: 'Cliente claro en requerimientos y pago puntual', ratedBy: uVentas.id },
+      })
+    }
+  }
   await prisma.interaction.createMany({
     data: [
       { tenantId: tenant.id, clientId: clients[0]!.id, dealId: deals[0]!.id, userId: uVentas.id, type: 'whatsapp', direction: 'in', content: 'Hola, necesito cotización para 20 puestos.', createdAt: day(-3) },

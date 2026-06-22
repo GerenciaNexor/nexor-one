@@ -33,6 +33,8 @@ const BUSINESS_TABLES = [
   'agent_logs',
   'notifications',
   'clients',
+  // HU-126 — calificación interna del equipo al cliente (tenant_id propio).
+  'client_ratings',
   'pipeline_stages',
   'deals',
   'interactions',

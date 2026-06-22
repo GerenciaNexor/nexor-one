@@ -291,6 +291,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Request:** `{ "stageId": "clxstage2" }`  
 **Efecto secundario:** Si la nueva etapa es `is_final_won: true`, genera una `transaction` de ingreso en VERA.
 
+#### `POST /v1/ari/deals/:id/rate-client` 🆕 HU-126
+**Propósito:** Calificar **internamente** al cliente al cerrar la venta (deal en etapa ganada).  
+**Request:** `{ "rating": 4, "notes": "opcional" }` (escala 1-5)  
+**Notas:** Opcional (no bloquea el cierre). Una calificación por deal (upsert). **No** es CSAT. Guard `OPERATIVE.ARI`. El promedio se ve en la ficha del cliente (`GET /v1/ari/clients/:id` → `internalRating`).
+
 ---
 
 ### Cotizaciones

@@ -43,6 +43,9 @@ Centraliza toda la información de clientes: datos de contacto, historial de int
 **Cliente favorito + descuento manual (HU-124)**  
 El equipo de ventas puede marcar a un cliente como **favorito** (estrella en la lista y la ficha; filtro "Favoritos") y registrar un **descuento preferente manual** (porcentaje o monto fijo). Ambos son visibles y destacados en la lista y la ficha. El descuento es **informativo**: no dispara envíos automáticos a los canales del cliente (eso depende de plantillas Meta y se trata aparte). Respeta los permisos de ARI (se edita por el `PUT` de cliente, `OPERATIVE.ARI`).
 
+**Calificación interna del cliente al cerrar la venta (HU-126)**  
+Cuando se cierra una venta, el equipo de ventas puede calificar **internamente** al cliente (escala 1-5) para registrar la experiencia de forma consistente. **Disparador (decisión del PO): el deal entra en una etapa GANADA (`isFinalWon`)** — el mismo evento que cuenta como "venta realizada" en el Dashboard (HU-127). Al ganar un deal se ofrece calificar; es **opcional** y no bloquea el cierre. La calificación queda asociada al cliente (tabla `client_ratings`, una por deal), visible en su ficha como promedio + nº de calificaciones, y **disponible para un futuro promedio**. **No** es el CSAT (satisfacción del cliente hacia la empresa) — eso requiere encuestar al cliente por su canal y se trata en una HU aparte.
+
 **Pipeline de ventas visual (Kanban)**  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 

@@ -103,7 +103,24 @@ export async function getClient(tenantId: string, clientId: string) {
     select: CLIENT_SELECT,
   })
   if (!client) throw { statusCode: 404, message: 'Cliente no encontrado', code: 'NOT_FOUND' }
-  return toApiClient(client)
+
+  // HU-126 — calificación INTERNA del equipo (promedio + recientes). NO es CSAT.
+  const ratings = await prisma.clientRating.findMany({
+    where:   { clientId, tenantId },
+    select:  { rating: true, notes: true, createdAt: true, ratedByUser: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+  const count   = ratings.length
+  const average = count > 0 ? parseFloat((ratings.reduce((s, r) => s + r.rating, 0) / count).toFixed(2)) : null
+
+  return {
+    ...toApiClient(client),
+    internalRating: {
+      average,
+      count,
+      recent: ratings.slice(0, 5).map((r) => ({ rating: r.rating, notes: r.notes, createdAt: r.createdAt, by: r.ratedByUser?.name ?? null })),
+    },
+  }
 }
 
 export async function createClient(

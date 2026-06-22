@@ -9,6 +9,7 @@ import type {
   CreateDealInput,
   MoveDealInput,
   DealQuery,
+  RateClientInput,
 } from './schema'
 
 // ─── Selects ──────────────────────────────────────────────────────────────────
@@ -306,6 +307,35 @@ export async function moveDeal(
 
     return toDeal(updated)
   })
+}
+
+// ─── HU-126: calificación interna del cliente al cerrar la venta (deal ganado) ─
+// Disparador: deal en etapa GANADA (isFinalWon). Opcional — no bloquea el cierre.
+// Una calificación por deal (upsert). Calificación INTERNA del equipo, NO es CSAT.
+
+export async function rateClientForDeal(
+  tenantId: string,
+  userId:   string,
+  dealId:   string,
+  input:    RateClientInput,
+) {
+  const deal = await prisma.deal.findFirst({
+    where:  { id: dealId, tenantId },
+    select: { id: true, clientId: true, stage: { select: { isFinalWon: true } } },
+  })
+  if (!deal) throw { statusCode: 404, message: 'Deal no encontrado', code: 'NOT_FOUND' }
+  if (!deal.stage.isFinalWon) {
+    throw { statusCode: 400, message: 'Solo se califica al cliente de una venta ganada (deal en etapa ganada)', code: 'INVALID_STATE' }
+  }
+
+  const rating = await prisma.clientRating.upsert({
+    where:  { dealId },
+    create: { tenantId, clientId: deal.clientId, dealId, rating: input.rating, notes: input.notes ?? null, ratedBy: userId },
+    update: { rating: input.rating, notes: input.notes ?? null, ratedBy: userId },
+    select: { id: true, rating: true, notes: true, createdAt: true },
+  })
+
+  return { success: true, rating, mensaje: 'Calificación interna del cliente registrada.' }
 }
 
 // =============================================================================
