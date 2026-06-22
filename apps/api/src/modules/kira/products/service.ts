@@ -14,6 +14,8 @@ const PRODUCT_SELECT = {
   minStock:    true,
   maxStock:    true,
   abcClass:    true,
+  preferredSupplierId: true,
+  preferredSupplier:   { select: { id: true, name: true } },
   isActive:    true,
   createdAt:   true,
   updatedAt:   true,
@@ -110,6 +112,15 @@ export async function updateProduct(
     throw { statusCode: 400, message: 'El stock máximo debe ser mayor al stock mínimo', code: 'VALIDATION_ERROR' }
   }
 
+  // HU-123 — validar que el proveedor preferido pertenezca al tenant (si se está fijando).
+  if (input.preferredSupplierId) {
+    const sup = await prisma.supplier.findFirst({
+      where:  { id: input.preferredSupplierId, tenantId },
+      select: { id: true },
+    })
+    if (!sup) throw { statusCode: 400, message: 'Proveedor preferido no encontrado en tu empresa', code: 'VALIDATION_ERROR' }
+  }
+
   const product = await prisma.product.update({
     where: { id: productId },
     data: {
@@ -121,6 +132,7 @@ export async function updateProduct(
       ...(input.costPrice   !== undefined && { costPrice:   input.costPrice }),
       ...(input.minStock    !== undefined && { minStock:    input.minStock }),
       ...(input.maxStock    !== undefined && { maxStock:    input.maxStock }),
+      ...(input.preferredSupplierId !== undefined && { preferredSupplierId: input.preferredSupplierId }),
     },
     select: PRODUCT_SELECT,
   })

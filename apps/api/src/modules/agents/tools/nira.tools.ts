@@ -7,6 +7,32 @@
 import { prisma } from '../../../lib/prisma'
 import type { AgentTool } from '../types'
 
+// ─── Resolución del proveedor preferido (HU-123) ──────────────────────────────
+// Prioridad: preferido del producto → preferido global del tenant → ninguno.
+// Solo cuenta un proveedor preferido si sigue ACTIVO.
+type PreferredSupplier = { id: string; nombre: string; origen: 'producto' | 'global' }
+
+async function resolvePreferredSupplier(
+  productId: string,
+  tenantId: string,
+): Promise<PreferredSupplier | null> {
+  const product = await prisma.product.findFirst({
+    where:  { id: productId, tenantId },
+    select: { preferredSupplier: { select: { id: true, name: true, isActive: true } } },
+  })
+  if (product?.preferredSupplier?.isActive) {
+    return { id: product.preferredSupplier.id, nombre: product.preferredSupplier.name, origen: 'producto' }
+  }
+  const tenant = await prisma.tenant.findUnique({
+    where:  { id: tenantId },
+    select: { defaultSupplier: { select: { id: true, name: true, isActive: true } } },
+  })
+  if (tenant?.defaultSupplier?.isActive) {
+    return { id: tenant.defaultSupplier.id, nombre: tenant.defaultSupplier.name, origen: 'global' }
+  }
+  return null
+}
+
 // ─── listar_proveedores ───────────────────────────────────────────────────────
 
 const listarProveedores: AgentTool = {
@@ -56,7 +82,7 @@ const listarProveedores: AgentTool = {
 const compararPrecios: AgentTool = {
   definition: {
     name:        'comparar_precios',
-    description: 'Compares the price history of a product across different suppliers. Returns min, max and average price per supplier.',
+    description: 'Compares the price history of a product across different suppliers. Returns min, max and average price per supplier. The product\'s PREFERRED supplier (or the tenant global fallback) is flagged with preferido=true and listed FIRST — recommend it first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -95,7 +121,17 @@ const compararPrecios: AgentTool = {
       take:    30,
     })
 
-    if (items.length === 0) return { message: 'No purchase history found for this product.' }
+    // HU-123 — proveedor preferido (producto → global). Se marca y se ordena primero.
+    const preferido = await resolvePreferredSupplier(resolvedProductId, tenantId)
+
+    if (items.length === 0) {
+      return preferido
+        ? {
+            message:   'Sin historial de compras para este producto, pero hay un proveedor preferido: consúltalo primero.',
+            preferido: { proveedor: preferido.nombre, origen: preferido.origen },
+          }
+        : { message: 'No purchase history found for this product.' }
+    }
 
     const bySupplier = new Map<string, { nombre: string; precios: number[]; ultimaCompra: string }>()
 
@@ -115,10 +151,12 @@ const compararPrecios: AgentTool = {
       }
     }
 
-    return Array.from(bySupplier.values()).map((s) => {
+    const comparacion = Array.from(bySupplier.entries()).map(([sid, s]) => {
       const sorted = [...s.precios].sort((a, b) => a - b)
       return {
+        proveedorId:  sid,
         proveedor:    s.nombre,
+        preferido:    preferido?.id === sid,
         precioMin:    sorted[0],
         precioMax:    sorted[sorted.length - 1],
         precioMedio:  (s.precios.reduce((a, b) => a + b, 0) / s.precios.length).toFixed(2),
@@ -126,6 +164,13 @@ const compararPrecios: AgentTool = {
         ultimaCompra: s.ultimaCompra,
       }
     })
+    // El proveedor preferido va PRIMERO (HU-123).
+    comparacion.sort((a, b) => Number(b.preferido) - Number(a.preferido))
+
+    return {
+      preferido: preferido ? { proveedor: preferido.nombre, origen: preferido.origen } : null,
+      comparacion,
+    }
   },
 }
 
@@ -138,7 +183,7 @@ const crearBorradorOC: AgentTool = {
     input_schema: {
       type: 'object',
       properties: {
-        supplierId: { type: 'string', description: 'Supplier ID' },
+        supplierId: { type: 'string', description: 'Supplier ID. OPTIONAL: if omitted, NIRA uses the preferred supplier of the first product (or the tenant global fallback).' },
         branchId:   { type: 'string', description: 'Destination branch ID' },
         items: {
           type:  'array',
@@ -155,16 +200,37 @@ const crearBorradorOC: AgentTool = {
         },
         notes: { type: 'string', description: 'Optional note for the team' },
       },
-      required: ['supplierId', 'branchId', 'items'],
+      required: ['branchId', 'items'],
     },
   },
 
   async execute({ supplierId, branchId, items, notes }, tenantId) {
+    const lineItems = items as Array<{ productId: string; quantityOrdered: number; unitCost: number }>
+    if (lineItems.length === 0) return { error: 'La orden no tiene productos.' }
+
+    // HU-123 — proveedor preferido del primer producto (producto → global del tenant).
+    const preferido = await resolvePreferredSupplier(lineItems[0]!.productId, tenantId)
+
+    // Si el agente no indicó proveedor, se propone el preferido por defecto.
+    const resolvedSupplierId = (supplierId as string | undefined) ?? preferido?.id
+    if (!resolvedSupplierId) {
+      return { error: 'Indica un proveedor (supplierId) o define un proveedor preferido para el producto.' }
+    }
+
     const supplier = await prisma.supplier.findFirst({
-      where:  { id: supplierId as string, tenantId },
+      where:  { id: resolvedSupplierId, tenantId },
       select: { id: true, name: true },
     })
     if (!supplier) return { error: 'Supplier not found in this tenant.' }
+
+    // Constancia de la preferencia en el borrador (HU-123).
+    let preferidoNota: string | undefined
+    if (preferido && preferido.id === supplier.id) {
+      preferidoNota = `Proveedor preferido (${preferido.origen}) propuesto por NIRA.`
+    } else if (preferido && preferido.id !== supplier.id) {
+      preferidoNota = `El preferido del producto es ${preferido.nombre} (${preferido.origen}); se eligió otro proveedor.`
+    }
+    const notasFinales = [notes as string | undefined, preferidoNota].filter(Boolean).join(' · ') || undefined
 
     // Requires a createdBy user — use TENANT_ADMIN
     const admin = await prisma.user.findFirst({
@@ -173,8 +239,7 @@ const crearBorradorOC: AgentTool = {
     })
     if (!admin) return { error: 'No tenant admin found to register the purchase order.' }
 
-    const lineItems = items as Array<{ productId: string; quantityOrdered: number; unitCost: number }>
-    const subtotal  = lineItems.reduce((sum, i) => sum + i.quantityOrdered * i.unitCost, 0)
+    const subtotal = lineItems.reduce((sum, i) => sum + i.quantityOrdered * i.unitCost, 0)
 
     const count       = await prisma.purchaseOrder.count({ where: { tenantId } })
     const orderNumber = `OC-AGENTE-${String(count + 1).padStart(4, '0')}`
@@ -182,7 +247,7 @@ const crearBorradorOC: AgentTool = {
     const order = await prisma.purchaseOrder.create({
       data: {
         tenantId,
-        supplierId: supplierId as string,
+        supplierId: supplier.id,
         branchId:   branchId as string,
         createdBy:  admin.id,
         orderNumber,
@@ -190,7 +255,7 @@ const crearBorradorOC: AgentTool = {
         subtotal,
         tax:        0,
         total:      subtotal,
-        notes:      notes as string | undefined,
+        notes:      notasFinales,
         items: {
           create: lineItems.map((i) => ({
             productId:       i.productId,
@@ -232,6 +297,8 @@ const crearBorradorOC: AgentTool = {
       ordenId:   order.id,
       numero:    orderNumber,
       proveedor: supplier.name,
+      esPreferido: preferido?.id === supplier.id,
+      preferido:   preferido ? { proveedor: preferido.nombre, origen: preferido.origen } : null,
       total:     subtotal,
       estado:    'draft',
       mensaje:   'Draft PO created. The team must approve it before it is sent.',

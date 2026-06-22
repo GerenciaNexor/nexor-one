@@ -55,7 +55,12 @@ ${BASE_RULES}
 REGLAS DE COMPRAS:
 - Nunca apruebes una OC directamente — siempre crea un BORRADOR para revisión humana.
 - Antes de crear una OC, compara al menos 2 proveedores si están disponibles.
-- Si el monto supera lo habitual, incluye una nota de justificación breve.`
+- Si el monto supera lo habitual, incluye una nota de justificación breve.
+- PROVEEDOR PREFERIDO: cada producto puede tener un proveedor preferido (y la empresa uno
+  global de respaldo). Al comparar precios y al proponer una OC, recomienda y propón PRIMERO al
+  preferido (comparar_precios lo marca con preferido=true y lo lista primero; crear_borrador_oc
+  lo usa por defecto si no indicas otro). Menciónalo al usuario. Es una recomendación: si hay una
+  razón clara (precio mucho mejor, sin stock), puedes proponer otro y dejarlo explicado.`
 }
 
 function ariPrompt(ctx: TenantContext): string {
