@@ -47,6 +47,53 @@ async function seedVeraCategories(tenantId: string) {
   })
 }
 
+/**
+ * Fixtures de bandeja (conversación + mensaje) y carga masiva (HU-114).
+ * Se siembran para cada tenant con IDs fijos para que la suite de seguridad
+ * verifique el aislamiento RLS cruzado (A no puede leer los de B, ni forzando IDs).
+ */
+async function seedInboxAndBulk(tenantId: string, userId: string, tag: string) {
+  const conv = await prisma.conversation.upsert({
+    where:  { id: `seed-e2e-conv-${tag}-001` },
+    update: {},
+    create: {
+      id:               `seed-e2e-conv-${tag}-001`,
+      tenantId,
+      channel:          'WHATSAPP',
+      senderIdentifier: `+5730000${tag}001`,
+      senderName:       `Cliente ${tag.toUpperCase()}`,
+      status:           'open',
+      lastMessageAt:    new Date(),
+    },
+  })
+  await prisma.conversationMessage.upsert({
+    where:  { id: `seed-e2e-convmsg-${tag}-001` },
+    update: {},
+    create: {
+      id:             `seed-e2e-convmsg-${tag}-001`,
+      conversationId: conv.id,
+      tenantId,
+      direction:      'inbound',
+      content:        `Mensaje de prueba ${tag}`,
+      messageType:    'text',
+      timestamp:      new Date(),
+    },
+  })
+  await prisma.bulkUploadLog.upsert({
+    where:  { id: `seed-e2e-bulklog-${tag}-001` },
+    update: {},
+    create: {
+      id:          `seed-e2e-bulklog-${tag}-001`,
+      tenantId,
+      userId,
+      type:        'products',
+      fileName:    `carga-${tag}.xlsx`,
+      status:      'success',
+      recordCount: 1,
+    },
+  })
+}
+
 async function main(): Promise<void> {
   console.log('🌱 Seed E2E iniciado...\n')
 
@@ -78,11 +125,23 @@ async function main(): Promise<void> {
 
   const branchB = await prisma.branch.upsert({
     where:  { id: 'seed-e2e-branch-b-001' },
-    update: {},
+    update: { name: 'Sede Chapinero', city: 'Bogotá' },
     create: {
       id:       'seed-e2e-branch-b-001',
       tenantId: tenantB.id,
-      name:     'Sede Principal B',
+      name:     'Sede Chapinero',
+      city:     'Bogotá',
+    },
+  })
+
+  // Segunda sucursal de Tenant B — fixture para HU-118 (agente con ≥2 sucursales).
+  await prisma.branch.upsert({
+    where:  { id: 'seed-e2e-branch-b-002' },
+    update: { name: 'Sede Poblado', city: 'Medellín' },
+    create: {
+      id:       'seed-e2e-branch-b-002',
+      tenantId: tenantB.id,
+      name:     'Sede Poblado',
       city:     'Medellín',
     },
   })
@@ -225,6 +284,11 @@ async function main(): Promise<void> {
     })
   }
   console.log(`✅ NIRA: proveedor, producto y OC (PO-E2E-001) creados`)
+
+  // ── 6. Fixtures de bandeja y carga masiva (HU-114 — aislamiento RLS) ──────
+  await seedInboxAndBulk(demo.id, adminUser.id, 'a')
+  await seedInboxAndBulk(tenantB.id, adminB.id, 'b')
+  console.log(`✅ INBOX + BULK-UPLOAD: conversación, mensaje y log de carga para A y B`)
 
   // ── Resumen ───────────────────────────────────────────────────────────────
   console.log('\n' + '═'.repeat(55))

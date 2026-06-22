@@ -316,6 +316,13 @@ El plugin `@fastify/rate-limit` estaba correctamente configurado con `RATE_LIMIT
    - En catch 401: `recordFailedAttempt(request.ip)`
    - En éxito: `clearFailedAttempts(request.ip)`
 
+> **Actualización (HU-113, Sprint 12):** el store in-memory descrito arriba fue migrado a **Redis**.
+> El conteo y el bloqueo ahora persisten entre reinicios del servidor y entre múltiples instancias
+> del API; las claves expiran por TTL (se eliminó el `setInterval`). La API expone
+> `getBlockState`, `recordFailedAttempt`, `clearFailedAttempts` y `closeLoginLimiter`. Se conserva el
+> contrato `429 / IP_BLOCKED / retryAfter`. Umbrales configurables por entorno y comportamiento ante
+> caída de Redis vía `LOGIN_LIMITER_FAIL_OPEN`. Ver la recomendación post-audit #1 (abajo), ya resuelta.
+
 **Respuesta 429 cuando IP bloqueada:**
 ```json
 { "error": "IP bloqueada temporalmente por demasiados intentos fallidos.", "code": "IP_BLOCKED", "retryAfter": 900 }
@@ -426,6 +433,6 @@ El error completo (incluyendo stack trace) se registra en el logger del servidor
 
 ## Recomendaciones post-audit (HU-097)
 
-1. **Persistir el bloqueo de IPs en Redis:** El `login-limiter.ts` actual usa memoria en proceso; un reinicio del servidor resetea los contadores. Para producción multi-instancia, migrar el store a Redis.
+1. ~~**Persistir el bloqueo de IPs en Redis:** El `login-limiter.ts` actual usa memoria en proceso; un reinicio del servidor resetea los contadores. Para producción multi-instancia, migrar el store a Redis.~~ ✅ **RESUELTO (HU-113, Sprint 12)** — el bloqueo vive en Redis: consistente entre reinicios e instancias, con TTL y umbrales configurables por entorno. Decisión fail-open/fail-closed expuesta en `LOGIN_LIMITER_FAIL_OPEN`.
 2. **Configurar `GMAIL_WEBHOOK_SECRET` en producción:** Agregar la variable a los secretos de Railway/Render y actualizar la URL de push en Google Pub/Sub.
 3. **Agregar `Content-Security-Policy`:** El header CSP no fue incluido en esta iteración porque requiere análisis de las URLs de fuentes legítimas usadas por la API (iframes, scripts, etc.).

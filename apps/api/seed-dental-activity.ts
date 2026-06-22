@@ -231,7 +231,7 @@ async function main() {
       createdBy:       compras.id,
       approvedBy:      admin.id,
       orderNumber:     'OC-2026-001',
-      status:          'delivered',
+      status:          'received',
       subtotal:        oc1Subtotal,
       tax:             oc1Tax,
       total:           oc1Subtotal + oc1Tax,

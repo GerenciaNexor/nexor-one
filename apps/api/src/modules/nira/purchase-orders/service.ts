@@ -4,7 +4,7 @@ import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, PurchaseOrderQ
 
 // ─── Estado válido ────────────────────────────────────────────────────────────
 
-const CANCELABLE_STATES  = new Set(['draft', 'pending_approval', 'approved', 'sent', 'partial'])
+const CANCELABLE_STATES  = new Set(['draft', 'submitted', 'approved', 'sent', 'partial'])
 
 // ─── Select ───────────────────────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ export async function submitForApproval(tenantId: string, id: string) {
 
   const po = await prisma.purchaseOrder.update({
     where:  { id },
-    data:   { status: 'pending_approval' },
+    data:   { status: 'submitted' },
     select: PO_DETAIL_SELECT,
   })
   return toApiPO(po)
@@ -245,7 +245,7 @@ export async function approvePurchaseOrder(
     },
   })
   if (!existing) throw { statusCode: 404, message: 'Orden de compra no encontrada', code: 'NOT_FOUND' }
-  if (existing.status !== 'pending_approval') {
+  if (existing.status !== 'submitted') {
     throw { statusCode: 409, message: 'Solo OC pendientes de aprobación pueden aprobarse', code: 'INVALID_STATUS' }
   }
 

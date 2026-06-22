@@ -86,11 +86,11 @@ pnpm --filter @nexor/api db:setup
 ```
 
 Este comando hace tres cosas en orden:
-1. `prisma migrate dev` — crea los 31 modelos en la BD
-2. `tsx prisma/setup-rls.ts` — habilita Row-Level Security en las 19 tablas de negocio
+1. `prisma migrate dev` — crea los ≈35 modelos del schema en la BD
+2. `tsx prisma/setup-rls.ts` — habilita Row-Level Security en las 23 tablas de negocio
 3. `prisma db seed` — carga los datos de prueba
 
-**Datos de prueba creados:**
+**Datos de prueba creados** (los crea `prisma/seed.ts` — tenant demo "Farmacia Demo" con usuario admin):
 
 | Campo | Valor |
 |-------|-------|
@@ -98,6 +98,21 @@ Este comando hace tres cosas en orden:
 | Contraseña | `Admin123!` |
 | Tenant | `Farmacia Demo S.A.S.` |
 | Slug | `demo-farmacia` |
+
+**Las 23 tablas de negocio con RLS** (definidas en `prisma/setup-rls.ts` — RLS NO se aplica
+automáticamente al migrar/seed, hay que correr el script aparte):
+
+```
+agent_logs, appointments, availability, branches, clients, deals, feature_flags,
+integrations, interactions, notifications, pipeline_stages, products, purchase_orders,
+quotes, service_types, stock_movements, suppliers, transactions, users,
+bulk_upload_logs, conversations, conversation_messages, chat_messages
+```
+
+> `bulk_upload_logs`, `conversations` y `conversation_messages` se añadieron en HU-114;
+> `chat_messages` en HU-117 (Sprint 12) — así `db:rls` es la **fuente única de verdad** del RLS
+> y re-aplica todas las políticas tras un restore (la migración de `chat_messages` la sigue
+> creando también, de forma idempotente).
 
 ### 2.6 Verificar la conexión
 
@@ -149,20 +164,52 @@ pnpm --filter @nexor/web build
 pnpm --filter @nexor/shared type-check
 ```
 
-**Comandos de Prisma:**
+**Scripts de base de datos (npm scripts reales de `apps/api/package.json`):**
+
+| Script | Comando subyacente | Para qué sirve |
+|--------|--------------------|----------------|
+| `db:setup` | `prisma migrate dev && tsx prisma/setup-rls.ts && prisma db seed` | Primer arranque: migra + RLS + seed |
+| `db:migrate` | `prisma migrate dev` | Crear/aplicar una migración |
+| `db:reset` | `prisma migrate reset --force && tsx prisma/setup-rls.ts && prisma db seed` | Resetear la BD (¡borra todo!) + RLS + seed |
+| `db:seed` | `prisma db seed` (→ `tsx prisma/seed.ts`) | Cargar datos demo |
+| `db:seed-e2e` | `tsx prisma/seed-e2e.ts` | Seed para tests E2E |
+| `db:seed:staging` | `tsx prisma/seed-staging.ts` | Seed de staging (load testing) |
+| `db:rls` | `tsx prisma/setup-rls.ts` | Re-aplicar RLS (OBLIGATORIO tras cualquier restore) |
+| `db:studio` | `prisma studio` | UI para inspeccionar la BD |
+| `db:backup` | `bash ../../scripts/db-backup.sh` | Generar backup (`pg_dump`) |
+| `db:restore` | `bash ../../scripts/db-restore.sh` | Restaurar desde un backup |
+| `prisma:generate` | `prisma generate` | Regenerar el cliente de Prisma (tras cambios al schema) |
+| `onboarding` | `tsx prisma/onboarding.ts` | Alta de cliente nuevo desde Excel (ver `README_ONBOARDING_CLIENT.md`) |
 
 ```bash
-# Generar el cliente de Prisma (necesario tras cambios al schema)
-pnpm --filter @nexor/api exec prisma generate
+# Ejemplos de uso
+pnpm --filter @nexor/api db:setup
+pnpm --filter @nexor/api db:rls
+pnpm --filter @nexor/api db:studio
 
-# Crear y aplicar una nueva migración
+# Crear y aplicar una nueva migración con nombre
 pnpm --filter @nexor/api exec prisma migrate dev --name nombre_de_la_migracion
+```
 
-# Abrir Prisma Studio (UI para inspeccionar la DB)
-pnpm --filter @nexor/api exec prisma studio
+**Scripts en `apps/api/prisma/` (no todos están en `package.json`):**
 
-# Resetear la base de datos (¡borra todos los datos!)
-pnpm --filter @nexor/api exec prisma migrate reset
+| Archivo | En `package.json` | Qué hace |
+|---------|-------------------|----------|
+| `seed.ts` | sí (`db:seed`) | Tenant demo "Farmacia Demo S.A.S." + usuario `admin@demo.nexor.co` / `Admin123!` |
+| `seed-e2e.ts` | sí (`db:seed-e2e`) | Datos para tests E2E (ver sección 9) |
+| `seed-staging.ts` | sí (`db:seed:staging`) | Datos de staging para load testing (ver sección 10) |
+| `seed-full-demo.ts` | no | Seed de demo extendido |
+| `seed-kira-dev.ts` | no | Seed acotado al módulo KIRA para desarrollo |
+| `onboarding.ts` | sí (`onboarding`) | Alta de cliente desde Excel |
+| `setup-rls.ts` | sí (`db:rls`) | Habilita Row-Level Security en las 23 tablas |
+| `create-admin.ts` | no (one-shot) | Crea el tenant "Nexor" + su usuario y **desactiva el admin demo** |
+| `inspect-db.ts` | no | Inspección/diagnóstico de la BD |
+| `fix-nexor-flags.ts` | no | Corrige los feature flags del tenant Nexor |
+
+`create-admin.ts` es un script de un solo uso (no está en `package.json`); se corre con:
+
+```bash
+pnpm --filter @nexor/api exec tsx --env-file=.env prisma/create-admin.ts
 ```
 
 ---
@@ -189,6 +236,49 @@ Todas las variables están documentadas en [`.env.example`](./.env.example) con 
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — para la integración con Gmail
 - `GMAIL_WEBHOOK_SECRET` — secreto para verificar webhooks de Gmail (requerido en producción)
 - `RESEND_API_KEY` — para envío de emails
+
+### Tabla canónica de variables del backend
+
+Basada en el archivo real [`.env.example`](./.env.example) de la raíz. Los valores son **solo
+placeholders** — nunca commitear secretos reales.
+
+| Variable | Grupo | Descripción | Placeholder de ejemplo |
+|----------|-------|-------------|------------------------|
+| `DATABASE_URL` | DB | Conexión a PostgreSQL (rol `nexor_app`, sujeto a RLS) — runtime Fastify | `postgresql://USER:PASSWORD@HOST:PORT/DB` |
+| `DIRECT_DATABASE_URL` | DB | Conexión directa superuser (bypasea RLS) — migraciones y seeds | `postgresql://USER:PASSWORD@HOST:PORT/DB` |
+| `REDIS_URL` | Redis | Conexión a Redis (BullMQ + cache) | `redis://HOST:PORT` |
+| `JWT_SECRET` | JWT | Clave para firmar JWT (cadena aleatoria larga, ≥ 32 chars) | `<secreto_aleatorio>` |
+| `JWT_EXPIRES_IN` | JWT | Duración del JWT | `7d` |
+| `REFRESH_TOKEN_EXPIRES_DAYS` | JWT | Vigencia del refresh token en días (mín. 30) | `30` |
+| `PORT` | API | Puerto del servidor de la API | `3001` |
+| `HOST` | API | Host de escucha (en prod `0.0.0.0`) | `0.0.0.0` |
+| `LOG_LEVEL` | API | Nivel de logs (`trace`…`fatal`) | `info` |
+| `NODE_ENV` | API | Ambiente (`development`/`test`/`production`) | `development` |
+| `CORS_ORIGIN` | CORS | URL del frontend permitida | `http://localhost:3000` |
+| `RATE_LIMIT_MAX` | CORS | Máx. requests por minuto por tenant | `100` |
+| `ANTHROPIC_API_KEY` | Claude | API key de Anthropic | `sk-ant-...` |
+| `CLAUDE_MODEL` | Claude | Modelo de Claude para los agentes | `<claude-model-id>` |
+| `AGENT_MAX_TURNS` | Claude | Máx. turnos por ejecución del agente | `10` |
+| `WHATSAPP_ACCESS_TOKEN` | WhatsApp | Token permanente de Meta Business | `<token>` |
+| `WHATSAPP_VERIFY_TOKEN` | WhatsApp | Clave de verificación del webhook | `<verify_token>` |
+| `WHATSAPP_APP_SECRET` | WhatsApp | Secreto de la app de Meta (firma HMAC) | `<app_secret>` |
+| `GOOGLE_CLIENT_ID` | Gmail | Client ID OAuth de Google | `<id>.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Gmail | Client Secret OAuth de Google | `<client_secret>` |
+| `GOOGLE_REDIRECT_URI` | Gmail | URL de redirección OAuth de Gmail | `http://localhost:3001/v1/integrations/gmail/callback` |
+| `GOOGLE_PUBSUB_TOPIC` | Gmail | Topic de Pub/Sub para notificaciones de Gmail | `projects/{PROJECT_ID}/topics/{TOPIC_NAME}` |
+| `ENCRYPTION_KEY` | Cifrado | 32 bytes hex para AES-256 (tokens de integración) | `<64_hex_chars>` |
+| `RESEND_API_KEY` | Email | API key de Resend | `re_...` |
+| `EMAIL_FROM` | Email | Remitente de los emails del sistema | `NEXOR <no-reply@nexor.co>` |
+| `SENTRY_DSN` | Monitoreo | DSN de Sentry (opcional en dev) | `<dsn>` |
+| `NEXT_PUBLIC_API_URL` | Frontend | URL base de la API que usa el frontend | `http://localhost:3001` |
+
+> **Advertencia — variables leídas por el código pero AUSENTES de `.env.example`** (deberían añadirse):
+>
+> | Variable | Dónde se usa | PENDIENTE |
+> |----------|--------------|-----------|
+> | `GMAIL_WEBHOOK_SECRET` | Verificación del webhook de Gmail (`modules/webhooks/gmail.ts`) | PENDIENTE: añadir a `.env.example` |
+> | `OCR_MODEL` | Modelo de visión para OCR (`modules/ocr/service.ts`, p. ej. `claude-sonnet-4-x`) | PENDIENTE: añadir a `.env.example` |
+> | `API_BASE_URL` | Usado por jobs (`jobs/appointment-reminders.ts`) | PENDIENTE: añadir a `.env.example` |
 
 ---
 

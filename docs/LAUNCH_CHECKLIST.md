@@ -194,7 +194,7 @@ BASE_URL=https://staging.nexor.app k6 run packages/load-tests/scenarios/main.js
 ```bash
 # Usando el panel Super Admin en /v1/admin
 # O vía script de onboarding desde Excel
-pnpm --filter @nexor/api db:onboard --file docs/NEXOR_Onboarding_Template.xlsx
+pnpm --filter @nexor/api onboarding --file docs/NEXOR_Onboarding_Template.xlsx
 ```
 
 - [ ] Tenant creado con:

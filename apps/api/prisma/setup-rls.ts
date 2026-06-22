@@ -45,6 +45,15 @@ const BUSINESS_TABLES = [
   'availability',
   'appointments',
   'transactions',
+  // HU-114 — bandeja y carga masiva (conversation_messages lleva RLS propia
+  // por tener su propia columna tenant_id, aunque sea tabla "hija").
+  'conversations',
+  'conversation_messages',
+  'bulk_upload_logs',
+  // HU-117 — chat_messages ya recibió RLS por su migración
+  // (20260411131542_chat_messages_rls_and_index); se incluye aquí para que
+  // db:rls sea la fuente única de verdad y re-aplique su política tras un restore.
+  'chat_messages',
 ] as const
 
 async function setupRLS(): Promise<void> {

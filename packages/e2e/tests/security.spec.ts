@@ -324,10 +324,69 @@ test.describe('VERA — aislamiento financiero', () => {
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
+// INBOX y BULK-UPLOAD — Aislamiento de bandeja y carga masiva (HU-114)
+// Datos sembrados con IDs fijos en seed-e2e.ts para A (demo) y B (test-empresa-b).
+// ═════════════════════════════════════════════════════════════════════════════
+
+const CONV_A    = 'seed-e2e-conv-a-001'
+const CONV_B    = 'seed-e2e-conv-b-001'
+const BULKLOG_A = 'seed-e2e-bulklog-a-001'
+const BULKLOG_B = 'seed-e2e-bulklog-b-001'
+
+test.describe('INBOX — aislamiento de bandeja', () => {
+
+  test('la bandeja de B no contiene la conversación de A', async () => {
+    const res = await api(tokenB).get('/v1/inbox')
+    expect(res.status).toBe(200)
+    const data = await res.json() as ListResp
+    expect((data.data ?? []).map(c => c.id)).not.toContain(CONV_A)
+  })
+
+  test('B obtiene 403/404 al pedir la conversación de A (forzando ID)', async () => {
+    const status = await api(tokenB).getStatus(`/v1/inbox/${CONV_A}`)
+    expect([403, 404]).toContain(status)
+  })
+
+  test('A obtiene 403/404 al pedir la conversación de B (forzando ID)', async () => {
+    const status = await api(tokenA).getStatus(`/v1/inbox/${CONV_B}`)
+    expect([403, 404]).toContain(status)
+  })
+})
+
+test.describe('BULK-UPLOAD — aislamiento de cargas masivas', () => {
+
+  test('el historial de cargas de B no contiene el log de A', async () => {
+    const res = await api(tokenB).get('/v1/bulk-upload/logs')
+    expect(res.status).toBe(200)
+    const data = await res.json() as ListResp
+    expect((data.data ?? []).map(l => l.id)).not.toContain(BULKLOG_A)
+  })
+
+  test('B obtiene 403/404 al pedir el log de carga de A (forzando ID)', async () => {
+    const status = await api(tokenB).getStatus(`/v1/bulk-upload/logs/${BULKLOG_A}`)
+    expect([403, 404]).toContain(status)
+  })
+
+  test('A obtiene 403/404 al pedir el log de carga de B (forzando ID)', async () => {
+    const status = await api(tokenA).getStatus(`/v1/bulk-upload/logs/${BULKLOG_B}`)
+    expect([403, 404]).toContain(status)
+  })
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SUPER_ADMIN — Panel de administración y visibilidad global
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('SUPER_ADMIN — visibilidad global', () => {
+
+  test('ve los logs de carga masiva de ambos tenants (vista global cross-tenant)', async () => {
+    const res = await api(tokenSuper).get('/v1/admin/bulk-upload/logs?limit=100')
+    expect(res.status).toBe(200)
+    const data = await res.json() as ListResp
+    const ids  = (data.data ?? []).map(l => l.id)
+    expect(ids).toContain(BULKLOG_A)
+    expect(ids).toContain(BULKLOG_B)
+  })
 
   test('puede listar todos los tenants y ve tanto A como B', async () => {
     const res  = await api(tokenSuper).get('/v1/admin/tenants?limit=100')

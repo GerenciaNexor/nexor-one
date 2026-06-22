@@ -127,6 +127,12 @@ Capturar el error `P2025` específicamente en `toggleFeatureFlag` y relanzarlo c
 
 **Sprint sugerido:** Sprint 12 — mejora de calidad del agente
 
+**Estado:** ✅ Corregido en HU-115. Se centralizó la carga en el helper `getAgentTenantContext(tenantId)` ([apps/api/src/modules/agents/tenant-context.ts](apps/api/src/modules/agents/tenant-context.ts)), que usa **`withTenantContext`** (preferido sobre `directPrisma` por coherencia con HU-114 y BUG-006: hace `SET LOCAL app.current_tenant_id` y deja que RLS filtre, manteniendo además el `where: { tenantId }` explícito). `runAgent()` ya no consulta `branches` con el cliente `prisma` sin contexto. Test: `tenant-context.test.ts`.
+
+**Evidencia E2E (HU-118):** corrida real del AgentRunner contra un tenant con 2 sucursales (fixture en `seed-e2e.ts`: Tenant B → "Sede Chapinero", "Sede Poblado"). El `agent_log` resultante (módulo AGENDA, canal WhatsApp) muestra una respuesta que lista ambas sucursales del tenant y no las de otro tenant, con la tool `consultar_sucursales` devolviendo exactamente esas 2 sedes. Contexto poblado y aislado confirmados.
+
+**2ª instancia — `saveLog` / `notifyFallback` (HU-119):** durante HU-118 se detectó la misma raíz en otras dos escrituras del AgentRunner: `saveLog` (guardado del `agent_log`) y `notifyFallback` (notificación interna) usaban el cliente `prisma` (sujeto a RLS) **sin contexto de tenant**. En dev no se notaba (la conexión es superusuario), pero bajo el rol de aplicación `nexor_app` RLS bloquearía el `INSERT`, **perdiendo la auditoría obligatoria**. ✅ **Corregido en HU-119**: ambas escrituras pasan por `withTenantContext(tenantId, ...)`. Evidencia: bajo un rol `NOSUPERUSER NOBYPASSRLS` el `INSERT` en `agent_logs` sin contexto queda **bloqueado** y con `withTenantContext` se **permite**. Test: `agent-log-save.test.ts`.
+
 ---
 
 ### BUG-005 — SEC-001 fix: user.isActive check en tenantHook no distingue tokens de impersonación
@@ -171,6 +177,8 @@ Esto es una manifestación del problema arquitectónico pre-existente de `set_co
 
 **Sprint sugerido:** Sprint 13 — hardening de arquitectura
 
+**Estado:** ✅ Corregido en HU-122 (misma raíz). Se generalizó el patrón "SET LOCAL dentro de una transacción" a todo el request-path: cada handler protegido corre en una transacción interactiva con `SET LOCAL app.current_tenant_id` y el cliente transaccional se expone vía `AsyncLocalStorage` (ver `lib/prisma.ts` + el wrapper `onRoute` en `app.ts`). El `tenantHook` ya no usa `set_config(..., false)` de sesión. El dashboard corre cada KPI en su propia transacción (`runInTenantTransaction`, conexiones paralelas) y sus `$queryRaw` ven el contexto: los 5 módulos devuelven datos reales (verificado bajo `nexor_app`). Sin fuga bajo concurrencia (test de 6000 requests, 100 en vuelo, 2 tenants → 0 cruces).
+
 ---
 
 ## Resumen
@@ -180,9 +188,9 @@ Esto es una manifestación del problema arquitectónico pre-existente de `set_co
 | BUG-001 | Crítico | ✅ Corregido | AgentRunner: RLS bloquea featureFlag → agente siempre "módulo desactivado" |
 | BUG-002 | Alto | ✅ Corregido | Toggle flag: módulo inválido causa 500 en lugar de 400 |
 | BUG-003 | Medio | ✅ Corregido | toggleFeatureFlag: P2025 no manejado → 500 en lugar de 404 |
-| BUG-004 | Medio | 📋 Backlog | AgentRunner: branches vacías en contexto webhook por RLS |
+| BUG-004 | Medio | ✅ Corregido (HU-115) | AgentRunner: branches vacías en contexto webhook por RLS |
 | BUG-005 | Bajo | 📋 Backlog | tenantHook: check isActive verifica SUPER_ADMIN en tokens de impersonación |
-| BUG-006 | Bajo | 📋 Backlog | kiraKpis: $queryRaw puede correr en conexión sin contexto RLS |
+| BUG-006 | Bajo | ✅ Corregido (HU-122) | kiraKpis: $queryRaw puede correr en conexión sin contexto RLS |
 
 **Bugs críticos abiertos al cierre del Sprint 11:** 0  
 **Bugs altos abiertos al cierre del Sprint 11:** 0

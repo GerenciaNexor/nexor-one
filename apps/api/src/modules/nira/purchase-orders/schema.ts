@@ -27,7 +27,7 @@ export const UpdatePurchaseOrderSchema = z.object({
 })
 
 export const PurchaseOrderQuerySchema = z.object({
-  status:     z.enum(['draft', 'pending_approval', 'approved', 'sent', 'partial', 'received', 'cancelled']).optional(),
+  status:     z.enum(['draft', 'submitted', 'approved', 'sent', 'partial', 'received', 'cancelled']).optional(),
   supplierId: z.string().optional(),
   branchId:   z.string().optional(),
 })

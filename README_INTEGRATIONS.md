@@ -95,6 +95,7 @@ Worker BullMQ procesa:
   4. AgentRunner devuelve respuesta
   5. Envía respuesta al cliente vía Meta API:
      POST https://graph.facebook.com/v22.0/{phone_number_id}/messages
+     # PENDIENTE: confirmar versión vigente de la Graph API en el worker
      Headers: { Authorization: "Bearer {access_token}" }
      Body: { messaging_product: "whatsapp", to: from, type: "text", text: { body: respuesta } }
 ```
@@ -107,6 +108,8 @@ APP_SECRET=el-app-secret-de-tu-app-en-meta-for-developers
 ```
 
 Los `phone_number_id`, `business_account_id` y `access_token` se guardan **por tenant** en la tabla `integrations` (cifrados), no en variables de entorno.
+
+> **Importante:** el `WHATSAPP_ACCESS_TOKEN` de cada empresa **no** vive como variable de entorno global, sino que se guarda **cifrado** (AES-256, columna `token_encrypted`) en la fila de esa empresa dentro de la tabla `Integration` de la base de datos. El env solo cubre los secretos globales del webhook (`WA_VERIFY_TOKEN`, `APP_SECRET`).
 
 ### Tipos de mensajes que procesa NEXOR en V1
 
@@ -148,7 +151,7 @@ Frontend llama: GET /v1/integrations/gmail/oauth
 Backend genera URL de autorización de Google:
   https://accounts.google.com/o/oauth2/auth
     ?client_id={GMAIL_CLIENT_ID}
-    &redirect_uri=https://api.nexor.app/v1/integrations/gmail/callback
+    &redirect_uri=https://api.nexor.co/v1/integrations/gmail/callback
     &scope=https://www.googleapis.com/auth/gmail.readonly
     &response_type=code
     &state={tenantId}  ← para saber a qué tenant pertenece el callback

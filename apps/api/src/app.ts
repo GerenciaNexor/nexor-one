@@ -21,11 +21,13 @@ try {
 }
 
 import Fastify from 'fastify'
+import type { FastifyRequest, FastifyReply } from 'fastify'
 import fastifyCors from '@fastify/cors'
 import type { ApiResponse } from '@nexor/shared'
-import { prisma } from './lib/prisma'
+import { prisma, runInTenantTransaction } from './lib/prisma'
 import { closeQueues } from './lib/queue'
 import { startWorker, closeWorker } from './lib/worker'
+import { closeLoginLimiter } from './modules/auth/login-limiter'
 import { registerBullBoard } from './plugins/bull-board'
 import jwtPlugin from './plugins/jwt'
 import rateLimitPlugin from './plugins/rate-limit'
@@ -80,7 +82,7 @@ app.setSchemaController({ compilersFactory: { buildValidator: (() => () => () =>
 /** Cierra worker, colas y Prisma al apagar el servidor (en orden correcto). */
 app.addHook('onClose', async () => {
   await closeWorker()                          // espera jobs en curso
-  await Promise.all([prisma.$disconnect(), closeQueues()])
+  await Promise.all([prisma.$disconnect(), closeQueues(), closeLoginLimiter()])
 })
 
 // ─── Documentación OpenAPI (solo dev/staging, antes de registrar rutas) ──────
@@ -154,6 +156,24 @@ app.register(cancelAppointmentRoutes, { prefix: '/v1/agenda/cancel' })
 app.register(
   async (api) => {
     api.addHook('onRequest', tenantHook)
+
+    // HU-122 — Contexto de tenant confiable por-request.
+    // Envuelve CADA handler protegido en una transacción interactiva con SET LOCAL
+    // (runInTenantTransaction), de modo que contexto y queries comparten conexión y
+    // RLS aísla de forma confiable bajo concurrencia. Las rutas que hacen I/O externo
+    // pesado pueden optar por salir con `config: { tenantTx: false }` y manejar su DB
+    // con withTenantContext.
+    api.addHook('onRoute', (routeOptions) => {
+      if ((routeOptions.config as { tenantTx?: boolean } | undefined)?.tenantTx === false) return
+      const original = routeOptions.handler
+      if (typeof original !== 'function') return
+      routeOptions.handler = function (this: unknown, req: FastifyRequest, reply: FastifyReply) {
+        const tenantId = (req.user as { tenantId?: string } | undefined)?.tenantId
+        const run = () => (original as (rq: FastifyRequest, rp: FastifyReply) => unknown).call(this, req, reply)
+        if (!tenantId) return run()
+        return runInTenantTransaction(tenantId, async () => run())
+      }
+    })
 
     api.register(tenantsModule,       { prefix: '/tenants' })
     api.register(branchesModule,      { prefix: '/branches' })

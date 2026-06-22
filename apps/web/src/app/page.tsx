@@ -1,6 +1,433 @@
-import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import type { Metadata } from 'next'
+import { Reveal } from '@/components/landing/Reveal'
+import { ChatDemo } from '@/components/landing/ChatDemo'
 
-/** Redirige la raiz al dashboard (usuarios autenticados) o al login. */
-export default function RootPage() {
-  redirect('/login')
+export const metadata: Metadata = {
+  title: 'NEXOR ONE — Gestión empresarial con agentes de IA',
+  description:
+    'NEXOR centraliza ventas, compras, inventario, agenda y finanzas en una sola plataforma, con agentes de IA que atienden a tus clientes por WhatsApp y Gmail.',
+}
+
+// ─── Datos ────────────────────────────────────────────────────────────────────
+
+const MODULES = [
+  {
+    badge: 'ARI',
+    title: 'Ventas',
+    desc: 'CRM y pipeline comercial: clientes, cotizaciones y seguimiento de oportunidades hasta el cierre.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 17l6-6 4 4 8-8M21 7v5m0-5h-5" />,
+  },
+  {
+    badge: 'NIRA',
+    title: 'Compras',
+    desc: 'Gestión de proveedores, órdenes de compra y aprobaciones, con control de entregas y costos.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 4h12m-7 3a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />,
+  },
+  {
+    badge: 'KIRA',
+    title: 'Inventario',
+    desc: 'Stock en tiempo real, movimientos inmutables, alertas de mínimos y clasificación ABC automática.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />,
+  },
+  {
+    badge: 'REI',
+    title: 'Agenda',
+    desc: 'Citas y reservas con recordatorios automáticos, evitando huecos y cruces en tu calendario.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />,
+  },
+  {
+    badge: 'VERA',
+    title: 'Finanzas',
+    desc: 'Flujo de caja, presupuestos y alertas financieras para decidir con números claros y al día.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+  },
+] as const
+
+const STATS = [
+  { value: '5', label: 'Módulos de negocio' },
+  { value: '2', label: 'Canales: WhatsApp + Gmail' },
+  { value: '24/7', label: 'Atención automática' },
+  { value: '100%', label: 'Acciones auditadas' },
+]
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Conecta tus canales',
+    desc: 'Integra WhatsApp y Gmail en minutos. Tus clientes siguen escribiendo por donde ya lo hacen.',
+  },
+  {
+    n: '02',
+    title: 'Activa tus módulos',
+    desc: 'Enciende ventas, compras, inventario, agenda y finanzas según lo que tu empresa necesite.',
+  },
+  {
+    n: '03',
+    title: 'Deja que la IA opere',
+    desc: 'Los agentes atienden, cotizan, agendan y registran. Tú lo ves todo en un panel claro y en tiempo real.',
+  },
+]
+
+const BENEFITS = [
+  {
+    title: 'Tus datos, totalmente aislados',
+    desc: 'Cada empresa opera sobre su propio espacio seguro. Nadie ve la información de nadie — aislamiento garantizado a nivel de base de datos.',
+  },
+  {
+    title: 'Agentes que sí actúan',
+    desc: 'No es solo un chatbot: los agentes consultan stock, crean cotizaciones, agendan citas y registran movimientos reales, con auditoría de cada acción.',
+  },
+  {
+    title: 'Atención 24/7 por WhatsApp y Gmail',
+    desc: 'Tus clientes escriben por los canales que ya usan y reciben respuesta al instante, a cualquier hora, sin que tu equipo tenga que estar conectado.',
+  },
+  {
+    title: 'Todo en un solo lugar',
+    desc: 'Ventas, compras, inventario, agenda y finanzas conectados entre sí. Se acabó saltar entre planillas y sistemas que no se hablan.',
+  },
+]
+
+// ─── Iconos auxiliares ────────────────────────────────────────────────────────
+
+function Icon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true">
+      {children}
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg className="h-5 w-5 shrink-0 text-cyan-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+  )
+}
+
+// ─── Mockup del producto (ilustración del dashboard) ──────────────────────────
+
+function ProductMockup() {
+  const bars = [45, 62, 38, 70, 52, 84, 60]
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d1326] shadow-2xl">
+      {/* Barra de ventana */}
+      <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-3">
+        <span className="h-3 w-3 rounded-full bg-red-400/70" />
+        <span className="h-3 w-3 rounded-full bg-yellow-400/70" />
+        <span className="h-3 w-3 rounded-full bg-green-400/70" />
+        <span className="ml-3 rounded-md bg-white/5 px-3 py-1 text-xs text-slate-400">app.nexor.one/dashboard</span>
+      </div>
+
+      <div className="flex">
+        {/* Mini-sidebar */}
+        <div className="hidden w-14 shrink-0 flex-col items-center gap-4 border-r border-white/10 py-4 sm:flex">
+          <img src="/logos/icon-dark.png" alt="" aria-hidden="true" className="h-7 w-auto object-contain" />
+          <div className="mt-2 h-2 w-6 rounded-full bg-gradient-to-r from-cyan-400 to-purple-400" />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-2 w-6 rounded-full bg-white/10" />
+          ))}
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 p-5">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-500">Buenas tardes</p>
+              <p className="text-sm font-semibold text-white">Resumen de hoy</p>
+            </div>
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600" />
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { l: 'Ventas del mes', v: '$ 12.4M', up: '+18%' },
+              { l: 'Stock crítico', v: '3', up: 'KIRA' },
+              { l: 'Citas hoy', v: '7', up: 'REI' },
+            ].map((k) => (
+              <div key={k.l} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] text-slate-500">{k.l}</p>
+                <p className="mt-1 text-lg font-bold text-white">{k.v}</p>
+                <span className="text-[10px] font-medium text-cyan-400">{k.up}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Gráfico */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="mb-3 text-[10px] text-slate-500">Ingresos · últimos 7 días</p>
+            <div className="flex h-24 items-end gap-2">
+              {bars.map((h, i) => (
+                <div
+                  key={i}
+                  className="flex-1 rounded-t bg-gradient-to-t from-purple-600/40 to-cyan-400/80"
+                  style={{ height: `${h}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Página ───────────────────────────────────────────────────────────────────
+
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen bg-[#0b1020] text-slate-200 antialiased">
+
+      {/* Resplandor de fondo */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 left-1/2 h-[40rem] w-[40rem] -translate-x-1/2 animate-glow rounded-full bg-purple-600/20 blur-[120px]" />
+        <div className="absolute top-1/3 -right-40 h-[30rem] w-[30rem] animate-glow rounded-full bg-cyan-500/10 blur-[120px]" />
+      </div>
+
+      <div className="relative">
+        {/* ── Navbar ─────────────────────────────────────────────────────────── */}
+        <header className="mx-auto flex max-w-6xl animate-fade-up items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-2.5">
+            <img src="/logos/icon-dark.png" alt="NEXOR ONE" className="h-9 w-auto object-contain" />
+            <span className="font-wordmark text-2xl font-semibold tracking-tight text-slate-100 [word-spacing:-0.2em]">
+              nexor one
+            </span>
+          </div>
+          <Link
+            href="/login"
+            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 backdrop-blur transition-colors hover:bg-white/10"
+          >
+            Iniciar sesión
+          </Link>
+        </header>
+
+        {/* ── Hero ───────────────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-6xl px-6 pb-20 pt-12 text-center sm:pt-20">
+          <div className="mx-auto mb-8 flex justify-center">
+            <img
+              src="/logos/icon-dark.png"
+              alt=""
+              aria-hidden="true"
+              className="h-28 w-auto animate-float object-contain drop-shadow-[0_0_40px_rgba(124,58,237,0.45)] sm:h-36"
+            />
+          </div>
+
+          <span className="inline-block animate-fade-up rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium tracking-wide text-cyan-300" style={{ animationDelay: '80ms' }}>
+            SaaS de gestión empresarial con IA agéntica
+          </span>
+
+          <h1 className="mx-auto mt-6 max-w-3xl animate-fade-up text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl" style={{ animationDelay: '160ms' }}>
+            El sistema operativo de tu empresa,{' '}
+            <span className="animate-gradient bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              potenciado por agentes de IA
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-6 max-w-2xl animate-fade-up text-lg leading-relaxed text-slate-300" style={{ animationDelay: '240ms' }}>
+            NEXOR centraliza ventas, compras, inventario, agenda y finanzas en una sola plataforma.
+            Y va más allá: agentes de IA que atienden a tus clientes por WhatsApp y Gmail, ejecutan
+            tareas reales y trabajan por ti las 24 horas.
+          </p>
+
+          <div className="mt-10 flex animate-fade-up flex-col items-center justify-center gap-4 sm:flex-row" style={{ animationDelay: '320ms' }}>
+            <Link
+              href="/login"
+              className="w-full rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-7 py-3.5 text-center text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.02] sm:w-auto"
+            >
+              Entrar a la plataforma
+            </Link>
+            <a
+              href="#modulos"
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-7 py-3.5 text-center text-sm font-semibold text-slate-100 backdrop-blur transition-colors hover:bg-white/10 sm:w-auto"
+            >
+              Conoce los módulos
+            </a>
+          </div>
+
+          {/* Vistazo del producto */}
+          <Reveal delay={120} className="mt-16">
+            <ProductMockup />
+          </Reveal>
+        </section>
+
+        {/* ── Banda de datos ─────────────────────────────────────────────────── */}
+        <section className="border-y border-white/10 bg-white/[0.02]">
+          <div className="mx-auto grid max-w-6xl grid-cols-2 gap-8 px-6 py-10 sm:grid-cols-4">
+            {STATS.map((s, i) => (
+              <Reveal key={s.label} delay={i * 80} className="text-center">
+                <p className="bg-gradient-to-r from-cyan-400 to-pink-400 bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+                  {s.value}
+                </p>
+                <p className="mt-1 text-sm text-slate-400">{s.label}</p>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Qué es NEXOR ───────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-4xl px-6 py-20 text-center">
+          <Reveal>
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-purple-400">¿Qué es NEXOR?</h2>
+            <p className="mt-5 text-2xl font-medium leading-relaxed text-slate-200 sm:text-3xl">
+              Una plataforma multi-tenant que reúne las áreas clave de tu negocio y les suma{' '}
+              <span className="text-white">agentes de inteligencia artificial</span> que entienden,
+              deciden y actúan sobre tus datos reales — siempre con registro de cada paso.
+            </p>
+          </Reveal>
+        </section>
+
+        {/* ── Cómo funciona ──────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <Reveal className="mb-12 text-center">
+            <h2 className="text-3xl font-bold text-white sm:text-4xl">Cómo funciona</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-slate-400">En tres pasos tu empresa pasa a operar con IA.</p>
+          </Reveal>
+          <div className="grid gap-6 md:grid-cols-3">
+            {STEPS.map((s, i) => (
+              <Reveal key={s.n} delay={i * 120}>
+                <div className="h-full rounded-2xl border border-white/10 bg-white/[0.03] p-7 backdrop-blur">
+                  <span className="font-wordmark bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-4xl font-bold text-transparent">
+                    {s.n}
+                  </span>
+                  <h3 className="mt-4 text-lg font-semibold text-white">{s.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">{s.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Módulos ────────────────────────────────────────────────────────── */}
+        <section id="modulos" className="mx-auto max-w-6xl px-6 py-16">
+          <Reveal className="mb-12 text-center">
+            <h2 className="text-3xl font-bold text-white sm:text-4xl">Cinco módulos, un solo sistema</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-slate-400">
+              Cada área de tu empresa, cubierta. Conectadas entre sí para que la información fluya sin fricción.
+            </p>
+          </Reveal>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {MODULES.map((m, i) => (
+              <Reveal key={m.badge} delay={i * 80}>
+                <div className="group h-full rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]">
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 text-cyan-300 transition-transform duration-300 group-hover:scale-110">
+                      <Icon>{m.icon}</Icon>
+                    </span>
+                    <span className="font-wordmark text-xs font-bold tracking-widest text-slate-500">{m.badge}</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">{m.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">{m.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+
+            {/* Tarjeta destacada: agentes */}
+            <Reveal delay={MODULES.length * 80}>
+              <div className="h-full rounded-2xl border border-purple-400/20 bg-gradient-to-br from-purple-500/10 to-pink-500/10 p-6 backdrop-blur">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-purple-600 text-white">
+                    <Icon>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 3l1.5 3 3 1.5-3 1.5L9.5 12 8 9l-3-1.5 3-1.5L9.5 3zM18 12l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z" />
+                    </Icon>
+                  </span>
+                </div>
+                <h3 className="text-lg font-semibold text-white">Agentes de IA</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  El corazón de NEXOR. Atienden a tus clientes y operan los módulos por ti, de forma autónoma y auditada.
+                </p>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── Agentes IA en detalle ──────────────────────────────────────────── */}
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <Reveal>
+            <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur sm:p-12">
+              <div className="grid items-center gap-10 lg:grid-cols-2">
+                <div>
+                  <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                    Agentes que conversan{' '}
+                    <span className="bg-gradient-to-r from-cyan-400 to-pink-400 bg-clip-text text-transparent">y resuelven</span>
+                  </h2>
+                  <p className="mt-5 leading-relaxed text-slate-300">
+                    Tus clientes escriben por WhatsApp o Gmail. El agente entiende el mensaje, consulta tu
+                    información en tiempo real y responde con datos correctos — o ejecuta la acción que haga falta.
+                  </p>
+                  <ul className="mt-7 space-y-4">
+                    {[
+                      'Responde dudas de productos, precios y disponibilidad al instante.',
+                      'Crea cotizaciones, agenda citas y registra movimientos sin intervención manual.',
+                      'Cada acción queda registrada para total trazabilidad y control.',
+                    ].map((t) => (
+                      <li key={t} className="flex items-start gap-3">
+                        <CheckIcon />
+                        <span className="text-slate-300">{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <ChatDemo />
+              </div>
+            </div>
+          </Reveal>
+        </section>
+
+        {/* ── Beneficios ─────────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <Reveal className="mb-12 text-center">
+            <h2 className="text-3xl font-bold text-white sm:text-4xl">Por qué las empresas eligen NEXOR</h2>
+          </Reveal>
+          <div className="grid gap-6 sm:grid-cols-2">
+            {BENEFITS.map((b, i) => (
+              <Reveal key={b.title} delay={i * 90}>
+                <div className="h-full rounded-2xl border border-white/10 bg-white/[0.03] p-7 backdrop-blur transition-colors hover:bg-white/[0.05]">
+                  <div className="flex items-start gap-4">
+                    <CheckIcon />
+                    <div>
+                      <h3 className="font-semibold text-white">{b.title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-400">{b.desc}</p>
+                    </div>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ── CTA final ──────────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-4xl px-6 py-20">
+          <Reveal>
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-purple-600/20 via-[#0b1020] to-cyan-600/20 p-10 text-center sm:p-16">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">Lleva tu empresa al siguiente nivel</h2>
+              <p className="mx-auto mt-4 max-w-xl text-slate-300">
+                Centraliza tu operación y deja que la IA trabaje contigo. Empieza a usar NEXOR hoy.
+              </p>
+              <Link
+                href="/login"
+                className="mt-8 inline-block rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+              >
+                Entrar a la plataforma
+              </Link>
+            </div>
+          </Reveal>
+        </section>
+
+        {/* ── Footer ─────────────────────────────────────────────────────────── */}
+        <footer className="border-t border-white/10">
+          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+            <div className="flex items-center gap-2">
+              <img src="/logos/icon-dark.png" alt="NEXOR ONE" className="h-7 w-auto object-contain" />
+              <span className="font-wordmark text-lg font-semibold text-slate-300 [word-spacing:-0.2em]">nexor one</span>
+            </div>
+            <p className="text-sm text-slate-500">Gestión empresarial con IA · ARI · NIRA · KIRA · REI · VERA</p>
+          </div>
+        </footer>
+      </div>
+    </div>
+  )
 }

@@ -32,6 +32,10 @@ export async function ocrRoutes(app: FastifyInstance): Promise<void> {
       consumes:    ['multipart/form-data'],
       response:    { 200: objRes, ...stdErrors },
     },
+    // HU-122: OCR llama a Claude Vision (I/O externo, segundos) y accede a la DB con
+    // directPrisma + filtro tenantId. No necesita la transacción por-request y NO debe
+    // retener una conexión durante el I/O externo → opta por salir del wrapper auto-tx.
+    config:     { tenantTx: false },
     preHandler: [requireRole('AREA_MANAGER')],
   }, async (request, reply) => {
     // ── Leer partes del multipart ──────────────────────────────────────────
