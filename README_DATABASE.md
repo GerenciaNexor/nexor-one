@@ -85,6 +85,7 @@ Representa a cada empresa cliente que usa NEXOR. Es el nodo raíz de toda la jer
 | `timezone` | `VARCHAR(50)` | NOT NULL, DEFAULT 'America/Bogota' | Zona horaria para fechas y reportes |
 | `currency` | `VARCHAR(3)` | NOT NULL, DEFAULT 'COP' | Moneda local (ISO 4217) |
 | `logo_url` | `VARCHAR(500)` | NULL | URL del logo para cotizaciones |
+| `default_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor preferido **global** del tenant — respaldo cuando un producto no tiene preferido propio (HU-123) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
@@ -598,11 +599,17 @@ Catálogo global de productos por tenant. El stock es por sucursal, pero el prod
 | `min_stock` | `INTEGER` | NOT NULL, DEFAULT 0 | Mínimo de stock — alerta si baja de aquí |
 | `max_stock` | `INTEGER` | NULL | Máximo de stock — alerta si supera aquí |
 | `abc_class` | `VARCHAR(1)` | NULL | Clasificación ABC (A, B, C) calculada automáticamente |
+| `preferred_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor **preferido** del producto — NIRA lo prioriza al reabastecer (HU-123) |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el producto está activo |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, is_active)`, `(tenant_id, category)`, `(tenant_id, abc_class)`
+**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, is_active)`, `(tenant_id, category)`, `(tenant_id, abc_class)`, `(preferred_supplier_id)`
+
+**Preferencia de proveedor (HU-123):** la resolución que usa el agente NIRA es
+`preferred_supplier_id` del producto → `tenants.default_supplier_id` (global) → sin preferencia.
+La columna está cubierta por el RLS existente de `products`; la FK usa `ON DELETE SET NULL` (si el
+proveedor se borra, el producto queda sin preferido en vez de fallar).
 
 > **Nota de rendimiento (HU-093):** El índice `(tenant_id, is_active)` es crítico para KIRA. Toda query de inventario filtra `{ tenantId, isActive: true }` y sin él el planner hacía sequential scan sobre toda la tabla del tenant. Migración: `20260422000000_perf_indexes`.
 

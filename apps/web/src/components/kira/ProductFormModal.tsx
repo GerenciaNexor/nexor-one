@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 
@@ -19,6 +19,8 @@ export interface Product {
   maxStock: number | null
   abcClass: 'A' | 'B' | 'C' | null
   isActive: boolean
+  preferredSupplierId?: string | null
+  preferredSupplier?: { id: string; name: string } | null
   createdAt: string
   updatedAt: string
 }
@@ -33,6 +35,7 @@ interface FormFields {
   costPrice: string
   minStock: string
   maxStock: string
+  preferredSupplierId: string
 }
 
 interface Props {
@@ -44,7 +47,7 @@ interface Props {
 
 const EMPTY: FormFields = {
   sku: '', name: '', description: '', category: '',
-  unit: '', salePrice: '', costPrice: '', minStock: '0', maxStock: '',
+  unit: '', salePrice: '', costPrice: '', minStock: '0', maxStock: '', preferredSupplierId: '',
 }
 
 function toFormFields(p: Product): FormFields {
@@ -58,6 +61,7 @@ function toFormFields(p: Product): FormFields {
     costPrice:   p.costPrice  != null ? String(p.costPrice)  : '',
     minStock:    String(p.minStock),
     maxStock:    p.maxStock   != null ? String(p.maxStock)   : '',
+    preferredSupplierId: p.preferredSupplierId ?? '',
   }
 }
 
@@ -70,6 +74,15 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
   const [errors, setErrors]         = useState<Partial<Record<keyof FormFields, string>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError]     = useState<string | null>(null)
+  // HU-123 — proveedores para el selector de "preferido" (solo en edición)
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    if (mode !== 'edit') return
+    apiClient.get<{ data: { id: string; name: string }[] }>('/v1/nira/suppliers?limit=200')
+      .then((r) => setSuppliers(r.data))
+      .catch(() => setSuppliers([]))
+  }, [mode])
 
   function field(key: keyof FormFields) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -108,6 +121,8 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
       maxStock:    form.maxStock  !== '' ? parseFloat(form.maxStock)  : undefined,
     }
     if (mode === 'create') body.sku = form.sku.trim()
+    // HU-123 — proveedor preferido (solo edición): '' → null para quitarlo
+    if (mode === 'edit') body.preferredSupplierId = form.preferredSupplierId || null
 
     try {
       let saved: Product
@@ -270,6 +285,28 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
                 </div>
               </div>
             </div>
+
+            {mode === 'edit' && (
+              <>
+                <div className="border-t border-slate-100" />
+                <div>
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Compras</p>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Proveedor preferido <span className="font-normal text-slate-400">(NIRA lo propone primero al reabastecer)</span>
+                  </label>
+                  <select
+                    value={form.preferredSupplierId}
+                    onChange={(e) => setForm((prev) => ({ ...prev, preferredSupplierId: e.target.value }))}
+                    className={inp}
+                  >
+                    <option value="">Sin preferido</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
 
             <div className="border-t border-slate-100" />
 

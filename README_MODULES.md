@@ -98,6 +98,9 @@ Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`subm
 **Comparador de cotizaciones**  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.
 
+**Proveedor preferido (HU-123)**  
+Cada producto puede tener un proveedor **preferido**, y la empresa un preferido **global** de respaldo. NIRA lo prioriza: al comparar precios lo marca y lo lista primero, y al proponer una OC lo usa por defecto (queda registrado en las notas del borrador). Resolución: preferido del producto → preferido global del tenant → comportamiento actual. Se gestiona desde el detalle de producto (KIRA) y la página de Proveedores (NIRA). Es una recomendación: el agente puede proponer otro con justificación.
+
 **Integración automática con KIRA**  
 Cuando una OC es marcada como recibida, NIRA genera automáticamente una entrada de stock en KIRA por cada ítem recibido. No hay que registrar la entrada dos veces.
 

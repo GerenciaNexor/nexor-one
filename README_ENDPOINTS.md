@@ -358,6 +358,14 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Rol requerido:** `AREA_MANAGER` de NIRA o superior  
 **Propósito:** Desactivar proveedor (soft delete). Las OC existentes no se ven afectadas.
 
+#### `GET /v1/nira/preferred-supplier`
+**Propósito:** Consultar el proveedor preferido **global** del tenant (`tenants.default_supplier_id`). Devuelve `{ data: { id, name, isActive } | null }`. (HU-123)
+
+#### `PUT /v1/nira/preferred-supplier`
+**Rol requerido:** `AREA_MANAGER` de NIRA o superior  
+**Body:** `{ "supplierId": "sup_xxx" | null }` (`null` lo quita)  
+**Propósito:** Fijar/quitar el preferido global. Respaldo cuando un producto no tiene preferido propio. El preferido **por producto** se fija con `PUT /v1/kira/products/:id` (`preferredSupplierId`). (HU-123)
+
 ---
 
 ### Órdenes de compra
