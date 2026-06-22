@@ -41,6 +41,8 @@ const BUSINESS_TABLES = [
   'stock_movements',
   'suppliers',
   'purchase_orders',
+  // HU-125 — calificaciones de proveedor (Entrega/Calidad) con tenant_id propio.
+  'supplier_ratings',
   'service_types',
   'availability',
   'appointments',

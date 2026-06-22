@@ -499,19 +499,43 @@ Proveedores de la empresa.
 
 #### `supplier_scores`
 
-Puntuación calculada automáticamente para cada proveedor. Se recalcula diariamente con un job de BullMQ.
+Puntuación calculada para cada proveedor. Se recalcula al **calificar una OC recibida** (HU-125) y a diario.
+Los ejes son **NULLABLE**: `NULL` = "sin datos" (no engañoso). Ver la fórmula de cada eje en
+[README_MODULES.md](./README_MODULES.md) (sección NIRA).
 
 | Columna | Tipo | Restricciones | Descripción |
 |---------|------|---------------|-------------|
 | `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
 | `supplier_id` | `VARCHAR(30)` | FK → suppliers.id, UNIQUE, NOT NULL | Proveedor (1 a 1) |
-| `price_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de precio (0-10) |
-| `delivery_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de cumplimiento en tiempo (0-10) |
-| `quality_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de calidad (0-10) |
-| `overall_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Promedio ponderado |
-| `total_orders` | `INTEGER` | NOT NULL, DEFAULT 0 | Total de órdenes procesadas |
-| `on_time_deliveries` | `INTEGER` | NOT NULL, DEFAULT 0 | Entregas a tiempo |
+| `price_score` | `DECIMAL(4,2)` | NULL | Eje Precio (0-10), objetivo del histórico. NULL = sin datos |
+| `delivery_score` | `DECIMAL(4,2)` | NULL | Eje Entrega (0-10), de las calificaciones. NULL = sin datos |
+| `quality_score` | `DECIMAL(4,2)` | NULL | Eje Calidad (0-10), de las calificaciones. NULL = sin datos |
+| `overall_score` | `DECIMAL(4,2)` | NULL | Promedio de los ejes con datos. NULL si ninguno |
+| `total_orders` | `INTEGER` | NOT NULL, DEFAULT 0 | OC recibidas (informativo) |
+| `on_time_deliveries` | `INTEGER` | NOT NULL, DEFAULT 0 | Entregas a tiempo (informativo, NO alimenta el score) |
+| `ratings_count` | `INTEGER` | NOT NULL, DEFAULT 0 | Nº de calificaciones recibidas (HU-125) |
 | `calculated_at` | `TIMESTAMPTZ` | NOT NULL | Última vez que se calculó |
+
+---
+
+#### `supplier_ratings`
+
+Calificación manual del proveedor al recibir una OC (HU-125). Fuente explícita de los ejes
+**Entrega** y **Calidad** del score. Tiene RLS por `tenant_id` (alta en `setup-rls.ts`).
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `supplier_id` | `VARCHAR(30)` | FK → suppliers.id, NOT NULL | Proveedor calificado |
+| `purchase_order_id` | `VARCHAR(30)` | FK → purchase_orders.id, UNIQUE, NULL | OC calificada (una calificación por OC) |
+| `delivery_rating` | `SMALLINT` | NOT NULL | Entrega, escala 1-5 |
+| `quality_rating` | `SMALLINT` | NOT NULL | Calidad, escala 1-5 |
+| `notes` | `TEXT` | NULL | Observaciones |
+| `rated_by` | `VARCHAR(30)` | FK → users.id, NOT NULL | Quién calificó |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha |
+
+**Índices:** `(purchase_order_id)` UNIQUE, `(tenant_id, supplier_id)`, `(created_at DESC)`
 
 ---
 

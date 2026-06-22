@@ -21,6 +21,7 @@
  */
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { computeSupplierScore } from '../src/jobs/supplier-scores'
 
 const prisma = new PrismaClient({
   datasources: { db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] } },
@@ -83,12 +84,15 @@ async function main(): Promise<void> {
     data: (['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const).map((module) => ({ tenantId: tenant.id, module, enabled: true })),
   })
 
-  // ── NIRA: proveedores + scores ──────────────────────────────────────────
+  // ── NIRA: proveedores ────────────────────────────────────────────────────
+  // HU-125: el score NO se siembra fijo; sale de calificaciones (Entrega/Calidad)
+  // y del histórico (Precio). `ratings` = [[entrega, calidad], ...] escala 1-5.
+  // El último proveedor queda SIN calificaciones para demostrar "sin datos".
   const supplierDefs = [
-    { name: 'Distribuidora Andina', contact: 'Jorge Mesa', email: 'ventas@andina.co', phone: '6017770001', taxId: '900111222-3', terms: 30, p: 4.6, d: 4.8, q: 4.7, orders: 24, onTime: 22 },
-    { name: 'Importaciones del Valle', contact: 'Ana Botero', email: 'compras@delvalle.co', phone: '6017770002', taxId: '900222333-4', terms: 45, p: 4.2, d: 4.0, q: 4.4, orders: 15, onTime: 12 },
-    { name: 'Suministros Caribe', contact: 'Luis Pardo', email: 'info@caribe.co', phone: '6017770003', taxId: '900333444-5', terms: 15, p: 3.9, d: 4.5, q: 4.1, orders: 9, onTime: 8 },
-    { name: 'Mayorista Express', contact: 'Diana Cruz', email: 'pedidos@express.co', phone: '6017770004', taxId: '900444555-6', terms: 30, p: 4.0, d: 3.6, q: 3.8, orders: 6, onTime: 4 },
+    { name: 'Distribuidora Andina', contact: 'Jorge Mesa', email: 'ventas@andina.co', phone: '6017770001', taxId: '900111222-3', terms: 30, ratings: [[5, 5], [4, 5], [5, 4]] as [number, number][] },
+    { name: 'Importaciones del Valle', contact: 'Ana Botero', email: 'compras@delvalle.co', phone: '6017770002', taxId: '900222333-4', terms: 45, ratings: [[4, 4], [3, 4]] as [number, number][] },
+    { name: 'Suministros Caribe', contact: 'Luis Pardo', email: 'info@caribe.co', phone: '6017770003', taxId: '900333444-5', terms: 15, ratings: [[5, 3]] as [number, number][] },
+    { name: 'Mayorista Express', contact: 'Diana Cruz', email: 'pedidos@express.co', phone: '6017770004', taxId: '900444555-6', terms: 30, ratings: [] as [number, number][] },
   ]
   const suppliers = []
   for (const s of supplierDefs) {
@@ -96,7 +100,6 @@ async function main(): Promise<void> {
       data: {
         tenantId: tenant.id, name: s.name, contactName: s.contact, email: s.email, phone: s.phone,
         taxId: s.taxId, city: 'Bogotá', paymentTerms: s.terms,
-        score: { create: { priceScore: s.p, deliveryScore: s.d, qualityScore: s.q, overallScore: Number(((s.p + s.d + s.q) / 3).toFixed(2)), totalOrders: s.orders, onTimeDeliveries: s.onTime, calculatedAt: NOW } },
       },
     })
     suppliers.push(sup)
@@ -152,10 +155,11 @@ async function main(): Promise<void> {
     { sup: 0, branch: medellin.id, status: 'submitted', exp: 9, items: [{ p: 6, q: 15, c: 255000 }, { p: 7, q: 12, c: 200000 }], approver: null, delivered: null },
     { sup: 2, branch: bogota.id, status: 'draft', exp: null, items: [{ p: 5, q: 20, c: 83000 }], approver: null, delivered: null },
   ]
+  const createdPOs: { id: string; sup: number; status: string }[] = []
   let poN = 1001
   for (const po of poDefs) {
     const subtotal = po.items.reduce((s, i) => s + i.q * i.c, 0)
-    await prisma.purchaseOrder.create({
+    const created = await prisma.purchaseOrder.create({
       data: {
         tenantId: tenant.id, supplierId: suppliers[po.sup]!.id, branchId: po.branch, createdBy: uCompras.id,
         approvedBy: po.approver ?? undefined, orderNumber: `OC-${poN++}`, status: po.status,
@@ -165,6 +169,34 @@ async function main(): Promise<void> {
         notes: po.status === 'draft' ? 'Borrador propuesto por NIRA' : undefined,
         items: { create: po.items.map((i) => ({ productId: products[i.p]!.id, quantityOrdered: i.q, quantityReceived: po.status === 'received' ? i.q : 0, unitCost: i.c, total: i.q * i.c })) },
       },
+      select: { id: true },
+    })
+    createdPOs.push({ id: created.id, sup: po.sup, status: po.status })
+  }
+
+  // ── NIRA: calificaciones de proveedor + score (HU-125) ───────────────────
+  // Entrega/Calidad salen de las calificaciones; Precio del histórico de OC recibidas.
+  // El último proveedor queda SIN calificaciones → ejes en "sin datos".
+  const receivedPO = createdPOs.find((p) => p.status === 'received')
+  for (let i = 0; i < suppliers.length; i++) {
+    const sup = suppliers[i]!
+    const ratingDefs = supplierDefs[i]!.ratings
+    for (let j = 0; j < ratingDefs.length; j++) {
+      const tieToPO = receivedPO && receivedPO.sup === i && j === 0 ? receivedPO.id : null
+      await prisma.supplierRating.create({
+        data: {
+          tenantId: tenant.id, supplierId: sup.id, purchaseOrderId: tieToPO,
+          deliveryRating: ratingDefs[j]![0], qualityRating: ratingDefs[j]![1],
+          notes: tieToPO ? 'Calificación al recibir la OC' : null,
+          ratedBy: uCompras.id, createdAt: day(-(j + 1) * 3),
+        },
+      })
+    }
+    const scores = await computeSupplierScore(prisma, tenant.id, sup.id)
+    await prisma.supplierScore.upsert({
+      where:  { supplierId: sup.id },
+      create: { supplierId: sup.id, ...scores, calculatedAt: NOW },
+      update: { ...scores, calculatedAt: NOW },
     })
   }
 

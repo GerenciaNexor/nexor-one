@@ -92,8 +92,17 @@ Las empresas compran a múltiples proveedores sin saber cuál tiene mejor precio
 
 ### Qué hace NIRA
 
-**Gestión de proveedores con scoring automático**  
-Cada proveedor tiene una ficha técnica y un score calculado diariamente con tres variables: precio histórico (comparado contra el promedio del mercado), cumplimiento de entrega (llegó a tiempo vs. se atrasó), y calidad (devoluciones o reclamos). Esto permite comparar proveedores objetivamente.
+**Ranking de proveedores con score Precio / Entrega / Calidad (HU-125)**  
+Cada proveedor tiene un score en escala **0-10** con tres ejes y una fuente explícita por eje:
+
+| Eje | De dónde sale | Fórmula |
+|-----|---------------|---------|
+| **Precio** | Objetivo, del histórico de compras recibidas | `10 / avgRatio`, donde `avgRatio` = promedio por producto de `precioProveedor / precioPromedioMercado` (capado a 0-10). Más barato → más alto. |
+| **Entrega** | **Calificación manual** al recibir la OC | promedio de `delivery_rating` (1-5) × 2 |
+| **Calidad** | **Calificación manual** al recibir la OC | promedio de `quality_rating` (1-5) × 2 |
+| **General** | — | promedio de los ejes **con datos** |
+
+Cuando una OC pasa a `received`, el equipo de compras **califica al proveedor** (Entrega y Calidad, 1-5). Esa calificación es la **fuente única** de esos dos ejes. Si un eje aún no tiene datos (sin calificaciones, o sin compras para el precio) se muestra **"sin datos"** en vez de un valor por defecto engañoso. El score se recalcula al instante al calificar y, además, a diario. Calificar es **opcional**: una OC recibida sin calificar no rompe el flujo (esos ejes quedan "sin datos"). El dato objetivo de entregas a tiempo se conserva como información, pero **no** alimenta el eje Entrega (eso lo hacen las calificaciones). El envío automático de la calificación a canales queda fuera de alcance.
 
 **Órdenes de compra con flujo de aprobación**  
 Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)

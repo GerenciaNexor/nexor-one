@@ -86,6 +86,7 @@ model Tenant {
   stockMovements        StockMovement[]
   suppliers             Supplier[]               @relation("TenantSuppliers")
   defaultSupplier       Supplier?                @relation("TenantDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  supplierRatings       SupplierRating[]
   purchaseOrders        PurchaseOrder[]
   serviceTypes          ServiceType[]
   availability          Availability[]
@@ -172,6 +173,7 @@ model User {
   chatMessages             ChatMessage[]
   assignedConversations    Conversation[]        @relation("ConversationAssignee")
   conversationMessages     ConversationMessage[]
+  supplierRatings          SupplierRating[]      @relation("SupplierRatingAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -561,11 +563,12 @@ model Supplier {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant               Tenant          @relation("TenantSuppliers", fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant           @relation("TenantSuppliers", fields: [tenantId], references: [id], onDelete: Cascade)
   score                SupplierScore?
+  ratings              SupplierRating[]
   purchaseOrders       PurchaseOrder[]
-  preferredForProducts Product[]       @relation("ProductPreferredSupplier")
-  defaultForTenants    Tenant[]        @relation("TenantDefaultSupplier")
+  preferredForProducts Product[]        @relation("ProductPreferredSupplier")
+  defaultForTenants    Tenant[]         @relation("TenantDefaultSupplier")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -573,21 +576,52 @@ model Supplier {
 }
 
 /// Puntuacion calculada automaticamente para cada proveedor (1 a 1 con Supplier).
+/// HU-125 — los ejes son NULLABLE: NULL = "sin datos" (no engañoso) en vez de un valor por defecto.
+///   priceScore    → objetivo, del histórico de precios (NULL si no hay compras recibidas)
+///   deliveryScore → de las calificaciones manuales al recibir (NULL si no hay calificaciones)
+///   qualityScore  → de las calificaciones manuales al recibir (NULL si no hay calificaciones)
+///   overallScore  → promedio de los ejes CON datos (NULL si ninguno tiene datos)
 model SupplierScore {
-  id               String  @id @default(cuid()) @db.VarChar(30)
-  supplierId       String  @unique @map("supplier_id") @db.VarChar(30)
-  priceScore       Decimal @default(0) @map("price_score") @db.Decimal(4, 2)
-  deliveryScore    Decimal @default(0) @map("delivery_score") @db.Decimal(4, 2)
-  qualityScore     Decimal @default(0) @map("quality_score") @db.Decimal(4, 2)
-  overallScore     Decimal @default(0) @map("overall_score") @db.Decimal(4, 2)
-  totalOrders      Int     @default(0) @map("total_orders")
-  onTimeDeliveries Int     @default(0) @map("on_time_deliveries")
+  id               String   @id @default(cuid()) @db.VarChar(30)
+  supplierId       String   @unique @map("supplier_id") @db.VarChar(30)
+  priceScore       Decimal? @map("price_score") @db.Decimal(4, 2)
+  deliveryScore    Decimal? @map("delivery_score") @db.Decimal(4, 2)
+  qualityScore     Decimal? @map("quality_score") @db.Decimal(4, 2)
+  overallScore     Decimal? @map("overall_score") @db.Decimal(4, 2)
+  totalOrders      Int      @default(0) @map("total_orders")
+  onTimeDeliveries Int      @default(0) @map("on_time_deliveries")
+  ratingsCount     Int      @default(0) @map("ratings_count")
 
   calculatedAt DateTime @map("calculated_at") @db.Timestamptz(6)
 
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   @@map("supplier_scores")
+}
+
+/// Calificacion manual de un proveedor al recibir una OC (HU-125).
+/// Fuente explicita de los ejes Entrega y Calidad del score. Escala 1-5.
+/// Una calificacion por OC (purchase_order_id unico). Calificar es opcional.
+model SupplierRating {
+  id              String  @id @default(cuid()) @db.VarChar(30)
+  tenantId        String  @map("tenant_id") @db.VarChar(30)
+  supplierId      String  @map("supplier_id") @db.VarChar(30)
+  purchaseOrderId String? @unique @map("purchase_order_id") @db.VarChar(30)
+  deliveryRating  Int     @map("delivery_rating") @db.SmallInt
+  qualityRating   Int     @map("quality_rating") @db.SmallInt
+  notes           String? @db.Text
+  ratedBy         String  @map("rated_by") @db.VarChar(30)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  ratedByUser   User           @relation("SupplierRatingAuthor", fields: [ratedBy], references: [id])
+
+  @@index([tenantId, supplierId])
+  @@index([createdAt(sort: Desc)])
+  @@map("supplier_ratings")
 }
 
 /// Ordenes de compra emitidas a los proveedores.
@@ -616,6 +650,7 @@ model PurchaseOrder {
   creator  User                @relation("POCreator", fields: [createdBy], references: [id])
   approver User?               @relation("POApprover", fields: [approvedBy], references: [id])
   items    PurchaseOrderItem[]
+  rating   SupplierRating?
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, status])

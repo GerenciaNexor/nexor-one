@@ -154,7 +154,7 @@ export const KIRA_TOOLS = [
 | `consultar_presupuesto` | Verifica presupuesto disponible del mes |
 | `notificar_jefe_compras` | Notificación in-app urgente al AREA_MANAGER de NIRA |
 | `consultar_ordenes_compra` | Consulta órdenes de compra del tenant |
-| `consultar_ranking_proveedores` | Devuelve el ranking de proveedores por score |
+| `consultar_ranking_proveedores` | Ranking por score Precio/Entrega/Calidad (0-10). Entrega y Calidad salen de las calificaciones al recibir la OC; Precio del histórico. Un eje sin datos devuelve `"sin datos"`, no 0 (HU-125) |
 | `consultar_reporte_costos` | Devuelve el reporte/resumen de costos |
 
 **Proveedor preferido (HU-123).** Cada producto puede tener un proveedor preferido y el tenant

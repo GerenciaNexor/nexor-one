@@ -184,12 +184,16 @@ export async function getSuppliersRanking(tenantId: string) {
           overallScore:     true,
           totalOrders:      true,
           onTimeDeliveries: true,
+          ratingsCount:     true,
           calculatedAt:     true,
         },
       },
     },
     orderBy: { name: 'asc' },
   })
+
+  // HU-125 — los ejes pueden ser NULL ("sin datos"); no se convierten a 0.
+  const num = (v: unknown): number | null => (v == null ? null : parseFloat(String(v)))
 
   const ranked = suppliers
     .map((s) => ({
@@ -198,21 +202,19 @@ export async function getSuppliersRanking(tenantId: string) {
       city:  s.city,
       score: s.score
         ? {
-            priceScore:       parseFloat(String(s.score.priceScore)),
-            deliveryScore:    parseFloat(String(s.score.deliveryScore)),
-            qualityScore:     parseFloat(String(s.score.qualityScore)),
-            overallScore:     parseFloat(String(s.score.overallScore)),
+            priceScore:       num(s.score.priceScore),
+            deliveryScore:    num(s.score.deliveryScore),
+            qualityScore:     num(s.score.qualityScore),
+            overallScore:     num(s.score.overallScore),
             totalOrders:      s.score.totalOrders,
             onTimeDeliveries: s.score.onTimeDeliveries,
+            ratingsCount:     s.score.ratingsCount,
             calculatedAt:     s.score.calculatedAt,
           }
         : null,
     }))
-    .sort((a, b) => {
-      const aScore = a.score?.overallScore ?? -1
-      const bScore = b.score?.overallScore ?? -1
-      return bScore - aScore
-    })
+    // Mejor overall primero; "sin datos" (null) al final.
+    .sort((a, b) => (b.score?.overallScore ?? -1) - (a.score?.overallScore ?? -1))
 
   return { data: ranked, total: ranked.length }
 }

@@ -50,9 +50,10 @@ pnpm --filter @nexor/api db:studio
 `prisma migrate` y los seeds **no** disparan RLS automáticamente: `setup-rls.ts` debe correrse
 aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo siempre.
 
-`setup-rls.ts` cubre **23 tablas de negocio** (incluye bandeja, carga masiva y chat —
+`setup-rls.ts` cubre **24 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
-HU-117). `db:rls` es la **fuente única de verdad** del RLS: re-aplica todas las políticas tras un restore.
+HU-117; `supplier_ratings` desde HU-125). `db:rls` es la **fuente única de verdad** del RLS:
+re-aplica todas las políticas tras un restore.
 
 ### E2E (un proyecto/archivo concreto)
 

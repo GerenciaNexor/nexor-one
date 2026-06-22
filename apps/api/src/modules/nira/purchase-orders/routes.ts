@@ -4,6 +4,7 @@ import {
   UpdatePurchaseOrderSchema,
   PurchaseOrderQuerySchema,
   ReceivePurchaseOrderSchema,
+  RatePurchaseOrderSchema,
   FromAlertSchema,
 } from './schema'
 import {
@@ -15,6 +16,7 @@ import {
   approvePurchaseOrder,
   cancelPurchaseOrder,
   receivePurchaseOrder,
+  ratePurchaseOrder,
   createPurchaseOrderFromAlert,
 } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
@@ -261,6 +263,42 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
     try {
       const po = await receivePurchaseOrder(request.user.tenantId, request.user.userId, id, parsed.data)
       return reply.code(200).send(po)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * POST /v1/nira/purchase-orders/:id/rate — HU-125
+   * Califica al proveedor (Entrega + Calidad, 1-5) de una OC ya recibida.
+   * Opcional: una OC sin calificar no rompe el flujo. Recalcula el score al instante.
+   * Usa transacción propia (withTenantContext) → sale del wrapper de tenant-tx.
+   */
+  app.post('/:id/rate', {
+    config: { tenantTx: false },
+    schema: {
+      tags:        ['NIRA'],
+      summary:     'Calificar al proveedor de una OC recibida',
+      description: 'Registra la calificación de Entrega y Calidad (1-5) del proveedor y recalcula su score. Solo OC en estado received.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(RatePurchaseOrderSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = RatePurchaseOrderSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: parsed.error.errors[0]?.message ?? 'Datos de entrada inválidos',
+        code:  'VALIDATION_ERROR',
+      })
+    }
+    try {
+      const result = await ratePurchaseOrder(request.user.tenantId, request.user.userId, id, parsed.data)
+      return reply.code(200).send(result)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

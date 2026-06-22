@@ -480,23 +480,28 @@ const consultarRankingProveedores: AgentTool = {
     const suppliers = await prisma.supplier.findMany({
       where:   { tenantId, isActive: true, score: { isNot: null } },
       include: { score: true },
-      orderBy: { score: { overallScore: 'desc' } },
+      orderBy: { score: { overallScore: { sort: 'desc', nulls: 'last' } } },
       take,
     })
 
     if (suppliers.length === 0) return { total: 0, proveedores: [], message: 'No hay proveedores con puntaje calculado aún.' }
 
+    // HU-125 — un eje NULL es "sin datos" (no 0). Entrega/Calidad salen de calificaciones; Precio del histórico.
+    const eje = (v: unknown): string => (v == null ? 'sin datos' : Number(v).toFixed(1))
+
     return {
       total: suppliers.length,
+      nota:  'Escala 0-10. Entrega y Calidad provienen de las calificaciones al recibir la OC; Precio es objetivo del histórico. "sin datos" = aún no hay calificaciones/compras para ese eje.',
       proveedores: suppliers.map((s, idx) => ({
         posicion:    idx + 1,
         proveedor:   s.name,
         id:          s.id,
-        puntuacion:  Number(s.score!.overallScore).toFixed(1),
-        precio:      Number(s.score!.priceScore).toFixed(1),
-        entrega:     Number(s.score!.deliveryScore).toFixed(1),
-        calidad:     Number(s.score!.qualityScore).toFixed(1),
-        totalOrdenes: s.score!.totalOrders,
+        puntuacion:  eje(s.score!.overallScore),
+        precio:      eje(s.score!.priceScore),
+        entrega:     eje(s.score!.deliveryScore),
+        calidad:     eje(s.score!.qualityScore),
+        calificaciones:  s.score!.ratingsCount,
+        totalOrdenes:    s.score!.totalOrders,
         entregasATiempo: s.score!.onTimeDeliveries,
       })),
     }

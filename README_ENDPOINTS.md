@@ -404,6 +404,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Request:** `{ "items": [{ "purchaseOrderItemId": "xxx", "quantityReceived": 80 }] }`  
 **Efecto secundario:** Genera `stock_movement` de entrada en KIRA por cada ítem recibido.
 
+#### `POST /v1/nira/purchase-orders/:id/rate` 🆕 HU-125
+**Propósito:** Calificar al proveedor (Entrega + Calidad, 1-5) de una OC en estado `received`. Recalcula su score al instante.  
+**Request:** `{ "deliveryRating": 5, "qualityRating": 4, "notes": "opcional" }`  
+**Notas:** Opcional (no rompe el flujo de recepción). Una calificación por OC (upsert). Guard `OPERATIVE.NIRA`.
+
 #### `POST /v1/nira/purchase-orders/from-alert`
 **Propósito:** Crear una OC borrador a partir de una alerta de stock crítico de KIRA.  
 **Request:** `{ "alertId": "clxalert1", "supplierId": "clxsup1" }`
