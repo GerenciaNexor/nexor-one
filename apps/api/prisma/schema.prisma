@@ -285,22 +285,27 @@ model Notification {
 
 /// Clientes y prospectos. Puede existir aunque nunca haya comprado (lead).
 model Client {
-  id         String   @id @default(cuid()) @db.VarChar(30)
-  tenantId   String   @map("tenant_id") @db.VarChar(30)
-  name       String   @db.VarChar(255)
-  email      String?  @db.VarChar(255)
-  phone      String?  @db.VarChar(20)
-  whatsappId String?  @map("whatsapp_id") @db.VarChar(50)
-  company    String?  @db.VarChar(255)
-  taxId      String?  @map("tax_id") @db.VarChar(50)
-  address    String?  @db.VarChar(500)
-  city       String?  @db.VarChar(100)
-  source     String?  @db.VarChar(50)
-  tags       String[] @default([])
-  notes      String?  @db.Text
-  assignedTo String?  @map("assigned_to") @db.VarChar(30)
-  branchId   String?  @map("branch_id") @db.VarChar(30)
-  isActive   Boolean  @default(true) @map("is_active")
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  tenantId      String   @map("tenant_id") @db.VarChar(30)
+  name          String   @db.VarChar(255)
+  email         String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(20)
+  whatsappId    String?  @map("whatsapp_id") @db.VarChar(50)
+  company       String?  @db.VarChar(255)
+  taxId         String?  @map("tax_id") @db.VarChar(50)
+  address       String?  @db.VarChar(500)
+  city          String?  @db.VarChar(100)
+  source        String?  @db.VarChar(50)
+  tags          String[] @default([])
+  notes         String?  @db.Text
+  assignedTo    String?  @map("assigned_to") @db.VarChar(30)
+  branchId      String?  @map("branch_id") @db.VarChar(30)
+  isActive      Boolean  @default(true) @map("is_active")
+  /// HU-124 — cliente favorito + descuento manual preferente (informativo: no dispara envíos).
+  isFavorite    Boolean  @default(false) @map("is_favorite")
+  /// 'percent' (0-100) | 'amount' (monto fijo) | null si no hay descuento.
+  discountType  String?  @map("discount_type") @db.VarChar(10)
+  discountValue Decimal? @map("discount_value") @db.Decimal(15, 2)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -317,6 +322,7 @@ model Client {
   @@index([tenantId, assignedTo])
   @@index([whatsappId])
   @@index([tenantId, isActive])
+  @@index([tenantId, isFavorite])
   @@map("clients")
 }
 

@@ -40,6 +40,9 @@ Sin NEXOR, las empresas gestionan sus clientes en Excel, WhatsApp personal y cua
 **CRM inteligente**  
 Centraliza toda la información de clientes: datos de contacto, historial de interacciones, cotizaciones enviadas y deals activos. Un vendedor puede ver en 10 segundos todo lo que ha pasado con un cliente.
 
+**Cliente favorito + descuento manual (HU-124)**  
+El equipo de ventas puede marcar a un cliente como **favorito** (estrella en la lista y la ficha; filtro "Favoritos") y registrar un **descuento preferente manual** (porcentaje o monto fijo). Ambos son visibles y destacados en la lista y la ficha. El descuento es **informativo**: no dispara envíos automáticos a los canales del cliente (eso depende de plantillas Meta y se trata aparte). Respeta los permisos de ARI (se edita por el `PUT` de cliente, `OPERATIVE.ARI`).
+
 **Pipeline de ventas visual (Kanban)**  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 

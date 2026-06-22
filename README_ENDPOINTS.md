@@ -253,7 +253,7 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 #### `GET /v1/ari/clients` 🤖
 **Propósito:** Listar clientes del tenant con búsqueda y filtros.  
-**Query:** `?search=juan&source=whatsapp&assignedTo=me&page=1&limit=20`
+**Query:** `?search=juan&source=whatsapp&assignedTo=me&favorite=true` (`favorite` filtra solo favoritos — HU-124)
 
 #### `GET /v1/ari/clients/:id` 🤖
 **Propósito:** Ver ficha completa de un cliente con historial de interacciones, deals y cotizaciones.
@@ -263,6 +263,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Request:** `{ "name", "phone", "email", "source", "whatsappId", "branchId" }`
 
 #### `PUT /v1/ari/clients/:id`
+**Propósito:** Editar cliente. Acepta además `isFavorite` (bool) y el descuento manual
+`discountType` (`'percent'`|`'amount'`|null) + `discountValue` (van juntos) — HU-124. Guard `OPERATIVE.ARI`.
 #### `DELETE /v1/ari/clients/:id` — Soft delete
 
 ---

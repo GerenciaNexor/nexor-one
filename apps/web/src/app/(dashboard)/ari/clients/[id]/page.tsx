@@ -290,6 +290,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </button>
           <div>
             <div className="flex items-center gap-2">
+              {client.isFavorite && (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" aria-label="Cliente favorito">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              )}
               <h1 className="text-xl font-semibold text-slate-900">{client.name}</h1>
               {client.company && (
                 <span className="text-sm text-slate-400">{client.company}</span>
@@ -300,11 +305,18 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                 </span>
               )}
             </div>
-            {client.source && (
-              <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[client.source] ?? 'bg-slate-100 text-slate-600'}`}>
-                {SOURCE_LABELS[client.source] ?? client.source}
-              </span>
-            )}
+            <div className="mt-1 flex items-center gap-2">
+              {client.source && (
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[client.source] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {SOURCE_LABELS[client.source] ?? client.source}
+                </span>
+              )}
+              {client.discountType && client.discountValue != null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                  Descuento {client.discountType === 'percent' ? `${client.discountValue}%` : `$${client.discountValue.toLocaleString('es-CO')}`}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

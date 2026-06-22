@@ -179,16 +179,17 @@ async function main(): Promise<void> {
   const stages = []
   for (const s of stageDefs) stages.push(await prisma.pipelineStage.create({ data: { tenantId: tenant.id, name: s.name, order: s.order, color: s.color, isFinalWon: s.won, isFinalLost: s.lost } }))
 
+  // HU-124 — algunos clientes favoritos con descuento preferente (informativo).
   const clientDefs = [
-    { name: 'Tecnología Global SAS', email: 'compras@tecglobal.co', phone: '3001112233', company: 'Tecnología Global', city: 'Bogotá', source: 'whatsapp', tags: ['mayorista'] },
-    { name: 'Oficinas Modernas Ltda', email: 'gerencia@oficinasmod.co', phone: '3002223344', company: 'Oficinas Modernas', city: 'Medellín', source: 'web', tags: ['corporativo'] },
-    { name: 'Juan Martínez', email: 'juanm@gmail.com', phone: '3003334455', company: null, city: 'Cali', source: 'referido', tags: ['minorista'] },
-    { name: 'Café del Centro', email: 'admin@cafecentro.co', phone: '3004445566', company: 'Café del Centro', city: 'Bogotá', source: 'whatsapp', tags: [] },
-    { name: 'Estudio Creativo DC', email: 'hola@estudiodc.co', phone: '3005556677', company: 'Estudio DC', city: 'Bogotá', source: 'web', tags: ['recurrente'] },
-    { name: 'Laura Fernández', email: 'lauraf@outlook.com', phone: '3006667788', company: null, city: 'Barranquilla', source: 'gmail', tags: ['lead'] },
+    { name: 'Tecnología Global SAS', email: 'compras@tecglobal.co', phone: '3001112233', company: 'Tecnología Global', city: 'Bogotá', source: 'whatsapp', tags: ['mayorista'], fav: true, dtype: 'percent' as const, dval: 10 },
+    { name: 'Oficinas Modernas Ltda', email: 'gerencia@oficinasmod.co', phone: '3002223344', company: 'Oficinas Modernas', city: 'Medellín', source: 'web', tags: ['corporativo'], fav: true, dtype: 'amount' as const, dval: 150000 },
+    { name: 'Juan Martínez', email: 'juanm@gmail.com', phone: '3003334455', company: null, city: 'Cali', source: 'referido', tags: ['minorista'], fav: false, dtype: null, dval: null },
+    { name: 'Café del Centro', email: 'admin@cafecentro.co', phone: '3004445566', company: 'Café del Centro', city: 'Bogotá', source: 'whatsapp', tags: [], fav: false, dtype: null, dval: null },
+    { name: 'Estudio Creativo DC', email: 'hola@estudiodc.co', phone: '3005556677', company: 'Estudio DC', city: 'Bogotá', source: 'web', tags: ['recurrente'], fav: true, dtype: 'percent' as const, dval: 5 },
+    { name: 'Laura Fernández', email: 'lauraf@outlook.com', phone: '3006667788', company: null, city: 'Barranquilla', source: 'gmail', tags: ['lead'], fav: false, dtype: null, dval: null },
   ]
   const clients = []
-  for (const c of clientDefs) clients.push(await prisma.client.create({ data: { tenantId: tenant.id, name: c.name, email: c.email, phone: c.phone, company: c.company ?? undefined, city: c.city, source: c.source, tags: c.tags, assignedTo: uVentas.id, branchId: bogota.id } }))
+  for (const c of clientDefs) clients.push(await prisma.client.create({ data: { tenantId: tenant.id, name: c.name, email: c.email, phone: c.phone, company: c.company ?? undefined, city: c.city, source: c.source, tags: c.tags, assignedTo: uVentas.id, branchId: bogota.id, isFavorite: c.fav, discountType: c.dtype, discountValue: c.dval } }))
 
   const dealDefs = [
     { client: 0, stage: 2, title: 'Dotación 20 puestos de trabajo', value: 14500000, prob: 60, days: 12 },

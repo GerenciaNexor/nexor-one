@@ -345,10 +345,17 @@ Clientes y prospectos de la empresa. Un cliente puede existir aunque nunca haya 
 | `assigned_to` | `VARCHAR(30)` | FK → users.id, NULL | Vendedor asignado |
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal que lo atiende |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el cliente está activo |
+| `is_favorite` | `BOOLEAN` | NOT NULL, DEFAULT false | Cliente favorito (HU-124) |
+| `discount_type` | `VARCHAR(10)` | NULL | `'percent'` (0-100) \| `'amount'` (monto fijo) \| NULL (HU-124) |
+| `discount_value` | `DECIMAL(15,2)` | NULL | Valor del descuento manual preferente; NULL si no hay (HU-124) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`
+**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`
+
+**Favorito + descuento (HU-124):** marca informativa para el equipo de ventas. `discount_type` y
+`discount_value` van juntos (ambos NULL = sin descuento). El descuento **no** dispara envíos
+automáticos al cliente (fuera de alcance: depende de plantillas Meta). Cubierto por el RLS de `clients`.
 
 ---
 

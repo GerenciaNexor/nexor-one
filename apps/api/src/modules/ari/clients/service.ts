@@ -23,6 +23,9 @@ const CLIENT_SELECT = {
   assignedTo: true,
   branchId:   true,
   isActive:   true,
+  isFavorite:    true,
+  discountType:  true,
+  discountValue: true,
   createdAt:  true,
   updatedAt:  true,
   assignedUser: { select: { id: true, name: true } },
@@ -45,7 +48,12 @@ const INTERACTION_SELECT = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toApiClient(c: any) {
   const { _count, ...rest } = c
-  return { ...rest, activeDealsCount: _count?.deals ?? 0 }
+  return {
+    ...rest,
+    // HU-124 — Decimal de Prisma → number para la respuesta JSON
+    discountValue: rest.discountValue != null ? parseFloat(String(rest.discountValue)) : null,
+    activeDealsCount: _count?.deals ?? 0,
+  }
 }
 
 // =============================================================================
@@ -65,6 +73,7 @@ export async function listClients(
     // OPERATIVE solo ve sus clientes asignados
     ...(!isManager ? { assignedTo: userId } : {}),
     ...(query.source ? { source: query.source } : {}),
+    ...(query.favorite ? { isFavorite: query.favorite === 'true' } : {}),
     ...(query.assignedTo === 'me'
       ? { assignedTo: userId }
       : query.assignedTo ? { assignedTo: query.assignedTo } : {}),
@@ -118,6 +127,9 @@ export async function createClient(
       notes:      input.notes      ?? null,
       assignedTo: input.assignedTo ?? userId,
       branchId:   input.branchId   ?? null,
+      isFavorite:    input.isFavorite ?? false,
+      discountType:  input.discountType  ?? null,
+      discountValue: input.discountValue ?? null,
     },
     select: CLIENT_SELECT,
   })
@@ -151,6 +163,9 @@ export async function updateClient(
       ...(input.notes      !== undefined && { notes:      input.notes      ?? null }),
       ...(input.assignedTo !== undefined && { assignedTo: input.assignedTo ?? null }),
       ...(input.branchId   !== undefined && { branchId:   input.branchId   ?? null }),
+      ...(input.isFavorite    !== undefined && { isFavorite:    input.isFavorite }),
+      ...(input.discountType  !== undefined && { discountType:  input.discountType  ?? null }),
+      ...(input.discountValue !== undefined && { discountValue: input.discountValue ?? null }),
     },
     select: CLIENT_SELECT,
   })
