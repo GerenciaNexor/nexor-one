@@ -127,11 +127,11 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 | Área | Componentes destacados |
 |------|------------------------|
 | `layout/` | **AppShell** (sidebar, header, notificaciones, chat flotante), SentryUserContext, ComingSoon |
-| `ari/` | AriSubNav, ClientFormModal, DealFormModal, QuoteFormModal |
-| `nira/` | NiraSubNav, SupplierFormModal, PurchaseOrderFormModal, ReceiveModal |
+| `ari/` | AriSubNav, ClientFormModal, DealFormModal, QuoteFormModal, RateClientModal |
+| `nira/` | NiraSubNav, SupplierFormModal, PurchaseOrderFormModal, ReceiveModal, RatePurchaseOrderModal |
 | `kira/` | KiraSubNav, ProductFormModal, MovementModal |
 | `agenda/` | AgendaSubNav, CalendarView, AppointmentsView, AppointmentFormModal, ServiceFormModal |
-| `vera/` | VeraSubNav, VeraDashboard, TransactionsView, TransactionFormModal, ReportsView, LineChart |
+| `vera/` | VeraSubNav, VeraDashboard, TransactionsView, TransactionFormModal, ReportsView, **LineChart** (genérico: serie única o ingresos/egresos, etiquetas por día/mes — HU-127) |
 | `chat/` | FloatingChat, MarkdownMessage |
 | `landing/` | Reveal (animación al hacer scroll), ChatDemo (conversación animada) |
 | `ui/` | Portal, Toast, SkeletonRows |

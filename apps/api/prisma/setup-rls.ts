@@ -58,6 +58,8 @@ const BUSINESS_TABLES = [
   // (20260411131542_chat_messages_rls_and_index); se incluye aquí para que
   // db:rls sea la fuente única de verdad y re-aplique su política tras un restore.
   'chat_messages',
+  // HU-127 — rollup diario del Dashboard (tenant_id propio).
+  'dashboard_daily_rollups',
 ] as const
 
 async function setupRLS(): Promise<void> {

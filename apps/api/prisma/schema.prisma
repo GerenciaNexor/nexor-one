@@ -102,6 +102,7 @@ model Tenant {
   bulkUploadLogs        BulkUploadLog[]
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
+  dashboardRollups      DashboardDailyRollup[]
 
   @@map("tenants")
 }
@@ -119,20 +120,21 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users          User[]
-  integrations   Integration[]
-  clients        Client[]
-  deals          Deal[]
-  stocks         Stock[]
-  stockMovements StockMovement[]
-  purchaseOrders PurchaseOrder[]
-  serviceTypes   ServiceType[]
-  availability   Availability[]
-  appointments   Appointment[]
-  blockedDates   BlockedDate[]
-  transactions   Transaction[]
-  monthlyBudgets MonthlyBudget[]
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users            User[]
+  integrations     Integration[]
+  clients          Client[]
+  deals            Deal[]
+  stocks           Stock[]
+  stockMovements   StockMovement[]
+  purchaseOrders   PurchaseOrder[]
+  serviceTypes     ServiceType[]
+  availability     Availability[]
+  appointments     Appointment[]
+  blockedDates     BlockedDate[]
+  transactions     Transaction[]
+  monthlyBudgets   MonthlyBudget[]
+  dashboardRollups DashboardDailyRollup[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -935,6 +937,37 @@ model MonthlyBudget {
   @@unique([tenantId, branchId, year, month])
   @@index([tenantId])
   @@map("monthly_budgets")
+}
+
+// =============================================================================
+// DASHBOARD — rollup diario para gráficos de líneas (HU-127)
+// =============================================================================
+
+/// Consolidado DIARIO de métricas del Dashboard, poblado por un job programado.
+/// Una fila por (tenant, sucursal, día). branch_id NULL = consolidado del tenant
+/// (TENANT_ADMIN); branch_id = sucursal (BRANCH_ADMIN). El job hace delete+insert
+/// por (tenant, ventana de días) — por eso no hay UNIQUE, solo índices de lectura.
+/// Distinción: purchase_orders_created = OC creadas; purchases_received = OC recibidas.
+model DashboardDailyRollup {
+  id                    String   @id @default(cuid()) @db.VarChar(30)
+  tenantId              String   @map("tenant_id") @db.VarChar(30)
+  branchId              String?  @map("branch_id") @db.VarChar(30)
+  date                  DateTime @db.Date
+  purchasesReceived     Int      @default(0) @map("purchases_received")
+  purchasesAmount       Decimal  @default(0) @map("purchases_amount") @db.Decimal(15, 2)
+  salesCount            Int      @default(0) @map("sales_count")
+  salesAmount           Decimal  @default(0) @map("sales_amount") @db.Decimal(15, 2)
+  purchaseOrdersCreated Int      @default(0) @map("purchase_orders_created")
+  quotesCreated         Int      @default(0) @map("quotes_created")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, date])
+  @@index([tenantId, branchId, date])
+  @@map("dashboard_daily_rollups")
 }
 
 // =============================================================================

@@ -7,6 +7,7 @@ import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
 import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
 import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders'
 import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
+import { startDashboardRollupScheduler }      from './jobs/dashboard-rollup'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -210,6 +211,7 @@ const start = async (): Promise<void> => {
     startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
     startAppointmentRemindersScheduler() // Envía recordatorios de citas del día siguiente
     startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
+    startDashboardRollupScheduler()      // Rollup diario del Dashboard (HU-127) — corre cada 24 h
   } catch (err) {
     app.log.error(err)
     process.exit(1)

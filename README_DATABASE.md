@@ -810,6 +810,34 @@ Registro financiero de todos los movimientos de dinero. Generado automáticament
 
 ---
 
+### MÓDULO DASHBOARD — Series históricas
+
+#### `dashboard_daily_rollups`
+
+Consolidado **diario** de métricas para los gráficos de líneas del Dashboard (HU-127), poblado por
+un job programado ([apps/api/src/jobs/dashboard-rollup.ts](./apps/api/src/jobs/dashboard-rollup.ts)).
+Una fila por **(tenant, sucursal, día)**: `branch_id` NULL = consolidado del tenant (TENANT_ADMIN);
+`branch_id` = sucursal (BRANCH_ADMIN/otros, vía `getBranchFilter`). El job hace **delete+insert** por
+(tenant, ventana de 120 días) — por eso no hay UNIQUE, solo índices de lectura. RLS por `tenant_id`.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal; NULL = consolidado |
+| `date` | `DATE` | NOT NULL | Día de la métrica |
+| `purchases_received` | `INTEGER` | NOT NULL, DEFAULT 0 | **Compras realizadas** = OC recibidas |
+| `purchases_amount` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Monto comprado (suma OC recibidas) |
+| `sales_count` | `INTEGER` | NOT NULL, DEFAULT 0 | **Ventas realizadas** = deals ganados (HU-126) |
+| `sales_amount` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Monto vendido (suma de `deal.value` ganados) |
+| `purchase_orders_created` | `INTEGER` | NOT NULL, DEFAULT 0 | **Órdenes de compra realizadas** = OC creadas (≠ recibidas) |
+| `quotes_created` | `INTEGER` | NOT NULL, DEFAULT 0 | Cotizaciones creadas (sucursal = la del creador) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo se calculó la fila |
+
+**Índices:** `(tenant_id, date)`, `(tenant_id, branch_id, date)`
+
+---
+
 ## Enumeraciones globales
 
 ```

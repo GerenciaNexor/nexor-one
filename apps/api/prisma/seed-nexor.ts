@@ -22,6 +22,7 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { computeSupplierScore } from '../src/jobs/supplier-scores'
+import { runDashboardRollupForTenant } from '../src/jobs/dashboard-rollup'
 
 const prisma = new PrismaClient({
   datasources: { db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] } },
@@ -341,6 +342,9 @@ async function main(): Promise<void> {
       { tenantId: tenant.id, userId: uVentas.id, module: 'ARI', type: 'deal', title: 'Negocio por cerrar', message: 'Renovación monitores oficina está en propuesta.', link: '/ari/pipeline' },
     ],
   })
+
+  // ── Dashboard: rollup diario (HU-127) para que los gráficos tengan datos ──
+  await runDashboardRollupForTenant(tenant.id)
 
   // ── Resumen ───────────────────────────────────────────────────────────────
   const counts = {

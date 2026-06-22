@@ -293,6 +293,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
 
             <Link
+              href="/analitica"
+              className={[
+                'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
+                pathname === '/analitica'
+                  ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
+              ].join(' ')}
+            >
+              Dashboard
+            </Link>
+
+            <Link
               href="/chat"
               className={[
                 'flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',

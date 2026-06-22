@@ -852,6 +852,13 @@ Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MA
 ```
 **Comportamiento de fallos:** Si un módulo falla o supera 800 ms, devuelve `{ data: null, error: "timeout after 800ms" }` sin afectar los demás módulos.
 
+### `GET /v1/dashboard/timeseries` 🆕 HU-127
+**Propósito:** Series **diarias** para los gráficos de líneas del Dashboard (Inicio es distinto: KPIs puntuales). Lee del rollup diario — no consulta pesada por carga.  
+**Query:** `?from=YYYY-MM-DD&to=YYYY-MM-DD` (default: últimos 30 días; máx 366).  
+**Rol:** `OPERATIVE`+. Respeta la sucursal vía `getBranchFilter` (TENANT_ADMIN → `scope: "consolidado"`; BRANCH_ADMIN/otros → su `branchId`).  
+**Response:** `{ success, data: { from, to, scope, points: [{ date, purchasesReceived, purchasesAmount, salesCount, salesAmount, purchaseOrdersCreated, quotesCreated }] } }` (días sin datos → 0).  
+**Distinción:** `purchaseOrdersCreated` = OC creadas; `purchasesReceived` = OC recibidas. `salesCount` = deals ganados (disparador HU-126).
+
 ---
 
 ## Chat con agente IA — `/v1/chat`
