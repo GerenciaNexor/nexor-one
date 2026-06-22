@@ -363,7 +363,7 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 ### Órdenes de compra
 
 #### `GET /v1/nira/purchase-orders` 🤖
-**Query:** `?status=pending_approval&supplierId=xxx&branchId=xxx`
+**Query:** `?status=submitted&supplierId=xxx&branchId=xxx`
 
 #### `POST /v1/nira/purchase-orders` 🤖
 **Request:**
@@ -589,10 +589,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
   "channel": "whatsapp"
 }
 ```
+**Estado inicial:** Al crear se acepta `status: "scheduled" | "confirmed"` (default `scheduled`).  
 **Efecto secundario:** Envía confirmación por email/WhatsApp al cliente (vía Resend).
 
 #### `PUT /v1/agenda/appointments/:id/status`
-**Request:** `{ "status": "confirmed" | "cancelled" | "completed" | "no_show" | "attended" }`
+**Request:** `{ "status": "confirmed" | "completed" | "cancelled" | "no_show" }`
 
 ---
 
@@ -723,6 +724,81 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 ---
 
+## INBOX — Bandeja de conversaciones · `/v1/inbox`
+
+Centraliza las conversaciones entrantes (WhatsApp/Gmail) para gestión y respuesta manual.
+Requiere autenticación JWT + tenantHook. **Todas las rutas requieren `requireRole('AREA_MANAGER')`.**
+
+---
+
+### `GET /v1/inbox/unread-count`
+**Propósito:** Número de conversaciones sin responder (usado para el badge de la bandeja).  
+**Response:** `{ "count": 4 }` *(PENDIENTE: confirmar forma exacta)*
+
+### `GET /v1/inbox/users`
+**Propósito:** Listar los usuarios que tienen conversaciones asignadas (para filtrar/asignar).
+
+### `GET /v1/inbox`
+**Propósito:** Listar las conversaciones del tenant.  
+**Query:** filtrable por estado y canal — `?status=open&channel=whatsapp` *(PENDIENTE: confirmar nombres exactos de los parámetros)*
+
+### `GET /v1/inbox/:id`
+**Propósito:** Ver el detalle de una conversación con todos sus mensajes.
+
+### `POST /v1/inbox/:id/reply`
+**Propósito:** Responder manualmente a una conversación. Envía la respuesta por el canal original (WhatsApp/Gmail).  
+**Request:** `{ "message": "texto de la respuesta" }` *(PENDIENTE: confirmar cuerpo exacto)*
+
+### `PUT /v1/inbox/:id/status`
+**Propósito:** Cambiar el estado de la conversación.  
+**Request:** `{ "status": "open" | "replied" | "resolved" | "reassigned" }`
+
+### `PUT /v1/inbox/:id/assign`
+**Propósito:** Asignar la conversación a un usuario.  
+**Request:** `{ "userId": "clxuser1" }` *(PENDIENTE: confirmar cuerpo exacto)*
+
+---
+
+## OCR — Extracción de documentos · `/v1/ocr`
+
+Requiere autenticación JWT + tenantHook. **Requiere `requireRole('AREA_MANAGER')`.**
+
+---
+
+### `POST /v1/ocr/extract`
+**Propósito:** Extraer datos estructurados (cliente, ítems, total) de una imagen o PDF de una factura o cotización, usando Claude con visión.  
+**Request:** archivo (imagen/PDF) de la factura o cotización a procesar. *(PENDIENTE: confirmar si se envía como `multipart/form-data` o como base64 en el body)*  
+**Response:** datos estructurados extraídos — cliente, ítems y total. *(PENDIENTE: confirmar forma exacta de la respuesta)*
+
+---
+
+## BULK-UPLOAD — Carga masiva por Excel · `/v1/bulk-upload`
+
+Importación masiva de datos desde archivos Excel.
+Requiere autenticación JWT + tenantHook. **Todas las rutas requieren `requireTenantAdmin()`.**
+
+---
+
+### `POST /v1/bulk-upload/validate`
+**Propósito:** Validar un archivo Excel y devolver un preview de los datos antes de importarlos.  
+**Request:** archivo Excel a validar. *(PENDIENTE: confirmar cuerpo exacto — `multipart/form-data`)*  
+**Response:** preview con filas válidas y errores detectados. *(PENDIENTE: confirmar forma exacta)*
+
+### `POST /v1/bulk-upload/process`
+**Propósito:** Procesar e importar el archivo Excel ya validado.  
+**Request:** referencia/archivo del Excel previamente validado. *(PENDIENTE: confirmar cuerpo exacto)*
+
+### `GET /v1/bulk-upload/logs`
+**Propósito:** Historial de cargas masivas realizadas por el tenant.
+
+### `GET /v1/bulk-upload/logs/:id`
+**Propósito:** Ver el detalle de una carga masiva concreta.
+
+### `GET /v1/bulk-upload/template/:type`
+**Propósito:** Descargar la plantilla Excel del tipo indicado (`:type`) para diligenciar y luego cargar.
+
+---
+
 ## Dashboard — KPIs unificados · `/v1/dashboard`
 
 Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MANAGER solo ven KPIs de su módulo asignado.
@@ -808,3 +884,6 @@ Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MA
 | `/v1/chat/history/:userId` | ✅ | ✅ | ❌ | ❌ | ❌ |
 | `/v1/agent-logs GET` | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `/v1/kira/stock/movements POST` | ✅ | ✅ | ✅ | ✅ | ✅ KIRA |
+| `/v1/inbox/*` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `/v1/ocr/extract` | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `/v1/bulk-upload/*` | ✅ | ✅ | ❌ | ❌ | ❌ |

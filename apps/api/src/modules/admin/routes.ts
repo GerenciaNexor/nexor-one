@@ -298,7 +298,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       } : {}),
     }
 
-    const { prisma } = await import('../../lib/prisma')
+    // Vista global cross-tenant: usar directPrisma (bypassa RLS de bulk_upload_logs, HU-114)
+    const { directPrisma: prisma } = await import('../../lib/prisma')
     const [data, total] = await Promise.all([
       prisma.bulkUploadLog.findMany({
         where,
@@ -346,7 +347,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const { prisma } = await import('../../lib/prisma')
+    // Vista global cross-tenant: usar directPrisma (bypassa RLS de bulk_upload_logs, HU-114)
+    const { directPrisma: prisma } = await import('../../lib/prisma')
 
     const log = await prisma.bulkUploadLog.findUnique({
       where:  { id },
@@ -390,7 +392,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
-    const { prisma } = await import('../../lib/prisma')
+    // Vista global cross-tenant: usar directPrisma (bypassa RLS de bulk_upload_logs, HU-114)
+    const { directPrisma: prisma } = await import('../../lib/prisma')
     const log = await prisma.bulkUploadLog.findUnique({
       where:  { id },
       select: { id: true, fileName: true, fileData: true },

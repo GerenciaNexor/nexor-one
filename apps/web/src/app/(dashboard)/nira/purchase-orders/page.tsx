@@ -28,7 +28,7 @@ export interface PurchaseOrder {
 }
 
 export type PurchaseOrderStatus =
-  | 'draft' | 'pending_approval' | 'approved'
+  | 'draft' | 'submitted' | 'approved'
   | 'sent'  | 'partial'          | 'received' | 'cancelled'
 
 interface POResponse { data: PurchaseOrder[]; total: number }
@@ -37,7 +37,7 @@ interface POResponse { data: PurchaseOrder[]; total: number }
 
 const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   draft:            'Borrador',
-  pending_approval: 'En aprobación',
+  submitted: 'En aprobación',
   approved:         'Aprobada',
   sent:             'Enviada',
   partial:          'Recibida parcial',
@@ -47,7 +47,7 @@ const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
 
 const STATUS_COLORS: Record<PurchaseOrderStatus, string> = {
   draft:            'bg-slate-100 text-slate-600',
-  pending_approval: 'bg-amber-100 text-amber-700',
+  submitted: 'bg-amber-100 text-amber-700',
   approved:         'bg-blue-100 text-blue-700',
   sent:             'bg-violet-100 text-violet-700',
   partial:          'bg-orange-100 text-orange-700',

@@ -16,7 +16,7 @@ La IA agéntica es la que hace a NEXOR diferente. Es también la más crítica �
 
 ---
 
-## Los 4 agentes de NEXOR V1
+## Los agentes de NEXOR V1
 
 | Agente | Módulo | Personalidad | Función principal |
 |--------|--------|-------------|-------------------|
@@ -24,8 +24,18 @@ La IA agéntica es la que hace a NEXOR diferente. Es también la más crítica �
 | **NIRA** | Compras | Analítica y metódica | Alertar reabastecimiento, evaluar proveedores |
 | **KIRA** | Inventario | Estructurada y meticulosa | Consultar stock, registrar movimientos, alertar críticos |
 | **Agenda** | Agendamiento | Amable y eficiente | Consultar disponibilidad, crear citas, confirmar |
+| **VERA** | Finanzas | Precisa y estratégica | Consultar transacciones y KPIs financieros (solo consulta) |
 
 Cada agente tiene su propio **system prompt** que define su personalidad, su contexto dentro del tenant, y sus reglas de comportamiento.
+
+Además de las tools propias de cada módulo, existe un grupo **EMPRESA** de tools compartidas
+(consultar usuarios y sucursales del tenant) que están disponibles para todos los agentes.
+
+### Modelo de Claude
+
+El modelo por defecto es **configurable por env** (`CLAUDE_MODEL`). El default en código es
+`claude-opus-4-6` (ver `apps/api/src/modules/agents/agent.runner.ts`), aunque el `.env.example`
+sugiere `claude-opus-4-5`. PENDIENTE: confirmar/alinear el default exacto entre código y `.env.example`.
 
 ---
 
@@ -111,8 +121,7 @@ async function consultar_stock({ productId, branchId }: { productId: string, bra
 ```typescript
 export const KIRA_TOOLS = [
   consultar_stock,
-  registrar_entrada,
-  registrar_salida,
+  registrar_movimiento,
   alertar_equipo,
   crear_solicitud_compra
 ]
@@ -124,45 +133,69 @@ export const KIRA_TOOLS = [
 
 ### ARI — Tools de ventas
 
-| Tool | Parámetros | Qué hace |
-|------|-----------|---------|
-| `buscar_cliente` | `phone` o `email` | Busca si existe un cliente en el CRM del tenant |
-| `crear_lead` | `name, phone, source, intent, branchId` | Crea cliente + deal en etapa inicial |
-| `mover_etapa_deal` | `dealId, stageId` | Avanza el deal en el pipeline |
-| `crear_cotizacion` | `clientId, items[]` | Genera cotización con productos del catálogo |
-| `notificar_vendedor` | `message, branchId` | Crea notificación in-app para el equipo de ventas |
-| `consultar_stock_producto` | `productName o productId` | Verifica disponibilidad antes de cotizar |
+| Tool | Qué hace |
+|------|---------|
+| `buscar_cliente` | Busca si existe un cliente en el CRM del tenant |
+| `crear_lead` | Crea cliente + deal en etapa inicial |
+| `consultar_clientes` | Lista/consulta clientes del CRM |
+| `consultar_deals` | Consulta deals (oportunidades) del pipeline |
+| `consultar_cotizaciones` | Consulta cotizaciones del tenant |
+| `consultar_stock_producto` | Verifica disponibilidad de un producto antes de cotizar |
+| `notificar_vendedor` | Crea notificación in-app para el equipo de ventas |
+| `consultar_reporte_ventas` | Devuelve el reporte/resumen de ventas |
 
 ### NIRA — Tools de compras
 
-| Tool | Parámetros | Qué hace |
-|------|-----------|---------|
-| `listar_proveedores` | `productId?` | Lista proveedores, opcionalmente filtrados por producto |
-| `comparar_cotizaciones` | `productId` | Devuelve historial de precios por proveedor |
-| `crear_borrador_oc` | `supplierId, items[], branchId` | Crea borrador de OC pendiente de aprobación |
-| `consultar_presupuesto` | `branchId?` | Verifica presupuesto disponible del mes |
-| `notificar_jefe_compras` | `message` | Notificación in-app urgente al AREA_MANAGER de NIRA |
+| Tool | Qué hace |
+|------|---------|
+| `listar_proveedores` | Lista proveedores, opcionalmente filtrados por producto |
+| `comparar_precios` | Devuelve historial de precios por proveedor |
+| `crear_borrador_oc` | Crea borrador de OC pendiente de aprobación |
+| `consultar_presupuesto` | Verifica presupuesto disponible del mes |
+| `notificar_jefe_compras` | Notificación in-app urgente al AREA_MANAGER de NIRA |
+| `consultar_ordenes_compra` | Consulta órdenes de compra del tenant |
+| `consultar_ranking_proveedores` | Devuelve el ranking de proveedores por score |
+| `consultar_reporte_costos` | Devuelve el reporte/resumen de costos |
 
 ### KIRA — Tools de inventario
 
-| Tool | Parámetros | Qué hace |
-|------|-----------|---------|
-| `consultar_stock` | `productId, branchId?` | Stock actual por sucursal |
-| `listar_alertas_activas` | — | Productos bajo el mínimo ahora mismo |
-| `registrar_entrada` | `productId, branchId, quantity, notes` | Entrada manual de stock |
-| `registrar_salida` | `productId, branchId, quantity, notes` | Salida manual de stock |
-| `crear_solicitud_compra` | `productId, quantity` | Crea alerta en NIRA para reabastecimiento |
-| `notificar_equipo` | `message, module` | Notificación in-app al equipo |
+| Tool | Qué hace |
+|------|---------|
+| `consultar_stock` | Stock actual por sucursal |
+| `listar_alertas_activas` | Productos bajo el mínimo ahora mismo |
+| `registrar_movimiento` | Registra un movimiento de stock (entrada/salida/ajuste) |
+| `alertar_equipo` | Notificación in-app al equipo |
+| `crear_solicitud_compra` | Crea solicitud/alerta en NIRA para reabastecimiento |
+| `consultar_movimientos` | Consulta el historial de movimientos de stock |
+| `consultar_rotacion_productos` | Devuelve la rotación de productos |
+| `consultar_lotes` | Consulta lotes (número de lote y caducidad) |
+| `consultar_reporte_abc` | Devuelve el reporte de clasificación ABC |
 
 ### AGENDA — Tools de agendamiento
 
-| Tool | Parámetros | Qué hace |
-|------|-----------|---------|
-| `ver_horarios_disponibles` | `branchId, date, serviceTypeId?` | Lista slots disponibles para el día |
-| `crear_cita` | `branchId, clientName, phone, startAt, serviceTypeId?` | Crea la cita y envía confirmación |
-| `cancelar_cita` | `appointmentId, reason?` | Cancela cita y notifica al cliente |
-| `reagendar_cita` | `appointmentId, newStartAt` | Cambia la fecha/hora de una cita |
-| `buscar_cita_cliente` | `phone` | Busca citas activas de un número de teléfono |
+| Tool | Qué hace |
+|------|---------|
+| `ver_servicios` | Lista los tipos de servicio configurados |
+| `ver_profesionales` | Lista los profesionales disponibles |
+| `ver_horarios` | Lista los horarios/slots disponibles |
+| `crear_cita` | Crea la cita y envía confirmación |
+| `cancelar_cita` | Cancela cita y notifica al cliente |
+| `consultar_citas` | Consulta citas del tenant |
+| `consultar_disponibilidad_hoy` | Devuelve la disponibilidad del día actual |
+
+### VERA — Tools de finanzas (solo consulta)
+
+| Tool | Qué hace |
+|------|---------|
+| `consultar_transacciones` | Consulta transacciones (ingresos/egresos) del tenant |
+| `consultar_kpis_financieros` | Devuelve los KPIs financieros |
+
+### EMPRESA — Tools compartidas (disponibles en todos los módulos)
+
+| Tool | Qué hace |
+|------|---------|
+| `consultar_usuarios` | Consulta los usuarios del tenant |
+| `consultar_sucursales` | Consulta las sucursales del tenant |
 
 ---
 
@@ -217,6 +250,8 @@ El system prompt de cada agente tiene 4 secciones:
 ```
 
 El contexto del negocio se inyecta en cada llamada con datos reales del tenant (nombre de la empresa, sucursales, nombre del módulo). Esto es lo que hace que el agente "conozca" a la empresa.
+
+> **Carga del contexto (HU-115 / BUG-004):** el AgentRunner corre desde el worker, **sin `tenantHook`**, así que `app.current_tenant_id` no está seteado. Por eso la carga de tenant + sucursales se centraliza en el helper `getAgentTenantContext(tenantId)` ([apps/api/src/modules/agents/tenant-context.ts](apps/api/src/modules/agents/tenant-context.ts)), que usa `withTenantContext` para que RLS no descarte las sucursales. Antes, consultar `branches` con el cliente `prisma` normal devolvía vacío y el agente omitía las sucursales.
 
 ---
 

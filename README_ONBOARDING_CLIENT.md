@@ -127,7 +127,9 @@ Antes de ejecutar el seed, el equipo NEXOR valida:
 
 ## Paso 3 — Ejecutar el script de seed
 
-Una vez validado el Excel, el equipo ejecuta el script de onboarding:
+Una vez validado el Excel, el equipo ejecuta el script de onboarding. El comando real es el
+npm script `onboarding`, definido en `apps/api/package.json` como
+`"onboarding": "tsx prisma/onboarding.ts"`:
 
 ```bash
 # Desde la raíz del proyecto — apuntando a la base de datos de desarrollo
@@ -154,6 +156,11 @@ El script hace en este orden:
 9. Imprime resumen con totales de lo creado
 
 **El script es idempotente:** si se corre dos veces con el mismo Excel, no duplica datos.
+
+> **Alternativa por UI — Carga masiva (bulk-upload):** además del script de onboarding,
+> existe el módulo de **Carga masiva** que permite importar datos por Excel directamente desde
+> la interfaz, sin tocar la terminal. Es la opción recomendada cuando el cliente ya tiene acceso
+> al panel y quiere cargar/actualizar datos por su cuenta.
 
 ---
 

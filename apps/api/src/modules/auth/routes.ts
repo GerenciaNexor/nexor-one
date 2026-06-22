@@ -3,7 +3,7 @@ import { LoginSchema, RefreshSchema, LogoutSchema } from './schema'
 import { login, refresh, logout, getMe } from './service'
 import { authenticate } from '../../plugins/jwt'
 import { z2j, stdErrors } from '../../lib/openapi'
-import { isIPBlocked, getBlockedUntil, recordFailedAttempt, clearFailedAttempts } from './login-limiter'
+import { getBlockState, recordFailedAttempt, clearFailedAttempts } from './login-limiter'
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   /** POST /v1/auth/login */
@@ -45,13 +45,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, async (request, reply) => {
-    // ── Verificar bloqueo por intentos fallidos consecutivos ─────────────────
-    if (isIPBlocked(request.ip)) {
-      const blockedUntil = getBlockedUntil(request.ip)
+    // ── Verificar bloqueo por intentos fallidos consecutivos (Redis) ─────────
+    const block = await getBlockState(request.ip)
+    if (block.blocked) {
       return reply.code(429).send({
         error: 'IP bloqueada temporalmente por demasiados intentos fallidos.',
         code:  'IP_BLOCKED',
-        retryAfter: blockedUntil ? Math.ceil((blockedUntil - Date.now()) / 1000) : 900,
+        retryAfter: block.retryAfter || 900,
       })
     }
 
@@ -67,7 +67,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const userData = await login(parsed.data.email, parsed.data.password)
 
       // Credenciales correctas — limpiar contador de fallos
-      clearFailedAttempts(request.ip)
+      await clearFailedAttempts(request.ip)
 
       const token = app.jwt.sign({
         userId: userData.userId,
@@ -94,7 +94,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const e = err as { statusCode?: number; message?: string; code?: string }
       // Registrar intento fallido de autenticación (401 = credenciales inválidas)
       if ((e.statusCode ?? 500) === 401) {
-        recordFailedAttempt(request.ip)
+        await recordFailedAttempt(request.ip)
       }
       return reply
         .code(e.statusCode ?? 500)

@@ -48,8 +48,11 @@ nexor/                          ← Raíz del proyecto
 │   │   │   │   ├── tenants/
 │   │   │   │   ├── users/
 │   │   │   │   ├── webhooks/   ← WhatsApp y Gmail
+│   │   │   │   ├── inbox/      ← Bandeja de conversaciones WhatsApp/Gmail
 │   │   │   │   ├── agents/     ← Logs de agentes IA (lectura)
-│   │   │   │   ├── chat/       ← Chat con agente IA interno
+│   │   │   │   ├── chat/       ← Asistente IA interno del dashboard
+│   │   │   │   ├── ocr/        ← Extracción de documentos con Claude visión
+│   │   │   │   ├── bulk-upload/← Carga masiva desde Excel
 │   │   │   │   ├── ari/        ← CRM: clients, pipeline, quotes, reports
 │   │   │   │   ├── nira/       ← Compras: suppliers, purchase-orders, compare, reports
 │   │   │   │   ├── kira/       ← Inventario: products, stock, lots, alerts, reports
@@ -57,7 +60,7 @@ nexor/                          ← Raíz del proyecto
 │   │   │   │   ├── vera/       ← Finanzas: transactions, categories, cost-centers, budgets, reports
 │   │   │   │   └── dashboard/  ← KPIs unificados de todos los módulos activos
 │   │   │   ├── lib/            ← Utilidades: prisma, queue, worker, guards, openapi, encryption
-│   │   │   ├── plugins/        ← JWT, CORS, rate-limit, tenant middleware, swagger, security-headers
+│   │   │   ├── plugins/        ← JWT, CORS, rate-limit, tenant middleware, swagger, security-headers, sentry, bull-board (dashboard BullMQ /v1/admin/queues, solo SUPER_ADMIN), multipart (@fastify/multipart, uploads)
 │   │   │   └── jobs/           ← Schedulers de BullMQ
 │   │   └── prisma/             ← Schema, migraciones y seed
 │   │
@@ -90,8 +93,13 @@ NEXOR usa **base de datos compartida con aislamiento por `tenant_id`**.
 
 1. Cada tabla de negocio tiene un campo `tenant_id` (FK a la tabla `tenants`).
 2. PostgreSQL tiene **Row-Level Security (RLS)** activado en todas las tablas de negocio.
-3. Antes de cada query, el middleware de Fastify inyecta el `tenant_id` del usuario autenticado en la sesión de PostgreSQL mediante `SET LOCAL app.current_tenant_id = 'xxx'`.
-4. La política de RLS filtra automáticamente todas las queries por ese `tenant_id`.
+3. Cada request autenticada corre dentro de una **transacción interactiva** que ejecuta
+   `SET LOCAL app.current_tenant_id = 'xxx'` al inicio (HU-122). El cliente transaccional se
+   propaga a los servicios vía **AsyncLocalStorage**, garantizando que el contexto y las queries
+   comparten la misma conexión (pooling-safe; nunca `set_config` de sesión sobre el pool).
+4. La política de RLS filtra automáticamente todas las queries por ese `tenant_id`, de forma
+   confiable incluso bajo concurrencia. Fuera de una request (worker/agente, seeds) se usa
+   `withTenantContext(tenantId, fn)` — el mismo patrón de `SET LOCAL` en transacción.
 
 ### Por qué este patrón y no otros
 
@@ -300,7 +308,7 @@ Los jobs permiten ejecutar tareas sin bloquear los requests HTTP.
 | Tokens de integración | Cifrado AES-256 antes de guardar en DB |
 | Rate limiting global | 100 req/min por tenant/IP — `@fastify/rate-limit` |
 | Rate limiting login | 10 req/min por IP — override per-route en `auth/routes.ts` |
-| Bloqueo por fallos de login | 5 intentos fallidos en 15 min → bloqueo 15 min — `login-limiter.ts` (in-memory) |
+| Bloqueo por fallos de login | 5 intentos fallidos en 15 min → bloqueo 15 min — `login-limiter.ts` (respaldado en **Redis**, configurable por env) |
 | Usuario desactivado | Verificación `isActive` en `tenantHook` — 403 inmediato sin esperar expiración del JWT |
 | Webhook WhatsApp | Verificación de firma HMAC-SHA256 de Meta (`timingSafeEqual`) |
 | Webhook Gmail | Token en query string verificado con `SHA-256 + timingSafeEqual` (`GMAIL_WEBHOOK_SECRET`) |
@@ -309,7 +317,13 @@ Los jobs permiten ejecutar tareas sin bloquear los requests HTTP.
 | Audit log | Toda acción del Super Admin y del agente queda registrada |
 | Variables de entorno | Nunca en el código — solo en .env (gitignored) |
 
-> **Limitación conocida:** El bloqueo por fallos de login usa un store in-memory. Se resetea al reiniciar el servidor. Migrar a Redis en Sprint 12 para entornos multi-instancia.
+> **Bloqueo de login en Redis (HU-113, Sprint 12):** el conteo de fallos y el estado de bloqueo
+> viven en Redis, por lo que son consistentes entre reinicios del servidor y entre múltiples
+> instancias del API (los intentos contra cualquier instancia suman hacia el mismo umbral). Las
+> claves expiran solas por TTL (sin barrido en memoria). Umbrales configurables por entorno
+> (`LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_SECONDS`, `LOGIN_BLOCK_DURATION_SECONDS`).
+> El comportamiento ante una caída de Redis es configurable con `LOGIN_LIMITER_FAIL_OPEN`
+> (default fail-open; el rate limit por ruta de `/login` de 10/min por IP sigue como red de seguridad).
 
 ---
 
@@ -329,7 +343,7 @@ POST /v1/nira/purchase-orders/:id/receive
 
 ### Flujo 2: Deal ganado → ingreso en VERA (ARI → VERA)
 ```
-PUT /v1/ari/deals/:id/move  (a etapa isFinalWon: true)
+PUT /v1/ari/deals/:id/stage  (a etapa isFinalWon: true)
   → service ARI: cambia stageId del deal
   → service ARI: llama createTransaction() de VERA
     → INSERT en transactions (type: 'income', referenceType: 'deal', referenceId: dealId)

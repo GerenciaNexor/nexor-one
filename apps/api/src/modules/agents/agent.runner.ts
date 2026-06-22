@@ -18,8 +18,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma, directPrisma } from '../../lib/prisma'
+import { directPrisma, withTenantContext } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
+import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
 import { NIRA_TOOLS    } from './tools/nira.tools'
 import { ARI_TOOLS     } from './tools/ari.tools'
@@ -91,7 +92,7 @@ async function callClaude(
 
 // ─── Guardar log (siempre, aunque falle) ─────────────────────────────────────
 
-async function saveLog(params: {
+export async function saveLog(params: {
   tenantId:     string
   module:       AgentModule
   channel:      AgentChannel
@@ -104,19 +105,25 @@ async function saveLog(params: {
 }): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      await prisma.agentLog.create({
-        data: {
-          tenantId:     params.tenantId,
-          module:       params.module,
-          channel:      params.channel,
-          inputMessage: params.inputMessage,
-          reply:        params.reply,
-          toolsUsed:    params.toolsUsed,
-          toolDetails:  params.toolDetails as object[],
-          turnCount:    params.turnCount,
-          durationMs:   params.durationMs,
-        },
-      })
+      // HU-119 (BUG-004, 2ª instancia): el AgentRunner corre desde el worker sin
+      // tenantHook, así que app.current_tenant_id no está seteado. withTenantContext
+      // lo inyecta para que RLS permita el INSERT bajo el rol de aplicación (nexor_app),
+      // no solo en dev con superusuario. El AgentLog SIEMPRE debe guardarse.
+      await withTenantContext(params.tenantId, (tx) =>
+        tx.agentLog.create({
+          data: {
+            tenantId:     params.tenantId,
+            module:       params.module,
+            channel:      params.channel,
+            inputMessage: params.inputMessage,
+            reply:        params.reply,
+            toolsUsed:    params.toolsUsed,
+            toolDetails:  params.toolDetails as object[],
+            turnCount:    params.turnCount,
+            durationMs:   params.durationMs,
+          },
+        }),
+      )
       return
     } catch (err) {
       if (attempt === MAX_RETRIES) {
@@ -140,7 +147,7 @@ const CHANNEL_LABEL: Record<AgentChannel, string> = {
   internal: 'Chat interno',
 }
 
-async function notifyFallback(
+export async function notifyFallback(
   tenantId: string,
   module:   AgentModule,
   channel:  AgentChannel,
@@ -148,20 +155,26 @@ async function notifyFallback(
   reason:   FallbackReason,
 ): Promise<void> {
   try {
-    const managers = await prisma.user.findMany({
-      where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
-      select: { id: true },
-    })
+    // HU-119: misma raíz que saveLog — bajo el rol de aplicación (nexor_app) RLS
+    // bloquearía la lectura de users y el INSERT en notifications sin contexto de
+    // tenant. withTenantContext lo inyecta para todo el bloque.
+    await withTenantContext(tenantId, async (tx) => {
+      const managers = await tx.user.findMany({
+        where:  { tenantId, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
+        select: { id: true },
+      })
+      if (managers.length === 0) return
 
-    await prisma.notification.createMany({
-      data: managers.map((u) => ({
-        tenantId,
-        userId:  u.id,
-        module,
-        type:    'agente_fallback',
-        title:   `⚠️ Agente ${module} — atención requerida`,
-        message: `El agente no pudo resolver una solicitud por ${FALLBACK_REASON_LABEL[reason]}. Canal: ${CHANNEL_LABEL[channel]}. Mensaje: "${message.slice(0, 200)}".`,
-      })),
+      await tx.notification.createMany({
+        data: managers.map((u) => ({
+          tenantId,
+          userId:  u.id,
+          module,
+          type:    'agente_fallback',
+          title:   `⚠️ Agente ${module} — atención requerida`,
+          message: `El agente no pudo resolver una solicitud por ${FALLBACK_REASON_LABEL[reason]}. Canal: ${CHANNEL_LABEL[channel]}. Mensaje: "${message.slice(0, 200)}".`,
+        })),
+      })
     })
   } catch (err) {
     console.error('[AgentRunner] No se pudo crear notificación de fallback:', err)
@@ -203,22 +216,10 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
     return { reply: disabledReply, toolsUsed: [], toolDetails: [], turnCount: 0, durationMs, hitMaxTurns: false, fallbackReason: undefined }
   }
 
-  // ── 2. Contexto del tenant ─────────────────────────────────────────────────
-  const tenant = await prisma.tenant.findUniqueOrThrow({
-    where:   { id: input.tenantId },
-    select:  { name: true, currency: true },
-  })
-
-  const branches = await prisma.branch.findMany({
-    where:  { tenantId: input.tenantId },
-    select: { name: true },
-  })
-
-  const tenantCtx: TenantContext = {
-    tenantName: tenant.name,
-    branches:   branches.map((b) => b.name),
-    currency:   tenant.currency,
-  }
+  // ── 2. Contexto del tenant (nombre, sucursales, moneda) ─────────────────────
+  // BUG-004: el AgentRunner corre sin tenantHook; getAgentTenantContext usa
+  // withTenantContext para que RLS no descarte las sucursales del tenant.
+  const tenantCtx: TenantContext = await getAgentTenantContext(input.tenantId)
 
   const systemPrompt = getSystemPrompt(input.module, tenantCtx)
 

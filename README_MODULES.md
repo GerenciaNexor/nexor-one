@@ -93,7 +93,7 @@ Las empresas compran a múltiples proveedores sin saber cuál tiene mejor precio
 Cada proveedor tiene una ficha técnica y un score calculado diariamente con tres variables: precio histórico (comparado contra el promedio del mercado), cumplimiento de entrega (llegó a tiempo vs. se atrasó), y calidad (devoluciones o reclamos). Esto permite comparar proveedores objetivamente.
 
 **Órdenes de compra con flujo de aprobación**  
-Las OC pasan por estados: Borrador → Pendiente de aprobación → Aprobada → Enviada al proveedor → Recibida. Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas.
+Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)
 
 **Comparador de cotizaciones**  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.
@@ -316,6 +316,61 @@ Permite al equipo de NEXOR operar la plataforma:
 
 ### Regla de oro
 Toda acción del Super Admin — especialmente la impersonación — queda registrada en la tabla `agent_logs` con el userId del Super Admin, la IP, el timestamp y la acción realizada. Esto es innegociable.
+
+---
+
+## INBOX — Bandeja unificada
+**No es un módulo de negocio independiente — es la bandeja de conversaciones del equipo**  
+**Roles que lo usan:** AREA_MANAGER y superiores
+
+### Qué hace
+Bandeja unificada de conversaciones de WhatsApp y Gmail. Agrupa los mensajes por remitente y canal en un solo lugar.
+
+El agente de IA responde automáticamente, pero el equipo humano puede **tomar el control** de una conversación: responder manualmente, cambiar su estado y reasignarla a otra persona.
+
+**Estados de conversación:** `open` → `replied` → `resolved` → `reassigned`.
+
+### Acceso
+Disponible para el rol AREA_MANAGER en adelante.
+
+---
+
+## OCR — Extracción de documentos
+**No es un módulo de negocio independiente — alimenta borradores en NIRA/ARI**  
+**Roles que lo usan:** AREA_MANAGER y superiores
+
+### Qué hace
+Extracción de datos de documentos (facturas, cotizaciones, órdenes) a partir de imagen o PDF, usando Claude con visión.
+
+Los datos extraídos alimentan **borradores** en NIRA y ARI, evitando la captura manual.
+
+### Acceso
+Disponible para el rol AREA_MANAGER en adelante.
+
+---
+
+## BULK-UPLOAD — Carga masiva
+**No es un módulo de negocio independiente — herramienta de importación**  
+**Roles que lo usan:** TENANT_ADMIN
+
+### Qué hace
+Importación masiva de datos por Excel, con **validación y preview antes de procesar** la carga.
+
+Incluye plantillas por tipo de dato e historial de cargas realizadas.
+
+### Acceso
+Disponible para el rol TENANT_ADMIN.
+
+---
+
+## CHAT — Asistente interno
+**No es un módulo de negocio independiente — chat del dashboard**  
+**Roles que lo usan:** los empleados del tenant
+
+### Qué hace
+Chat dentro del dashboard donde los empleados conversan con los agentes de IA.
+
+El historial se persiste en la tabla `chat_messages` y se enruta por módulo.
 
 ---
 

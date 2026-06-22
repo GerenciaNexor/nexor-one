@@ -137,6 +137,52 @@ if (request.role === 'AREA_MANAGER' && request.module !== 'NIRA') {
 }
 ```
 
+### Helpers reales de autorización (`apps/api/src/lib/guards.ts`)
+
+En la práctica los endpoints no escriben los `if` a mano: usan los helpers de
+`guards.ts`. Estos son los reales del proyecto:
+
+**Jerarquía de roles (de menor a mayor privilegio):**
+
+```
+OPERATIVE < AREA_MANAGER < BRANCH_ADMIN < TENANT_ADMIN < SUPER_ADMIN
+```
+
+Un rol superior hereda todos los permisos de los inferiores.
+
+| Helper | Qué hace |
+|--------|----------|
+| `hasMinRole(userRole, minRole)` | Función pura: compara la jerarquía y devuelve `true` si `userRole >= minRole`. Útil en condicionales dentro de los servicios. |
+| `requireRole(minRole)` | PreHandler que exige un rol mínimo. Devuelve `403` (nunca `404`) si el rol es insuficiente. |
+| `requireModule(requiredModule)` | PreHandler que exige el feature flag/módulo activo. Para `AREA_MANAGER` y `OPERATIVE` verifica que su `module` coincida; los roles superiores pasan sin restricción de módulo. |
+| `requireRoleAndModule(minRole, requiredModule)` | Combina ambos: devuelve un par `[PreHandler, PreHandler]` listo para usar en `preHandler`. Es el patrón más común. |
+
+**Atajos para roles frecuentes:**
+
+| Atajo | Equivale a |
+|-------|-----------|
+| `requireSuperAdmin()` | `requireRole('SUPER_ADMIN')` — endpoints `/v1/admin` |
+| `requireTenantAdmin()` | `requireRole('TENANT_ADMIN')` — configuración del tenant |
+| `requireBranchAdmin()` | `requireRole('BRANCH_ADMIN')` — encargado de sucursal o superior |
+| `requireAreaManager()` | `requireRole('AREA_MANAGER')` — jefe de área o superior (cualquier módulo) |
+
+**Pricing / feature flags y multi-sucursal:**
+
+| Helper | Qué hace |
+|--------|----------|
+| `requireFeatureFlag(module)` | PreHandler que bloquea con `403 MODULE_DISABLED` si el tenant no tiene ese módulo habilitado en su plan. Se aplica en el `index.ts` de cada módulo y cubre todos sus endpoints. |
+| `getBranchFilter(user)` | Devuelve el `branchId` a usar como filtro `WHERE`: el suyo para `BRANCH_ADMIN`/`AREA_MANAGER`/`OPERATIVE`, `undefined` para `TENANT_ADMIN`/`SUPER_ADMIN` (ven todas las sucursales). |
+| `canAccessBranch(user, targetBranchId)` | Devuelve `true` si el usuario puede ver datos de esa sucursal. Útil antes de devolver un recurso específico (p. ej. `GET /branches/:id`). |
+
+**Uso típico en una ruta:**
+
+```typescript
+// "al menos AREA_MANAGER, y si es AREA_MANAGER/OPERATIVE debe ser de NIRA"
+fastify.post('/purchase-orders/:id/approve', {
+  preHandler: requireRoleAndModule('AREA_MANAGER', 'NIRA'),
+}, handler)
+```
+
 ---
 
 ## Reglas de negocio críticas sobre roles

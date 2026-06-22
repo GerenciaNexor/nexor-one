@@ -3,7 +3,8 @@
 > **Versión:** V1 Final  
 > **Motor:** PostgreSQL  
 > **ORM:** Prisma  
-> **Patrón multi-tenancy:** Base de datos compartida con `tenant_id` en cada tabla + Row-Level Security (RLS)
+> **Patrón multi-tenancy:** Base de datos compartida con `tenant_id` en cada tabla + Row-Level Security (RLS)  
+> **Modelos:** ≈35 (PENDIENTE: recuento exacto contra `apps/api/prisma/schema.prisma`). Incluye las tablas de bandeja y auditoría documentadas más abajo (`bulk_upload_logs`, `chat_messages`, `conversations`, `conversation_messages`).
 
 ---
 
@@ -36,6 +37,10 @@ Tenant (1)
   ├── Integration (N)      → WhatsApp/Gmail conectados
   ├── AgentLog (N)         → historial de acciones de la IA
   ├── Notification (N)     → notificaciones in-app
+  ├── BulkUploadLog (N)    → auditoría de cargas masivas (append-only)
+  ├── ChatMessage (N)      → chat interno dashboard ↔ agente (append-only)
+  ├── Conversation (N)     → hilos de bandeja (WhatsApp/Gmail)
+  │     └── ConversationMessage (N) → mensajes del hilo (append-only)
   │
   ├── [ARI] Client (N)
   │     ├── Interaction (N)
@@ -216,6 +221,100 @@ Notificaciones in-app por usuario. Generadas por el sistema, los jobs y los agen
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo fue generada |
 
 **Índices:** `(tenant_id, user_id, is_read)`, `(created_at DESC)`
+
+---
+
+#### `bulk_upload_logs`
+
+Auditoría de las cargas masivas (importación de datos por archivo) ejecutadas en el sistema. Tabla APPEND-ONLY.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa |
+| `user_id` | `VARCHAR(30)` | FK → users.id, NOT NULL | Usuario que ejecutó la carga |
+| `type` | `VARCHAR(50)` | NOT NULL | Tipo de carga masiva (qué entidad se importa) |
+| `file_name` | `VARCHAR` | NOT NULL | Nombre del archivo subido |
+| `file_size` | `INTEGER` | NULL | Tamaño del archivo en bytes |
+| `row_count` | `INTEGER` | NULL | Número de filas detectadas en el archivo |
+| `record_count` | `INTEGER` | NOT NULL, DEFAULT 0 | Número de registros efectivamente procesados |
+| `status` | `VARCHAR(20)` | NOT NULL | Estado del proceso — valores observados: `preview`, `processing`, `success`, `failed` (PENDIENTE: confirmar set completo) |
+| `errors` | `JSONB` | NULL | Detalle de los errores encontrados durante la carga |
+| `file_data` | `BYTES` | NULL | Contenido binario del archivo original |
+| `finished_at` | `TIMESTAMPTZ` | NULL | Cuándo terminó el procesamiento |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo se inició la carga |
+
+**Índices:** `(tenant_id)`, `(tenant_id, type)`, `(tenant_id, status)`, `(created_at DESC)`  
+**Notas:** Esta tabla es APPEND-ONLY — solo se registra el historial de cargas, no se edita.  
+**RLS:** SÍ. RLS + política `tenant_isolation` aplicadas en HU-114 (Sprint 12) vía la migración `20260618000000_rls_inbox_bulkupload` y `setup-rls.ts` (`db:rls`). Es una capa adicional al filtrado explícito por `tenant_id` en los servicios.
+
+---
+
+#### `chat_messages`
+
+Historial del chat interno del dashboard entre los empleados y el agente de IA. Tabla APPEND-ONLY.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa |
+| `user_id` | `VARCHAR(30)` | FK → users.id, NOT NULL | Empleado dueño del hilo de chat |
+| `role` | `VARCHAR(20)` | NOT NULL | `user` = mensaje del empleado \| `assistant` = respuesta del agente |
+| `content` | `TEXT` | NOT NULL | Contenido del mensaje |
+| `module` | `ENUM(Module)` | NULL | Módulo del mensaje (presente solo en mensajes con `role = 'user'`) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo se envió el mensaje |
+
+**Índices:** `(tenant_id, user_id, created_at DESC)`  
+**Notas:** Esta tabla es APPEND-ONLY.  
+**RLS:** SÍ. La política `tenant_isolation` la crea la migración `20260411131542_chat_messages_rls_and_index` y, desde HU-117, también la re-aplica `setup-rls.ts` (`db:rls`) de forma idempotente — así ninguna tabla queda sin RLS tras un restore.
+
+---
+
+#### `conversations`
+
+Hilo de la bandeja de entrada, agrupado por remitente y canal. Representa una conversación con un contacto externo a través de WhatsApp o Gmail.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa |
+| `channel` | `ENUM(Channel)` | NOT NULL | `WHATSAPP` o `GMAIL` |
+| `sender_identifier` | `VARCHAR(255)` | NOT NULL | Identificador del remitente (número de WA o email) |
+| `sender_name` | `VARCHAR` | NULL | Nombre del remitente |
+| `related_module` | `ENUM(Module)` | NULL | Módulo relacionado con la conversación |
+| `status` | `VARCHAR(20)` | NOT NULL, DEFAULT 'open' | `open`, `replied`, `resolved`, `reassigned` — lo cambia el equipo humano; el agente NUNCA lo cambia |
+| `assigned_to` | `VARCHAR(30)` | FK → users.id, NULL | Usuario asignado para atender la conversación |
+| `last_message_at` | `TIMESTAMPTZ` | NOT NULL | Fecha del último mensaje del hilo |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
+
+**Índices:** `(tenant_id, channel, sender_identifier)`, `(tenant_id, status)`, `(last_message_at DESC)`  
+**Notas de agrupación:** WhatsApp agrupa los mensajes por número en una ventana de 24h de inactividad; Gmail agrupa por email sin límite de tiempo.  
+**RLS:** SÍ. RLS + política `tenant_isolation` aplicadas en HU-114 (Sprint 12) vía la migración `20260618000000_rls_inbox_bulkupload` y `setup-rls.ts` (`db:rls`). Es una capa adicional al filtrado explícito por `tenant_id` en los servicios.
+
+---
+
+#### `conversation_messages`
+
+Mensaje individual dentro de una `conversation`. Tabla APPEND-ONLY.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `conversation_id` | `VARCHAR(30)` | FK → conversations.id, NOT NULL | Conversación a la que pertenece |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa |
+| `direction` | `VARCHAR(10)` | NOT NULL | `inbound` (entrante) / `outbound` (saliente) |
+| `content` | `TEXT` | NOT NULL | Contenido del mensaje |
+| `message_type` | `VARCHAR(20)` | NOT NULL, DEFAULT 'text' | `text`, `image`, `document` |
+| `is_from_agent` | `BOOLEAN` | NOT NULL, DEFAULT false | Si el mensaje lo generó el agente de IA |
+| `user_id` | `VARCHAR(30)` | FK → users.id, NULL | Usuario emisor (presente solo si es `outbound` y NO es del agente) |
+| `external_message_id` | `VARCHAR` | NULL | ID externo del mensaje (`wamid` de Meta o `messageId` de Gmail) |
+| `timestamp` | `TIMESTAMPTZ` | NOT NULL | Marca de tiempo del mensaje |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo se registró en NEXOR |
+
+**Índices:** `(conversation_id, timestamp ASC)`, `(tenant_id)`, `(external_message_id)`  
+**Notas:** Esta tabla es APPEND-ONLY.  
+**RLS:** SÍ. RLS + política `tenant_isolation` aplicadas en HU-114 (Sprint 12) vía la migración `20260618000000_rls_inbox_bulkupload` y `setup-rls.ts` (`db:rls`). Es una capa adicional al filtrado explícito por `tenant_id` en los servicios.
 
 ---
 
@@ -421,7 +520,7 @@ Puntuación calculada automáticamente para cada proveedor. Se recalcula diariam
 | `created_by` | `VARCHAR(30)` | FK → users.id, NOT NULL | Quien la creó |
 | `approved_by` | `VARCHAR(30)` | FK → users.id, NULL | Quien la aprobó |
 | `order_number` | `VARCHAR(50)` | NOT NULL | Número de OC (OC-2024-001) |
-| `status` | `VARCHAR(30)` | NOT NULL, DEFAULT 'draft' | draft, pending_approval, approved, sent, partial, received, cancelled |
+| `status` | `VARCHAR(30)` | NOT NULL, DEFAULT 'draft' | draft, submitted, approved, sent, partial, received, cancelled |
 | `subtotal` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Subtotal |
 | `tax` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Impuestos |
 | `total` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Total |
@@ -433,6 +532,28 @@ Puntuación calculada automáticamente para cada proveedor. Se recalcula diariam
 
 **Índices:** `(tenant_id, status)`, `(tenant_id, supplier_id)`, `UNIQUE(tenant_id, order_number)`  
 **Regla de negocio:** Solo usuarios con rol `AREA_MANAGER` del módulo NIRA o superior pueden cambiar status a `approved`.
+
+**Estados — vocabulario canónico y transiciones válidas (HU-116):**
+
+```
+draft ──submit──► submitted ──approve──► approved ──┬──► (sent) ──┐
+                                                    └──receive──► partial ──receive──► received
+cancelled ◄── (draft | submitted | approved | sent | partial)
+```
+
+| Estado | Significado | Transición que lo produce |
+|--------|-------------|---------------------------|
+| `draft` | Borrador en edición | `POST /v1/nira/purchase-orders` |
+| `submitted` | Enviada a aprobación | `POST /:id/submit` (requiere proveedor + ítems) |
+| `approved` | Aprobada — genera egreso (`transaction`) en VERA | `PUT /:id/approve` (AREA_MANAGER NIRA+) |
+| `sent` | Enviada al proveedor | (manual / reservado) |
+| `partial` | Recepción parcial | `PUT /:id/receive` (recepción incompleta) |
+| `received` | Recibida — genera entrada (`stock_movement`) en KIRA | `PUT /:id/receive` (recepción completa) |
+| `cancelled` | Cancelada — revierte el egreso en VERA si ya estaba aprobada | `PUT /:id/cancel` |
+
+> Pares unificados en HU-116: `pending_approval` → **`submitted`** (coherente con el endpoint `.../submit`)
+> y `delivered` → **`received`** (coherente con `.../receive`). La migración
+> `20260618000001_unify_po_status` renombró los estados ya persistidos.
 
 ---
 
@@ -635,6 +756,7 @@ Registro financiero de todos los movimientos de dinero. Generado automáticament
 ```
 Role:     SUPER_ADMIN | TENANT_ADMIN | BRANCH_ADMIN | AREA_MANAGER | OPERATIVE
 Module:   ARI | NIRA | KIRA | AGENDA | VERA
+Channel:  WHATSAPP | GMAIL
 ```
 
 ---

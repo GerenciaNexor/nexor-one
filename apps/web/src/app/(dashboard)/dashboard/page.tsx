@@ -144,7 +144,7 @@ export default function DashboardPage() {
     apiClient.get<{ data: StockAlert[] }>('/v1/kira/alerts/stock')
       .then((r) => setStockAlerts(r.data.slice(0, 5))).catch(() => setStockAlerts([]))
 
-    apiClient.get<{ data: POItem[] }>('/v1/nira/purchase-orders?status=pending_approval')
+    apiClient.get<{ data: POItem[] }>('/v1/nira/purchase-orders?status=submitted')
       .then((r) => setPendingPOs(r.data.slice(0, 4))).catch(() => setPendingPOs([]))
 
     apiClient.get<{ data: POItem[] }>('/v1/nira/purchase-orders?status=draft')
@@ -256,7 +256,7 @@ export default function DashboardPage() {
 
           {/* OC pendientes de aprobación */}
           <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <SectionHeader title="Órdenes en aprobación" href="/nira/purchase-orders?status=pending_approval" />
+            <SectionHeader title="Órdenes en aprobación" href="/nira/purchase-orders?status=submitted" />
             {pendingPOs.length === 0
               ? <EmptyState text="No hay órdenes pendientes de aprobación" />
               : (

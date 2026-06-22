@@ -120,7 +120,7 @@ test.describe('Flujo NIRA — orden de compra', () => {
     // Confirmar (exact:true para no matchear "Enviar a aprobación" que queda detrás del modal)
     await page.getByRole('button', { name: 'Enviar', exact: true }).click()
 
-    // Ahora está en pending_approval — aprobar
+    // Ahora está en submitted — aprobar
     await expect(page.getByRole('button', { name: 'Aprobar OC' })).toBeVisible({ timeout: 8_000 })
     await page.getByRole('button', { name: 'Aprobar OC' }).click()
     // Confirmar aprobación (exact:true para no matchear "Aprobar OC" que queda detrás)
