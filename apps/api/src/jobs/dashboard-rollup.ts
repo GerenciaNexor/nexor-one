@@ -42,12 +42,12 @@ export async function runDashboardRollupForTenant(tenantId: string, windowDays =
   from.setUTCHours(0, 0, 0, 0)
 
   return withTenantContext(tenantId, async (tx) => {
-    const [receivedPOs, createdPOs, wonDeals, quotes] = await Promise.all([
-      tx.purchaseOrder.findMany({ where: { tenantId, status: 'received', deliveredAt: { gte: from } }, select: { deliveredAt: true, branchId: true, total: true } }),
-      tx.purchaseOrder.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, branchId: true } }),
-      tx.deal.findMany({ where: { tenantId, closedAt: { gte: from }, stage: { isFinalWon: true } }, select: { closedAt: true, branchId: true, value: true } }),
-      tx.quote.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, creator: { select: { branchId: true } } } }),
-    ])
+    // Secuencial (no Promise.all): una transacción interactiva usa UNA conexión;
+    // lanzar queries concurrentes sobre el mismo `tx` es un anti-patrón en Prisma.
+    const receivedPOs = await tx.purchaseOrder.findMany({ where: { tenantId, status: 'received', deliveredAt: { gte: from } }, select: { deliveredAt: true, branchId: true, total: true } })
+    const createdPOs  = await tx.purchaseOrder.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, branchId: true } })
+    const wonDeals    = await tx.deal.findMany({ where: { tenantId, closedAt: { gte: from }, stage: { isFinalWon: true } }, select: { closedAt: true, branchId: true, value: true } })
+    const quotes      = await tx.quote.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, creator: { select: { branchId: true } } } })
 
     // Map<`${date}|${branchKey}`, Acc>. Cada evento suma a su sucursal (si tiene) y a la consolidada.
     const map = new Map<string, Acc>()
@@ -106,7 +106,10 @@ async function runForAllTenants(): Promise<void> {
 
 export function startDashboardRollupScheduler(): void {
   // Corrida inicial al arrancar (no bloquea el listen) + cada 24 h.
-  runForAllTenants().catch((err) => console.error('[Dashboard Rollup] Error en corrida inicial:', err))
+  // En test (E2E) NO se corre al arrancar: evita carga de BD durante los tests.
+  if (process.env['NODE_ENV'] !== 'test') {
+    runForAllTenants().catch((err) => console.error('[Dashboard Rollup] Error en corrida inicial:', err))
+  }
   setInterval(() => {
     runForAllTenants().catch((err) => console.error('[Dashboard Rollup] Error en ejecución diaria:', err))
   }, ONE_DAY_MS)
