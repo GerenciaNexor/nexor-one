@@ -96,6 +96,15 @@ export default function AnaliticaPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   function applyShortcut(days: number): void { setFrom(daysAgo(days - 1)); setTo(daysAgo(0)) }
+  function clearFilters(): void {
+    setFrom(daysAgo(29)); setTo(daysAgo(0))   // rango por defecto (30 días)
+    persist([...ALL_KEYS])                      // mostrar todos los gráficos
+    setTopView('units')                         // Top 10 por defecto
+    setMenuOpen(false)
+  }
+
+  // ¿Los filtros están en su estado por defecto? (para deshabilitar "Limpiar" si no hay nada que limpiar)
+  const isDefault = from === daysAgo(29) && to === daysAgo(0) && visible.length === ALL_KEYS.length && topView === 'units'
   function seriesFor(key: ChartKey, color: string): ChartSeries[] {
     return [{ label: '', color, points: (ts?.points ?? []).map((p) => ({ period: p.date, value: Number(p[key]) })) }]
   }
@@ -104,7 +113,7 @@ export default function AnaliticaPage() {
   const dateInput = 'rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
 
   return (
-    <div className="p-6">
+    <div className="p-6 pb-28">{/* pb-28: deja espacio para que el botón flotante de chat (bottom-6 h-14) no tape el Top 10 */}
       {/* Encabezado */}
       <div>
         <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
@@ -137,6 +146,16 @@ export default function AnaliticaPage() {
             </button>
           ))}
         </div>
+
+        <button
+          onClick={clearFilters}
+          disabled={isDefault}
+          title="Restablecer fechas, gráficos y vista del Top 10"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-700"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          Limpiar filtros
+        </button>
 
         {/* Selección de gráficos (persistida por usuario) */}
         <div className="relative ml-auto">
