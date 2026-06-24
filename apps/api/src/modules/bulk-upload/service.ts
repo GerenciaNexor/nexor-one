@@ -579,10 +579,18 @@ async function _processStock(tx: TxClient, tenantId: string, userId: string, row
     const product = await tx.product.findFirst({ where: { tenantId, sku: data.sku }, select: { id: true } })
     if (!product) continue
 
+    // HU-128 — leer el stock actual para quantityBefore (antes se asumía 0, era un bug).
+    const existing = await tx.stock.findUnique({
+      where:  { productId_branchId: { productId: product.id, branchId: data.sucursal_id } },
+      select: { quantity: true },
+    })
+    const before = existing ? parseFloat(String(existing.quantity)) : 0
+    const after  = data.cantidad
+
     await tx.stock.upsert({
       where:  { productId_branchId: { productId: product.id, branchId: data.sucursal_id } },
-      create: { productId: product.id, branchId: data.sucursal_id, quantity: data.cantidad },
-      update: { quantity: data.cantidad },
+      create: { productId: product.id, branchId: data.sucursal_id, quantity: after },
+      update: { quantity: after },
     })
 
     await tx.stockMovement.create({
@@ -591,10 +599,11 @@ async function _processStock(tx: TxClient, tenantId: string, userId: string, row
         productId:      product.id,
         branchId:       data.sucursal_id,
         userId,
-        type:           'adjustment',
-        quantity:       data.cantidad,
-        quantityBefore: 0,
-        quantityAfter:  data.cantidad,
+        type:           'ajuste',          // HU-128 — normalizado (antes 'adjustment')
+        reason:         'ajuste',          // HU-128 — carga masiva = ajuste de inventario
+        quantity:       Math.abs(after - before),
+        quantityBefore: before,
+        quantityAfter:  after,
         referenceType:  'bulk_upload',
       },
     })

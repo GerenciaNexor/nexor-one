@@ -426,6 +426,7 @@ export async function receivePurchaseOrder(
           branchId,
           userId,
           type:           'entrada',
+          reason:         'compra',          // HU-128 — motivo
           quantity:       incoming.quantityReceived,
           quantityBefore: qtyBefore,
           quantityAfter:  qtyAfter,

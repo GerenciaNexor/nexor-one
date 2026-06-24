@@ -226,11 +226,77 @@ export async function createDeal(tenantId: string, input: CreateDealInput) {
   return toDeal(deal)
 }
 
+// ─── HU-128: descuento de inventario al cerrar una venta (deal ganado) ────────
+// Toma las líneas con producto de la cotización ACEPTADA vinculada al deal y crea un
+// stock_movement de salida (motivo='venta') por cada una, congelando precio de venta
+// (de la línea) y costo (del producto). BLOQUEA si falta stock — no se vende sin existencias.
+// Si el deal ganado no tiene cotización itemizada, no hay impacto de inventario (venta sin itemizar).
+async function fulfillSaleInventory(
+  tx:       Prisma.TransactionClient,
+  tenantId: string,
+  dealId:   string,
+  branchId: string | null,
+  userId:   string,
+): Promise<void> {
+  const quote = await tx.quote.findFirst({
+    where:   { tenantId, dealId, status: 'accepted' },
+    orderBy: { updatedAt: 'desc' },
+    select:  { items: { where: { productId: { not: null } }, select: { productId: true, quantity: true, unitPrice: true } } },
+  })
+  const items = quote?.items ?? []
+  if (items.length === 0) return
+
+  if (!branchId) {
+    throw { statusCode: 400, message: 'Asigna una sucursal al negocio para descontar inventario al cerrar la venta.', code: 'BRANCH_REQUIRED' }
+  }
+
+  // Pasada 1 — VALIDAR todo el stock (solo lecturas). Si falta para cualquier línea → 409
+  // y no se escribe NADA (importante por la reutilización de la tx por-request).
+  const plan: { productId: string; qty: number; before: number; after: number; salePrice: number; costPrice: number | null }[] = []
+  for (const item of items) {
+    const productId = item.productId as string
+    const qty       = parseFloat(String(item.quantity))
+    const product   = await tx.product.findFirst({ where: { id: productId, tenantId }, select: { name: true, costPrice: true } })
+    if (!product) continue
+
+    const stock  = await tx.stock.findUnique({ where: { productId_branchId: { productId, branchId } }, select: { quantity: true } })
+    const before = stock ? parseFloat(String(stock.quantity)) : 0
+    if (before < qty) {
+      throw {
+        statusCode: 409,
+        message:    `Stock insuficiente para "${product.name}": disponible ${before}, requerido ${qty}. No se puede cerrar la venta sin existencias.`,
+        code:       'INSUFFICIENT_STOCK',
+      }
+    }
+    plan.push({ productId, qty, before, after: before - qty, salePrice: parseFloat(String(item.unitPrice)), costPrice: product.costPrice != null ? parseFloat(String(product.costPrice)) : null })
+  }
+
+  // Pasada 2 — APLICAR (descontar + movimiento de salida con motivo y precios congelados).
+  for (const p of plan) {
+    await tx.stock.update({ where: { productId_branchId: { productId: p.productId, branchId } }, data: { quantity: p.after } })
+    await tx.stockMovement.create({
+      data: {
+        tenantId, productId: p.productId, branchId, userId,
+        type:            'salida',
+        reason:          'venta',
+        quantity:        p.qty,
+        quantityBefore:  p.before,
+        quantityAfter:   p.after,
+        referenceType:   'deal',
+        referenceId:     dealId,
+        salePriceFrozen: p.salePrice,
+        costPriceFrozen: p.costPrice,
+        notes:           'Venta — deal ganado',
+      },
+    })
+  }
+}
+
 export async function moveDeal(
   tenantId:    string,
   dealId:      string,
   input:       MoveDealInput,
-  _actorUserId: string,
+  actorUserId: string,
 ) {
   const deal = await prisma.deal.findFirst({
     where:  { id: dealId, tenantId },
@@ -240,6 +306,7 @@ export async function moveDeal(
       value:      true,
       branchId:   true,
       assignedTo: true,
+      stage:      { select: { isFinalWon: true } },   // HU-128 — para detectar la transición a ganado
     },
   })
   if (!deal) throw { statusCode: 404, message: 'Deal no encontrado', code: 'NOT_FOUND' }
@@ -253,6 +320,14 @@ export async function moveDeal(
   const isClosed = newStage.isFinalWon || newStage.isFinalLost
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // HU-128 — inventario ANTES de cambiar la etapa: fulfillSaleInventory VALIDA todo el stock
+    // primero y solo entonces escribe; si falta, lanza 409 sin haber escrito nada (clave bajo el
+    // wrapper de tx por-request, que comitearía writes parciales si el 409 se captura en la ruta).
+    // Solo al ENTRAR a ganado (no si ya estaba) → evita doble descuento. No se vende sin existencias.
+    if (newStage.isFinalWon && !deal.stage?.isFinalWon) {
+      await fulfillSaleInventory(tx, tenantId, dealId, deal.branchId, actorUserId)
+    }
+
     // 1. Actualizar etapa del deal
     const updated = await tx.deal.update({
       where: { id: dealId },
@@ -264,7 +339,7 @@ export async function moveDeal(
       select: DEAL_SELECT,
     })
 
-    // 2. Si la etapa es "Ganado" → generar ingreso en VERA
+    // 2. Si la etapa es "Ganado" → ingreso en VERA
     if (newStage.isFinalWon) {
       const amount = deal.value ? parseFloat(String(deal.value)) : 0
       if (amount > 0) {

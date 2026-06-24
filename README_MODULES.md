@@ -169,8 +169,24 @@ Un vendedor de la Sede Norte puede ver que en la Sede Sur hay stock disponible d
 **Clasificación ABC automática**  
 KIRA calcula semanalmente qué productos generan el 80% del valor del inventario (clase A), cuáles el siguiente 15% (clase B), y cuáles el 5% restante (clase C). Esto permite priorizar esfuerzos de compra y almacenamiento.
 
-**Trazabilidad completa**  
-Cada movimiento registra: quién lo hizo, cuándo, desde qué documento (OC, venta, ajuste manual), número de lote y fecha de caducidad. Es posible rastrear cualquier unidad desde que entró hasta que salió.
+**Trazabilidad completa (HU-128)**  
+Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
+
+**Quién mueve el stock (auditoría HU-128):**
+
+| Camino | `type` | `reason` | Referencia |
+|--------|--------|----------|------------|
+| KIRA manual (`POST /kira/stock/movements`) | entrada/salida/ajuste | el que elija el usuario (default `ajuste`) | — |
+| NIRA recibe OC (`receivePurchaseOrder`) | entrada | `compra` | `purchase_order` |
+| **ARI cierra venta** (deal ganado, **HU-128 nuevo**) | salida | `venta` | `deal` |
+| Agente IA (`registrar_movimiento`) | entrada/salida/ajuste | `ajuste` | — |
+| Carga masiva Excel | ajuste | `ajuste` | `bulk_upload` |
+
+Antes, **ARI vendía sin descontar inventario** (hueco): ahora, al **ganar un deal**, se generan
+salidas (motivo `venta`) por las líneas de la **cotización aceptada** vinculada, congelando el
+precio de venta y el costo del momento. Si **falta stock**, el cierre de la venta se **bloquea**
+(no se vende sin existencias). Si el deal ganado no tiene cotización itemizada, no hay impacto de
+inventario (venta sin itemizar).
 
 **Alertas automáticas**  
 Un job de BullMQ revisa cada hora si algún producto está bajo su mínimo de stock y genera notificaciones para el equipo de bodega y compras.

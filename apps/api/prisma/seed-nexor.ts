@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   }
   // Movimientos de inventario (inmutables). Entradas/salidas de ejemplo.
   const mv = (prod: typeof products[number], branchId: string, type: 'entrada' | 'salida', qty: number, before: number, userId: string, n: number) =>
-    prisma.stockMovement.create({ data: { tenantId: tenant.id, productId: prod.id, branchId, userId, type, quantity: qty, quantityBefore: before, quantityAfter: type === 'entrada' ? before + qty : before - qty, notes: type === 'entrada' ? 'Recepción de compra' : 'Venta mostrador', createdAt: day(-n) } })
+    prisma.stockMovement.create({ data: { tenantId: tenant.id, productId: prod.id, branchId, userId, type, reason: type === 'entrada' ? 'compra' : 'venta', quantity: qty, quantityBefore: before, quantityAfter: type === 'entrada' ? before + qty : before - qty, notes: type === 'entrada' ? 'Recepción de compra' : 'Venta mostrador', createdAt: day(-n) } })
   await mv(products[0]!, bogota.id, 'entrada', 50, 0, uInv.id, 12)
   await mv(products[0]!, bogota.id, 'salida', 5, 50, uOper.id, 6)
   await mv(products[1]!, bogota.id, 'entrada', 70, 0, uInv.id, 11)

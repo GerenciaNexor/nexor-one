@@ -178,7 +178,7 @@ Se gestiona desde la UI (detalle de producto en KIRA y página de Proveedores en
 |------|---------|
 | `consultar_stock` | Stock actual por sucursal |
 | `listar_alertas_activas` | Productos bajo el mínimo ahora mismo |
-| `registrar_movimiento` | Registra un movimiento de stock (entrada/salida/ajuste) |
+| `registrar_movimiento` | Registra un movimiento de stock (entrada/salida/ajuste). HU-128: `type` en minúsculas, registra el `userId` del agente y `reason='ajuste'`; nunca deja el stock negativo |
 | `alertar_equipo` | Notificación in-app al equipo |
 | `crear_solicitud_compra` | Crea solicitud/alerta en NIRA para reabastecimiento |
 | `consultar_movimientos` | Consulta el historial de movimientos de stock |

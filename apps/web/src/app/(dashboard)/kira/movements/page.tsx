@@ -11,9 +11,12 @@ import { Portal } from '@/components/ui/Portal'
 interface Movement {
   id:             string
   type:           'entrada' | 'salida' | 'ajuste'
+  reason:         string   // HU-128 — motivo: compra|venta|devolucion|ajuste|traslado|desconocido
   quantity:       number
   quantityBefore: number
   quantityAfter:  number
+  salePriceFrozen: number | null
+  costPriceFrozen: number | null
   lotNumber:      string | null
   expiryDate:     string | null
   notes:          string | null
@@ -21,6 +24,11 @@ interface Movement {
   product:        { sku: string; name: string; unit: string }
   branch:         { name: string }
   user:           { name: string; email: string } | null
+}
+
+const REASON_LABELS: Record<string, string> = {
+  compra: 'Compra', venta: 'Venta', devolucion: 'Devolución',
+  ajuste: 'Ajuste', traslado: 'Traslado', desconocido: 'Desconocido',
 }
 
 interface MovementsResponse {
@@ -238,7 +246,7 @@ export default function MovementsPage() {
 
   useEffect(() => { load() }, [typeFilter, from, to, page, search])
 
-  const cols = isOperative ? 8 : 9
+  const cols = isOperative ? 9 : 10   // HU-128 — +1 por la columna Motivo
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -304,6 +312,7 @@ export default function MovementsPage() {
                 <th className="px-4 py-3">Producto</th>
                 {!isOperative && <th className="px-4 py-3">Sucursal</th>}
                 <th className="px-4 py-3 text-center">Tipo</th>
+                <th className="px-4 py-3 text-center">Motivo</th>
                 <th className="px-4 py-3 text-right">Cantidad</th>
                 <th className="px-4 py-3 text-right">Antes</th>
                 <th className="px-4 py-3 text-right">Después</th>
@@ -342,6 +351,9 @@ export default function MovementsPage() {
                       )}
                       <td className="px-4 py-3 text-center">
                         <TypeBadge type={m.type} />
+                      </td>
+                      <td className="px-4 py-3 text-center text-xs text-slate-600">
+                        {REASON_LABELS[m.reason] ?? m.reason}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">
                         {sign}{m.quantity} {m.product.unit}

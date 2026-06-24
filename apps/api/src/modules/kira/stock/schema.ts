@@ -11,6 +11,8 @@ export const StockQuerySchema = z.object({
 
 export const CreateMovementSchema = z.object({
   type:          z.enum(['entrada', 'salida', 'ajuste']),
+  // HU-128 — motivo obligatorio del movimiento (por qué se mueve el stock).
+  reason:        z.enum(['compra', 'venta', 'devolucion', 'ajuste', 'traslado']).default('ajuste'),
   productId:     z.string().min(1, 'El producto es requerido'),
   branchId:      z.string().min(1, 'La sucursal es requerida'),
   quantity:      z.number().refine((n) => n !== 0, 'La cantidad no puede ser cero'),
