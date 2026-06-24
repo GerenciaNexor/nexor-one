@@ -312,7 +312,7 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
 
             {/* ── Descripción ────────────────────────────────────────── */}
             <div className="pb-1">
-              <label className="mb-1.5 block text-xs font-medium text-slate-600">Descripción <span className="text-slate-400 font-normal">(opcional)</span></label>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">Descripción / ficha técnica <span className="text-slate-400 font-normal">(opcional)</span></label>
               <textarea
                 value={form.description}
                 onChange={field('description')}
