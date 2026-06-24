@@ -83,6 +83,11 @@ En [apps/web/src/store/](apps/web/src/store/):
 - **[chat.ts](apps/web/src/store/chat.ts)** — estado del asistente IA (mensajes, `isOpen`, `isTyping`,
   `unreadCount`, paginación). **Efímero** (sin persistencia).
 
+**Preferencias de UI por usuario.** Además del store, hay preferencias que se guardan directo en
+`localStorage` por usuario: el **Dashboard** (`/analitica`, HU-129) persiste qué gráficos se muestran
+en `nexor-dashboard-charts:<userId>` y los restaura en la siguiente visita (filtro de fechas y
+selección respetan el rol; ver [README_MODULES.md](./README_MODULES.md)).
+
 ---
 
 ## Tema claro / oscuro

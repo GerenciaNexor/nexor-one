@@ -317,15 +317,22 @@ Hay **dos vistas** distintas en el menú izquierdo:
 - **Inicio** (`/dashboard`): KPIs **puntuales** del momento + bandeja operacional (`/v1/dashboard/kpis`).
 - **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias en el tiempo.
 
-### Dashboard de tendencias (HU-127)
-Apartado nuevo con 6 gráficos de líneas (reutiliza el `LineChart` de VERA) y selector de rango
-(7/30/90 días): **Compras realizadas** (OC recibidas), **Monto comprado**, **Ventas realizadas**
-(deals ganados — disparador HU-126), **Monto vendido**, **Órdenes de compra creadas** (≠ recibidas)
-y **Cotizaciones realizadas**. Los datos salen de un **rollup diario** (job programado
+### Dashboard de tendencias (HU-127 + HU-129)
+Apartado nuevo (`/analitica`) con gráficos de líneas (reutiliza el `LineChart` de VERA). Muestra
+**4 líneas** (HU-129): **Compras realizadas** (OC recibidas), **Ventas realizadas** (deals ganados —
+disparador HU-126), **Monto comprado** y **Monto vendido**. *(Las líneas "OC creadas" y "Cotizaciones
+realizadas" se retiraron de la vista en HU-129; el rollup las sigue calculando, reversible sin migración.)*
+
+**Filtros (HU-129):** date picker de **fecha específica o rango libre** (desde/hasta, admite un solo
+día con `from=to`) + atajos (Hoy/7/30/90 días), y un control para **mostrar/ocultar gráficos** cuya
+selección se **persiste por usuario** (localStorage `nexor-dashboard-charts:<userId>`) y se restaura
+en la siguiente visita.
+
+Los datos salen de un **rollup diario** (job programado
 [dashboard-rollup.ts](./apps/api/src/jobs/dashboard-rollup.ts) → tabla `dashboard_daily_rollups`),
 así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBranchFilter`
-(TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal). **No** incluye satisfacción del cliente ni
-inventario crítico (fuera de alcance).
+(TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal) y valida el rango. **No** incluye satisfacción
+del cliente ni inventario crítico (fuera de alcance).
 
 ### KPIs puntuales (Inicio)
 Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
