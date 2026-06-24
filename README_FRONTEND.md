@@ -70,6 +70,40 @@ Toda comunicación con la API pasa por [apps/web/src/lib/](apps/web/src/lib/):
 
 La URL base sale de `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
 
+### Navegación instantánea — patrón _stale-while-revalidate_ (HU-131)
+
+Las pantallas de lista de alto tráfico **inicializan su estado desde `page-cache`** y solo
+muestran el skeleton cuando no hay dato cacheado: al volver a una sección se ve **al instante**
+la última lista conocida mientras se refresca en segundo plano. Patrón (ver
+[kira/products/page.tsx](apps/web/src/app/(dashboard)/kira/products/page.tsx) como referencia):
+
+```ts
+const [items, setItems]   = useState<T[]>(() => getCache<T[]>('clave') ?? [])
+const [loading, setLoad]  = useState(!getCache<T[]>('clave'))
+// en el fetch: solo skeleton si no hay caché; cachear SOLO la vista por defecto (sin filtros)
+const noFilters = !search && !filtroA && !filtroB
+if (!(noFilters && getCache('clave'))) setLoad(true)
+// onSuccess: if (noFilters) setCache('clave', res.data)
+```
+
+> **Regla:** se cachea **solo la vista sin filtros** (la lista por defecto). Con búsqueda/filtros
+> activos no se lee ni escribe la caché y sí se muestra skeleton — para no enseñar datos de otra vista.
+
+Pantallas con el patrón: `kira/products`, `kira/stock`, `kira/movements`, `nira/suppliers`,
+`nira/purchase-orders`, `ari/clients`, `vera/transactions`, `notifications`, `admin/*`. El **AppShell**
+también cachea los _feature-flags_ del sidebar y los pide **una sola vez al montar** (no en cada
+navegación) refrescándolos al recuperar el foco de la pestaña.
+
+> **Por qué importa (diagnóstico HU-131):** el "congelamiento" de 4-6 s al cambiar de sección que se
+> percibía **en `pnpm dev`** son dos costos exclusivos del entorno local: (1) la **compilación
+> on-demand de `next dev`** (webpack compila cada ruta en su primera visita: 1-7 s en frío, ~50 ms en
+> caliente) y (2) la **BD de producción remota** vía proxy público (`*.proxy.rlwy.net`, ~145 ms por
+> round-trip; la tx por-request de HU-122 hace 4 round-trips). **En producción no ocurre:** las rutas
+> van **precompiladas** (`next start` sirve cada ruta en ~10 ms, medido) y la API y la BD están
+> **co-ubicadas** en Railway (red interna, sub-ms). El `page-cache` mejora la percepción en ambos
+> entornos. La compilación de dev es inherente a `next dev`; `--turbo` la recorta ~30 % en rutas
+> sucesivas pero no es compatible con el SDK de Sentry en Next 14.2.
+
 ---
 
 ## Estado global (Zustand)

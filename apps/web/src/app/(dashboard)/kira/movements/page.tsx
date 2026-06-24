@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { Portal } from '@/components/ui/Portal'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -193,9 +194,9 @@ export default function MovementsPage() {
   const user        = useAuthStore((s) => s.user)
   const isOperative = user?.role === 'OPERATIVE'
 
-  const [movements, setMovements]       = useState<Movement[]>([])
-  const [meta, setMeta]                 = useState({ total: 0, page: 1, totalPages: 1 })
-  const [loading, setLoading]           = useState(true)
+  const [movements, setMovements]       = useState<Movement[]>(() => getCache<Movement[]>('movements') ?? [])
+  const [meta, setMeta]                 = useState(() => getCache<{ total: number; page: number; totalPages: number }>('movements-meta') ?? { total: 0, page: 1, totalPages: 1 })
+  const [loading, setLoading]           = useState(!getCache<Movement[]>('movements'))
   const [fetchError, setFetchError]     = useState<string | null>(null)
   const [selected, setSelected]         = useState<Movement | null>(null)
 
@@ -215,7 +216,8 @@ export default function MovementsPage() {
   }
 
   function load() {
-    setLoading(true)
+    const noFilters = !search && !typeFilter && !from && !to && page === 1
+    if (!(noFilters && getCache<Movement[]>('movements'))) setLoading(true)
     setFetchError(null)
     const qs = new URLSearchParams()
     if (typeFilter) qs.set('type',  typeFilter)
@@ -236,6 +238,10 @@ export default function MovementsPage() {
           : r.data
         setMovements(data)
         setMeta({ total: r.total, page: r.page, totalPages: r.totalPages })
+        if (noFilters) {
+          setCache('movements', data)
+          setCache('movements-meta', { total: r.total, page: r.page, totalPages: r.totalPages })
+        }
       })
       .catch((err: unknown) => {
         const e = err as { message?: string }
