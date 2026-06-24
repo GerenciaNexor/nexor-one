@@ -49,6 +49,12 @@ Cuando se cierra una venta, el equipo de ventas puede calificar **internamente**
 **Pipeline de ventas visual (Kanban)**  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 
+**Historial de ventas (HU-133)** — subsección `/ari/history`: lista los deals (ventas finalizadas y
+en proceso) con su **etapa** y un estado derivado **Ganada/Perdida/En proceso** (venta finalizada =
+etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa** y **fecha/rango**
+(`from`/`to` sobre `createdAt`). Cada fila enlaza al pipeline. Respeta rol/sucursal (`getBranchFilter`
+\+ RLS; OPERATIVE solo sus deals). Reutiliza `GET /v1/ari/deals` (filtros añadidos en HU-133).
+
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
@@ -109,6 +115,12 @@ Cuando una OC pasa a `received`, el equipo de compras **califica al proveedor** 
 
 **Órdenes de compra con flujo de aprobación**  
 Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)
+
+**Historial de compras (HU-133)** — subsección `/nira/history`: lista las OC realizadas y en proceso
+con su **estado canónico**, con filtros por **estado** y **fecha/rango** (`from`/`to` sobre `createdAt`).
+Cada fila enlaza al detalle de la OC. Respeta rol/sucursal (`getBranchFilter` + RLS). Reutiliza el
+endpoint `GET /v1/nira/purchase-orders` (filtros añadidos en HU-133), sin endpoint nuevo. La contraparte
+(proveedor), monto, etc. quedan como mejora futura de filtros.
 
 **Comparador de cotizaciones**  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.

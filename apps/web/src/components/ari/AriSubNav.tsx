@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/ari/clients',      label: 'Clientes'      },
   { href: '/ari/pipeline',     label: 'Pipeline'      },
+  { href: '/ari/history',      label: 'Historial'     },
   { href: '/ari/quotes',       label: 'Cotizaciones'  },
   { href: '/ari/reports',      label: 'Reportes'      },
 ] as const

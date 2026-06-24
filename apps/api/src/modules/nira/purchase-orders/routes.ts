@@ -19,7 +19,7 @@ import {
   ratePurchaseOrder,
   createPurchaseOrderFromAlert,
 } from './service'
-import { requireRoleAndModule } from '../../../lib/guards'
+import { requireRoleAndModule, getBranchFilter } from '../../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> {
@@ -45,7 +45,7 @@ export async function purchaseOrdersRoutes(app: FastifyInstance): Promise<void> 
         code:  'VALIDATION_ERROR',
       })
     }
-    const result = await listPurchaseOrders(request.user.tenantId, parsed.data)
+    const result = await listPurchaseOrders(request.user.tenantId, parsed.data, getBranchFilter(request.user))
     return reply.code(200).send(result)
   })
 

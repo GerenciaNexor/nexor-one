@@ -38,8 +38,8 @@ app/
 └── (dashboard)/            ← Rutas autenticadas (requieren token)
     ├── layout.tsx          ← Monta AppShell + guarda de sesión
     ├── dashboard/page.tsx  ← Inicio: lo accionable del día por rol/módulo (HU-132)
-    ├── ari/                ← Ventas: clients, pipeline, quotes, reports
-    ├── nira/               ← Compras: suppliers, purchase-orders, compare, ranking, reports
+    ├── ari/                ← Ventas: clients, pipeline, history, quotes, reports
+    ├── nira/               ← Compras: suppliers, purchase-orders, history, compare, ranking, reports
     ├── kira/               ← Inventario: products, stock, movements
     ├── agenda/             ← Agenda (badge REI): calendar, appointments, settings
     ├── vera/               ← Finanzas: transactions, reports, settings

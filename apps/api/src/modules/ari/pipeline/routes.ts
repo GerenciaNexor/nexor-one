@@ -20,7 +20,7 @@ import {
   moveDeal,
   rateClientForDeal,
 } from './service'
-import { requireRoleAndModule } from '../../../lib/guards'
+import { requireRoleAndModule, getBranchFilter } from '../../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
@@ -192,6 +192,7 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
       request.user.userId,
       request.user.role,
       parsed.data,
+      getBranchFilter(request.user),
     )
     return reply.code(200).send(result)
   })

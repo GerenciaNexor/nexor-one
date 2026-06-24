@@ -280,7 +280,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 #### `GET /v1/ari/deals` 🤖
 **Propósito:** Listar deals. Por defecto los del usuario autenticado. AREA_MANAGER ve todos.  
-**Query:** `?stageId=xxx&assignedTo=me&clientId=xxx`
+**Query:** `?stageId=xxx&assignedTo=me&clientId=xxx&from=YYYY-MM-DD&to=YYYY-MM-DD`  
+**Notas (HU-133):** `from`/`to` filtran por `createdAt` (rango inclusivo) — usado por el **Historial de ventas**. Respeta sucursal vía `getBranchFilter` (admin = todas; los demás su sucursal). La venta finalizada = etapa `isFinalWon` (HU-126).
 
 #### `POST /v1/ari/deals` 🤖
 **Propósito:** Crear nuevo deal (el agente lo usa cuando detecta intención de compra).  
@@ -378,7 +379,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 ### Órdenes de compra
 
 #### `GET /v1/nira/purchase-orders` 🤖
-**Query:** `?status=submitted&supplierId=xxx&branchId=xxx`
+**Query:** `?status=submitted&supplierId=xxx&branchId=xxx&from=YYYY-MM-DD&to=YYYY-MM-DD`  
+**Notas (HU-133):** `status` usa el vocabulario **canónico** (HU-116: draft, submitted, approved, sent, partial, received, cancelled); `from`/`to` filtran por `createdAt` (rango inclusivo) — usado por el **Historial de compras**. Respeta sucursal vía `getBranchFilter` (admin = todas; los demás su sucursal).
 
 #### `POST /v1/nira/purchase-orders` 🤖
 **Request:**

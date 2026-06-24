@@ -103,13 +103,35 @@ function calculateTotals(items: { quantityOrdered: number; unitCost: number }[],
 
 // ─── Operaciones ──────────────────────────────────────────────────────────────
 
-export async function listPurchaseOrders(tenantId: string, query: PurchaseOrderQuery) {
+/** Rango inclusivo sobre createdAt a partir de fechas YYYY-MM-DD (HU-133). */
+function createdAtRange(from?: string, to?: string): Prisma.PurchaseOrderWhereInput {
+  if (!from && !to) return {}
+  return {
+    createdAt: {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    },
+  }
+}
+
+export async function listPurchaseOrders(
+  tenantId: string,
+  query: PurchaseOrderQuery,
+  branchFilter?: string,
+) {
+  // branchFilter (getBranchFilter) manda: un no-admin queda fijado a su sucursal y
+  // no puede consultar otra vía query.branchId. El admin (undefined) sí puede filtrar.
+  const branchWhere = branchFilter
+    ? { branchId: branchFilter }
+    : (query.branchId ? { branchId: query.branchId } : {})
+
   const data = await prisma.purchaseOrder.findMany({
     where: {
       tenantId,
       ...(query.status     ? { status:     query.status }     : {}),
       ...(query.supplierId ? { supplierId: query.supplierId } : {}),
-      ...(query.branchId   ? { branchId:   query.branchId }   : {}),
+      ...branchWhere,
+      ...createdAtRange(query.from, query.to),
     },
     select:  PO_LIST_SELECT,
     orderBy: { createdAt: 'desc' },

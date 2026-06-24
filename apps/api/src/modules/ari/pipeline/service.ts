@@ -167,16 +167,28 @@ export async function listDeals(
   userId:   string,
   role:     Role,
   query:    DealQuery,
+  branchFilter?: string,
 ) {
   const isManager = hasMinRole(role, 'AREA_MANAGER')
+
+  // HU-133 — rango inclusivo sobre createdAt a partir de fechas YYYY-MM-DD.
+  const createdAt = (query.from || query.to)
+    ? {
+        ...(query.from ? { gte: new Date(`${query.from}T00:00:00`) } : {}),
+        ...(query.to   ? { lte: new Date(`${query.to}T23:59:59.999`) } : {}),
+      }
+    : undefined
 
   const where: Prisma.DealWhereInput = {
     tenantId,
     // OPERATIVE solo ve los deals que tiene asignados
     ...(!isManager ? { assignedTo: userId } : {}),
+    // HU-133 — respeta sucursal (getBranchFilter): admin = todas; los demás su sucursal.
+    ...(branchFilter ? { branchId: branchFilter } : {}),
     ...(query.stageId    ? { stageId:    query.stageId }    : {}),
     ...(query.clientId   ? { clientId:   query.clientId }   : {}),
     ...(query.assignedTo ? { assignedTo: query.assignedTo } : {}),
+    ...(createdAt ? { createdAt } : {}),
   }
 
   const deals = await prisma.deal.findMany({

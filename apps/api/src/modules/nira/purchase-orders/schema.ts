@@ -30,6 +30,9 @@ export const PurchaseOrderQuerySchema = z.object({
   status:     z.enum(['draft', 'submitted', 'approved', 'sent', 'partial', 'received', 'cancelled']).optional(),
   supplierId: z.string().optional(),
   branchId:   z.string().optional(),
+  // HU-133 — Historial: filtro por fecha/rango sobre createdAt (inclusivo).
+  from:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido (YYYY-MM-DD)').optional(),
+  to:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido (YYYY-MM-DD)').optional(),
 })
 
 export const ReceivePurchaseOrderSchema = z.object({
