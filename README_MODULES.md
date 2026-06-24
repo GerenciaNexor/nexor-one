@@ -334,6 +334,19 @@ así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBran
 (TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal) y valida el rango. **No** incluye satisfacción
 del cliente ni inventario crítico (fuera de alcance).
 
+### Top 10 de productos (HU-130)
+Gráfico de **barras** (ranking, no líneas) con dos vistas seleccionables:
+- **Más vendidos** — suma de **unidades** salidas con motivo `venta`.
+- **Mayor ganancia** — suma de **(precio de venta − precio de costo) × unidades**, con los precios
+  **congelados** en cada `stock_movement` del momento de la venta (HU-128), nunca con los precios
+  actuales del producto.
+
+No siempre coinciden (el que más unidades mueve no es el que más deja). El dato sale **directo de
+`stock_movements`** (solo salidas con motivo `venta`; gracias a la trazabilidad de HU-128) vía
+`GET /v1/dashboard/top-products` — agregado por producto en una sola consulta, sin tabla de rollup
+nueva. Respeta el mismo filtro de fechas y el rol del Dashboard. Si no hay ventas en el rango,
+muestra un estado vacío claro.
+
 ### KPIs puntuales (Inicio)
 Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
 

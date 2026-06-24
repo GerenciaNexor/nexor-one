@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { LineChart, type ChartSeries } from '@/components/vera/LineChart'
+import { BarChart, type BarDatum } from '@/components/dashboard/BarChart'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,10 @@ interface Point {
   quotesCreated:         number   // idem
 }
 interface Timeseries { from: string; to: string; scope: string; points: Point[] }
+
+// HU-130 — Top 10 de productos
+interface TopProduct { productId: string; name: string; sku: string; units: number; profit: number }
+interface TopData { from: string; to: string; scope: string; byUnits: TopProduct[]; byProfit: TopProduct[] }
 
 // HU-129 — solo 4 líneas. "OC creadas" y "Cotizaciones realizadas" se retiran de la vista
 // (el rollup las sigue calculando; reversible sin migración).
@@ -49,6 +54,8 @@ export default function AnaliticaPage() {
   const [visible, setVisible] = useState<ChartKey[]>(ALL_KEYS)
   const [menuOpen, setMenuOpen] = useState(false)
   const [ts, setTs]           = useState<Timeseries | null>(null)
+  const [topData, setTopData] = useState<TopData | null>(null)
+  const [topView, setTopView] = useState<'units' | 'profit'>('units')
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
@@ -78,8 +85,10 @@ export default function AnaliticaPage() {
   const fetchData = useCallback(() => {
     if (from > to) { setLoading(false); return }
     setLoading(true); setError(null)
-    apiClient.get<{ data: Timeseries }>(`/v1/dashboard/timeseries?from=${from}&to=${to}`)
-      .then((r) => setTs(r.data))
+    Promise.all([
+      apiClient.get<{ data: Timeseries }>(`/v1/dashboard/timeseries?from=${from}&to=${to}`).then((r) => setTs(r.data)),
+      apiClient.get<{ data: TopData }>(`/v1/dashboard/top-products?from=${from}&to=${to}`).then((r) => setTopData(r.data)),
+    ])
       .catch((e: unknown) => setError((e as { message?: string }).message ?? 'Error al cargar el dashboard'))
       .finally(() => setLoading(false))
   }, [from, to])
@@ -194,6 +203,46 @@ export default function AnaliticaPage() {
           ))}
         </div>
       )}
+
+      {/* Top 10 de productos (HU-130) — ranking en barras, no líneas */}
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Top 10 productos</h2>
+            <span className="text-xs text-slate-400">
+              {topView === 'units'
+                ? 'Unidades vendidas (salidas con motivo venta)'
+                : 'Ganancia = (precio de venta − costo) congelados × unidades'}
+            </span>
+          </div>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800">
+            {([['units', 'Más vendidos'], ['profit', 'Mayor ganancia']] as const).map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => setTopView(v)}
+                className={['rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  topView === v ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'].join(' ')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {loading ? (
+          <div className="flex h-48 items-center justify-center">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+          </div>
+        ) : (
+          <BarChart
+            data={(topView === 'units'
+              ? (topData?.byUnits ?? []).map((p): BarDatum => ({ label: p.name, value: p.units }))
+              : (topData?.byProfit ?? []).map((p): BarDatum => ({ label: p.name, value: p.profit })))}
+            color={topView === 'units' ? '#10b981' : '#f59e0b'}
+            valueFormat={topView === 'units' ? 'integer' : 'compact'}
+            emptyText="No hay ventas en el periodo seleccionado."
+          />
+        )}
+      </div>
     </div>
   )
 }

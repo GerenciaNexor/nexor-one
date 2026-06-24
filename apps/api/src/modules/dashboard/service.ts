@@ -1,4 +1,5 @@
 import type { Role } from '@nexor/shared'
+import { Prisma } from '@prisma/client'
 import { prisma, runInTenantTransaction } from '../../lib/prisma'
 import { getBranchFilter } from '../../lib/guards'
 
@@ -299,4 +300,48 @@ export async function getDashboardTimeseries(
   }
 
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), scope: branchFilter ?? 'consolidado', points }
+}
+
+// =============================================================================
+// HU-130 — Top 10 de productos (más vendidos por unidades / mayor ganancia por margen)
+// =============================================================================
+
+export interface TopProduct { productId: string; name: string; sku: string; units: number; profit: number }
+
+/**
+ * Top 10 de productos del rango. Sale DIRECTO de stock_movements:
+ *   - Solo salidas con motivo 'venta' (HU-128) → no ajustes, mermas ni traslados.
+ *   - units  = suma de unidades vendidas.
+ *   - profit = suma de (sale_price_frozen − cost_price_frozen) × unidades, con los precios
+ *     CONGELADOS del movimiento (HU-128) — nunca con los precios actuales del producto.
+ * Respeta el rol vía getBranchFilter (consolidado vs sucursal) + RLS. Corre en la tx por-request.
+ * Devuelve las dos vistas en una sola consulta (el frontend alterna sin re-pedir).
+ */
+export async function getTopProducts(
+  tenantId: string,
+  user:     { role: Role; branchId: string | null },
+  from:     Date,
+  to:       Date,
+): Promise<{ from: string; to: string; scope: string; byUnits: TopProduct[]; byProfit: TopProduct[] }> {
+  const branchFilter = getBranchFilter(user)
+  const toEnd = new Date(to); toEnd.setUTCHours(23, 59, 59, 999)   // incluir el día 'to' completo
+  const branchClause = branchFilter ? Prisma.sql`AND sm.branch_id = ${branchFilter}` : Prisma.empty
+
+  const rows = await prisma.$queryRaw<TopProduct[]>(Prisma.sql`
+    SELECT sm.product_id AS "productId", p.name, p.sku,
+           SUM(sm.quantity)::float AS units,
+           SUM((COALESCE(sm.sale_price_frozen, 0) - COALESCE(sm.cost_price_frozen, 0)) * sm.quantity)::float AS profit
+    FROM stock_movements sm
+    JOIN products p ON p.id = sm.product_id
+    WHERE sm.tenant_id = ${tenantId}
+      AND sm.reason = 'venta'
+      AND sm.created_at >= ${from} AND sm.created_at <= ${toEnd}
+      ${branchClause}
+    GROUP BY sm.product_id, p.name, p.sku
+  `)
+
+  const byUnits  = [...rows].sort((a, b) => b.units - a.units).slice(0, 10)
+  const byProfit = [...rows].sort((a, b) => b.profit - a.profit).slice(0, 10)
+
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), scope: branchFilter ?? 'consolidado', byUnits, byProfit }
 }

@@ -859,6 +859,12 @@ Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MA
 **Response:** `{ success, data: { from, to, scope, points: [{ date, purchasesReceived, purchasesAmount, salesCount, salesAmount, purchaseOrdersCreated, quotesCreated }] } }` (días sin datos → 0).  
 **Distinción:** `purchaseOrdersCreated` = OC creadas; `purchasesReceived` = OC recibidas. `salesCount` = deals ganados (disparador HU-126).
 
+### `GET /v1/dashboard/top-products` 🆕 HU-130
+**Propósito:** Top 10 de productos del rango: **más vendidos** (unidades) y **mayor ganancia** (margen). Sale de `stock_movements` (solo salidas con motivo `venta`; márgenes con **precios congelados** de HU-128).  
+**Query:** `?from=YYYY-MM-DD&to=YYYY-MM-DD` (mismo validador que timeseries).  
+**Rol:** `OPERATIVE`+. Respeta la sucursal vía `getBranchFilter`.  
+**Response:** `{ success, data: { from, to, scope, byUnits: [{ productId, name, sku, units, profit }], byProfit: [...] } }` (sin ventas → arrays vacíos). `profit = Σ (sale_price_frozen − cost_price_frozen) × units`.
+
 ---
 
 ## Chat con agente IA — `/v1/chat`
