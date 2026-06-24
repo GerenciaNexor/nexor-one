@@ -51,6 +51,12 @@ export const DealQuerySchema = z.object({
   clientId:   z.string().optional(),
 })
 
+// HU-126 — calificación interna del equipo al cliente al cerrar la venta (deal ganado). Escala 1-5.
+export const RateClientSchema = z.object({
+  rating: z.number().int().min(1, 'Mínimo 1').max(5, 'Máximo 5'),
+  notes:  z.string().max(1000).optional(),
+})
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CreateStageInput    = z.infer<typeof CreateStageSchema>
@@ -59,3 +65,4 @@ export type ReorderStagesInput  = z.infer<typeof ReorderStagesSchema>
 export type CreateDealInput     = z.infer<typeof CreateDealSchema>
 export type MoveDealInput       = z.infer<typeof MoveDealSchema>
 export type DealQuery           = z.infer<typeof DealQuerySchema>
+export type RateClientInput     = z.infer<typeof RateClientSchema>

@@ -56,39 +56,44 @@ enum Channel {
 /// Empresa cliente del SaaS. Nodo raiz de toda la jerarquia.
 /// NO tiene tenant_id — es la raiz. Solo el SUPER_ADMIN puede leer todos los registros.
 model Tenant {
-  id        String  @id @default(cuid()) @db.VarChar(30)
-  name      String  @db.VarChar(255)
-  slug      String  @unique @db.VarChar(100)
-  legalName String? @db.VarChar(255) @map("legal_name")
-  taxId     String? @db.VarChar(50) @map("tax_id")
-  isActive  Boolean @default(true) @map("is_active")
-  timezone  String  @default("America/Bogota") @db.VarChar(50)
-  currency  String  @default("COP") @db.VarChar(3)
-  logoUrl   String? @db.VarChar(500) @map("logo_url")
+  id                String  @id @default(cuid()) @db.VarChar(30)
+  name              String  @db.VarChar(255)
+  slug              String  @unique @db.VarChar(100)
+  legalName         String? @map("legal_name") @db.VarChar(255)
+  taxId             String? @map("tax_id") @db.VarChar(50)
+  isActive          Boolean @default(true) @map("is_active")
+  timezone          String  @default("America/Bogota") @db.VarChar(50)
+  currency          String  @default("COP") @db.VarChar(3)
+  logoUrl           String? @map("logo_url") @db.VarChar(500)
+  /// HU-123 — proveedor preferido global del tenant (respaldo cuando el producto no tiene uno).
+  defaultSupplierId String? @map("default_supplier_id") @db.VarChar(30)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  branches       Branch[]
-  users          User[]
-  featureFlags   FeatureFlag[]
-  integrations   Integration[]
-  agentLogs      AgentLog[]
-  notifications  Notification[]
-  clients        Client[]
-  pipelineStages PipelineStage[]
-  deals          Deal[]
-  interactions   Interaction[]
-  quotes         Quote[]
-  products       Product[]
-  stockMovements StockMovement[]
-  suppliers      Supplier[]
-  purchaseOrders PurchaseOrder[]
-  serviceTypes   ServiceType[]
-  availability   Availability[]
-  appointments   Appointment[]
-  blockedDates   BlockedDate[]
-  cancelTokens   AppointmentCancelToken[]
+  branches              Branch[]
+  users                 User[]
+  featureFlags          FeatureFlag[]
+  integrations          Integration[]
+  agentLogs             AgentLog[]
+  notifications         Notification[]
+  clients               Client[]
+  clientRatings         ClientRating[]
+  pipelineStages        PipelineStage[]
+  deals                 Deal[]
+  interactions          Interaction[]
+  quotes                Quote[]
+  products              Product[]
+  stockMovements        StockMovement[]
+  suppliers             Supplier[]               @relation("TenantSuppliers")
+  defaultSupplier       Supplier?                @relation("TenantDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  supplierRatings       SupplierRating[]
+  purchaseOrders        PurchaseOrder[]
+  serviceTypes          ServiceType[]
+  availability          Availability[]
+  appointments          Appointment[]
+  blockedDates          BlockedDate[]
+  cancelTokens          AppointmentCancelToken[]
   transactions          Transaction[]
   transactionCategories TransactionCategory[]
   costCenters           CostCenter[]
@@ -97,6 +102,7 @@ model Tenant {
   bulkUploadLogs        BulkUploadLog[]
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
+  dashboardRollups      DashboardDailyRollup[]
 
   @@map("tenants")
 }
@@ -104,7 +110,7 @@ model Tenant {
 /// Sucursal de una empresa. El inventario y las integraciones se asignan por sucursal.
 model Branch {
   id       String  @id @default(cuid()) @db.VarChar(30)
-  tenantId String  @db.VarChar(30) @map("tenant_id")
+  tenantId String  @map("tenant_id") @db.VarChar(30)
   name     String  @db.VarChar(255)
   city     String? @db.VarChar(100)
   address  String? @db.VarChar(500)
@@ -114,20 +120,21 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users          User[]
-  integrations   Integration[]
-  clients        Client[]
-  deals          Deal[]
-  stocks         Stock[]
-  stockMovements StockMovement[]
-  purchaseOrders PurchaseOrder[]
-  serviceTypes   ServiceType[]
-  availability   Availability[]
-  appointments   Appointment[]
-  blockedDates   BlockedDate[]
-  transactions   Transaction[]
-  monthlyBudgets MonthlyBudget[]
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users            User[]
+  integrations     Integration[]
+  clients          Client[]
+  deals            Deal[]
+  stocks           Stock[]
+  stockMovements   StockMovement[]
+  purchaseOrders   PurchaseOrder[]
+  serviceTypes     ServiceType[]
+  availability     Availability[]
+  appointments     Appointment[]
+  blockedDates     BlockedDate[]
+  transactions     Transaction[]
+  monthlyBudgets   MonthlyBudget[]
+  dashboardRollups DashboardDailyRollup[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -137,16 +144,16 @@ model Branch {
 /// Usuarios del sistema de todos los roles y tenants.
 /// El email es unico en toda la plataforma.
 model User {
-  id           String     @id @default(cuid()) @db.VarChar(30)
-  tenantId     String     @db.VarChar(30) @map("tenant_id")
-  branchId     String?    @db.VarChar(30) @map("branch_id")
-  email        String     @unique @db.VarChar(255)
-  name         String     @db.VarChar(255)
-  passwordHash String     @db.VarChar(255) @map("password_hash")
+  id           String      @id @default(cuid()) @db.VarChar(30)
+  tenantId     String      @map("tenant_id") @db.VarChar(30)
+  branchId     String?     @map("branch_id") @db.VarChar(30)
+  email        String      @unique @db.VarChar(255)
+  name         String      @db.VarChar(255)
+  passwordHash String      @map("password_hash") @db.VarChar(255)
   role         Role
   module       ModuleName?
-  isActive     Boolean    @default(true) @map("is_active")
-  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  isActive     Boolean     @default(true) @map("is_active")
+  lastLoginAt  DateTime?   @map("last_login_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -154,21 +161,23 @@ model User {
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id])
 
-  notifications          Notification[]
-  assignedClients        Client[]        @relation("ClientAssignee")
-  assignedDeals          Deal[]          @relation("DealAssignee")
-  interactions           Interaction[]
-  quotesCreated          Quote[]         @relation("QuoteCreator")
-  purchaseOrdersCreated  PurchaseOrder[] @relation("POCreator")
-  purchaseOrdersApproved PurchaseOrder[] @relation("POApprover")
-  stockMovements         StockMovement[]
+  notifications            Notification[]
+  assignedClients          Client[]              @relation("ClientAssignee")
+  assignedDeals            Deal[]                @relation("DealAssignee")
+  interactions             Interaction[]
+  quotesCreated            Quote[]               @relation("QuoteCreator")
+  purchaseOrdersCreated    PurchaseOrder[]       @relation("POCreator")
+  purchaseOrdersApproved   PurchaseOrder[]       @relation("POApprover")
+  stockMovements           StockMovement[]
   availabilitySchedules    Availability[]
-  professionalAppointments Appointment[]          @relation("AppointmentProfessional")
+  professionalAppointments Appointment[]         @relation("AppointmentProfessional")
   serviceProfessionals     ServiceProfessional[]
   refreshTokens            RefreshToken[]
   chatMessages             ChatMessage[]
-  assignedConversations    Conversation[]         @relation("ConversationAssignee")
+  assignedConversations    Conversation[]        @relation("ConversationAssignee")
   conversationMessages     ConversationMessage[]
+  supplierRatings          SupplierRating[]      @relation("SupplierRatingAuthor")
+  clientRatings            ClientRating[]        @relation("ClientRatingAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -180,8 +189,8 @@ model User {
 /// Se eliminan en logout o cuando expiran. Un usuario puede tener varios tokens activos (multidispositivo).
 model RefreshToken {
   id        String   @id @default(cuid()) @db.VarChar(30)
-  userId    String   @db.VarChar(30) @map("user_id")
-  tokenHash String   @unique @db.VarChar(64) @map("token_hash")
+  userId    String   @map("user_id") @db.VarChar(30)
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -194,7 +203,7 @@ model RefreshToken {
 /// Modulos activos por tenant. Se crea un registro por modulo al crear el tenant.
 model FeatureFlag {
   id       String     @id @default(cuid()) @db.VarChar(30)
-  tenantId String     @db.VarChar(30) @map("tenant_id")
+  tenantId String     @map("tenant_id") @db.VarChar(30)
   module   ModuleName
   enabled  Boolean    @default(false)
 
@@ -209,14 +218,14 @@ model FeatureFlag {
 /// Tokens y configuracion de integraciones externas (WhatsApp, Gmail).
 /// token_encrypted NUNCA se devuelve en responses de la API.
 model Integration {
-  id             String   @id @default(cuid()) @db.VarChar(30)
-  tenantId       String   @db.VarChar(30) @map("tenant_id")
-  branchId       String?  @db.VarChar(30) @map("branch_id")
+  id             String    @id @default(cuid()) @db.VarChar(30)
+  tenantId       String    @map("tenant_id") @db.VarChar(30)
+  branchId       String?   @map("branch_id") @db.VarChar(30)
   channel        Channel
-  identifier     String   @db.VarChar(255)
-  tokenEncrypted String?  @db.Text @map("token_encrypted")
-  metadata       Json?    @db.JsonB
-  isActive       Boolean  @default(false) @map("is_active")
+  identifier     String    @db.VarChar(255)
+  tokenEncrypted String?   @map("token_encrypted") @db.Text
+  metadata       Json?     @db.JsonB
+  isActive       Boolean   @default(false) @map("is_active")
   lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -234,13 +243,13 @@ model Integration {
 /// APPEND-ONLY: nunca se actualiza ni elimina un registro.
 model AgentLog {
   id           String     @id @default(cuid()) @db.VarChar(30)
-  tenantId     String     @db.VarChar(30) @map("tenant_id")
+  tenantId     String     @map("tenant_id") @db.VarChar(30)
   module       ModuleName
   channel      String     @db.VarChar(50)
-  inputMessage String     @db.Text @map("input_message")
+  inputMessage String     @map("input_message") @db.Text
   reply        String?    @db.Text
   toolsUsed    String[]   @default([]) @map("tools_used")
-  toolDetails  Json       @db.JsonB @map("tool_details")
+  toolDetails  Json       @map("tool_details") @db.JsonB
   turnCount    Int        @default(1) @map("turn_count")
   durationMs   Int?       @map("duration_ms")
 
@@ -256,15 +265,15 @@ model AgentLog {
 
 /// Notificaciones in-app por usuario. Generadas por el sistema, jobs y agentes de IA.
 model Notification {
-  id       String     @id @default(cuid()) @db.VarChar(30)
-  tenantId String     @db.VarChar(30) @map("tenant_id")
-  userId   String     @db.VarChar(30) @map("user_id")
+  id       String      @id @default(cuid()) @db.VarChar(30)
+  tenantId String      @map("tenant_id") @db.VarChar(30)
+  userId   String      @map("user_id") @db.VarChar(30)
   module   ModuleName?
-  type     String     @db.VarChar(50)
-  title    String     @db.VarChar(255)
-  message  String     @db.Text
-  link     String?    @db.VarChar(500)
-  isRead   Boolean    @default(false) @map("is_read")
+  type     String      @db.VarChar(50)
+  title    String      @db.VarChar(255)
+  message  String      @db.Text
+  link     String?     @db.VarChar(500)
+  isRead   Boolean     @default(false) @map("is_read")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -282,45 +291,52 @@ model Notification {
 
 /// Clientes y prospectos. Puede existir aunque nunca haya comprado (lead).
 model Client {
-  id         String   @id @default(cuid()) @db.VarChar(30)
-  tenantId   String   @db.VarChar(30) @map("tenant_id")
-  name       String   @db.VarChar(255)
-  email      String?  @db.VarChar(255)
-  phone      String?  @db.VarChar(20)
-  whatsappId String?  @db.VarChar(50) @map("whatsapp_id")
-  company    String?  @db.VarChar(255)
-  taxId      String?  @db.VarChar(50) @map("tax_id")
-  address    String?  @db.VarChar(500)
-  city       String?  @db.VarChar(100)
-  source     String?  @db.VarChar(50)
-  tags       String[] @default([])
-  notes      String?  @db.Text
-  assignedTo String?  @db.VarChar(30) @map("assigned_to")
-  branchId   String?  @db.VarChar(30) @map("branch_id")
-  isActive   Boolean  @default(true) @map("is_active")
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  tenantId      String   @map("tenant_id") @db.VarChar(30)
+  name          String   @db.VarChar(255)
+  email         String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(20)
+  whatsappId    String?  @map("whatsapp_id") @db.VarChar(50)
+  company       String?  @db.VarChar(255)
+  taxId         String?  @map("tax_id") @db.VarChar(50)
+  address       String?  @db.VarChar(500)
+  city          String?  @db.VarChar(100)
+  source        String?  @db.VarChar(50)
+  tags          String[] @default([])
+  notes         String?  @db.Text
+  assignedTo    String?  @map("assigned_to") @db.VarChar(30)
+  branchId      String?  @map("branch_id") @db.VarChar(30)
+  isActive      Boolean  @default(true) @map("is_active")
+  /// HU-124 — cliente favorito + descuento manual preferente (informativo: no dispara envíos).
+  isFavorite    Boolean  @default(false) @map("is_favorite")
+  /// 'percent' (0-100) | 'amount' (monto fijo) | null si no hay descuento.
+  discountType  String?  @map("discount_type") @db.VarChar(10)
+  discountValue Decimal? @map("discount_value") @db.Decimal(15, 2)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignedUser User?         @relation("ClientAssignee", fields: [assignedTo], references: [id])
-  branch       Branch?       @relation(fields: [branchId], references: [id])
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedUser User?          @relation("ClientAssignee", fields: [assignedTo], references: [id])
+  branch       Branch?        @relation(fields: [branchId], references: [id])
   deals        Deal[]
   interactions Interaction[]
   quotes       Quote[]
   appointments Appointment[]
+  ratings      ClientRating[]
 
   @@index([tenantId])
   @@index([tenantId, assignedTo])
   @@index([whatsappId])
   @@index([tenantId, isActive])
+  @@index([tenantId, isFavorite])
   @@map("clients")
 }
 
 /// Etapas configurables del pipeline de ventas por tenant.
 model PipelineStage {
   id          String  @id @default(cuid()) @db.VarChar(30)
-  tenantId    String  @db.VarChar(30) @map("tenant_id")
+  tenantId    String  @map("tenant_id") @db.VarChar(30)
   name        String  @db.VarChar(100)
   order       Int
   color       String? @db.VarChar(7)
@@ -339,16 +355,16 @@ model PipelineStage {
 /// Oportunidades de venta en el pipeline.
 model Deal {
   id            String    @id @default(cuid()) @db.VarChar(30)
-  tenantId      String    @db.VarChar(30) @map("tenant_id")
-  clientId      String    @db.VarChar(30) @map("client_id")
-  stageId       String    @db.VarChar(30) @map("stage_id")
-  assignedTo    String?   @db.VarChar(30) @map("assigned_to")
-  branchId      String?   @db.VarChar(30) @map("branch_id")
+  tenantId      String    @map("tenant_id") @db.VarChar(30)
+  clientId      String    @map("client_id") @db.VarChar(30)
+  stageId       String    @map("stage_id") @db.VarChar(30)
+  assignedTo    String?   @map("assigned_to") @db.VarChar(30)
+  branchId      String?   @map("branch_id") @db.VarChar(30)
   title         String    @db.VarChar(255)
   value         Decimal?  @db.Decimal(15, 2)
   probability   Int?
   expectedClose DateTime? @map("expected_close") @db.Date
-  lostReason    String?   @db.Text @map("lost_reason")
+  lostReason    String?   @map("lost_reason") @db.Text
   closedAt      DateTime? @map("closed_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -361,6 +377,7 @@ model Deal {
   branch       Branch?       @relation(fields: [branchId], references: [id])
   interactions Interaction[]
   quotes       Quote[]
+  clientRating ClientRating?
 
   @@index([tenantId, stageId])
   @@index([tenantId, assignedTo])
@@ -371,20 +388,20 @@ model Deal {
 /// Historial de comunicaciones con cada cliente.
 model Interaction {
   id        String  @id @default(cuid()) @db.VarChar(30)
-  tenantId  String  @db.VarChar(30) @map("tenant_id")
-  clientId  String  @db.VarChar(30) @map("client_id")
-  dealId    String? @db.VarChar(30) @map("deal_id")
-  userId    String? @db.VarChar(30) @map("user_id")
+  tenantId  String  @map("tenant_id") @db.VarChar(30)
+  clientId  String  @map("client_id") @db.VarChar(30)
+  dealId    String? @map("deal_id") @db.VarChar(30)
+  userId    String? @map("user_id") @db.VarChar(30)
   type      String  @db.VarChar(50)
   direction String  @db.VarChar(10)
   content   String  @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client Client  @relation(fields: [clientId], references: [id])
-  deal   Deal?   @relation(fields: [dealId], references: [id])
-  user   User?   @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id])
+  deal   Deal?  @relation(fields: [dealId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
 
   @@index([tenantId, clientId])
   @@index([createdAt(sort: Desc)])
@@ -394,11 +411,11 @@ model Interaction {
 /// Cotizaciones generadas para los clientes.
 model Quote {
   id          String    @id @default(cuid()) @db.VarChar(30)
-  tenantId    String    @db.VarChar(30) @map("tenant_id")
-  clientId    String    @db.VarChar(30) @map("client_id")
-  dealId      String?   @db.VarChar(30) @map("deal_id")
-  createdBy   String    @db.VarChar(30) @map("created_by")
-  quoteNumber String    @db.VarChar(50) @map("quote_number")
+  tenantId    String    @map("tenant_id") @db.VarChar(30)
+  clientId    String    @map("client_id") @db.VarChar(30)
+  dealId      String?   @map("deal_id") @db.VarChar(30)
+  createdBy   String    @map("created_by") @db.VarChar(30)
+  quoteNumber String    @map("quote_number") @db.VarChar(50)
   status      String    @default("draft") @db.VarChar(30)
   subtotal    Decimal   @default(0) @db.Decimal(15, 2)
   discount    Decimal   @default(0) @db.Decimal(15, 2)
@@ -424,14 +441,14 @@ model Quote {
 
 /// Lineas de cada cotizacion.
 model QuoteItem {
-  id          String   @id @default(cuid()) @db.VarChar(30)
-  quoteId     String   @db.VarChar(30) @map("quote_id")
-  productId   String?  @db.VarChar(30) @map("product_id")
-  description String   @db.VarChar(500)
-  quantity    Decimal  @db.Decimal(10, 2)
-  unitPrice   Decimal  @db.Decimal(15, 2) @map("unit_price")
-  discountPct Decimal  @default(0) @db.Decimal(5, 2) @map("discount_pct")
-  total       Decimal  @db.Decimal(15, 2)
+  id          String  @id @default(cuid()) @db.VarChar(30)
+  quoteId     String  @map("quote_id") @db.VarChar(30)
+  productId   String? @map("product_id") @db.VarChar(30)
+  description String  @db.VarChar(500)
+  quantity    Decimal @db.Decimal(10, 2)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(15, 2)
+  discountPct Decimal @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  total       Decimal @db.Decimal(15, 2)
 
   quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
@@ -440,25 +457,51 @@ model QuoteItem {
   @@map("quote_items")
 }
 
+/// Calificacion INTERNA del equipo de ventas al cliente, al cerrar la venta (HU-126).
+/// Disparador (decision PO): deal en etapa GANADA (isFinalWon). Escala 1-5. Una por deal.
+/// NO es el CSAT del cliente hacia la empresa (eso es encuesta saliente, va aparte).
+model ClientRating {
+  id       String  @id @default(cuid()) @db.VarChar(30)
+  tenantId String  @map("tenant_id") @db.VarChar(30)
+  clientId String  @map("client_id") @db.VarChar(30)
+  dealId   String? @unique @map("deal_id") @db.VarChar(30)
+  rating   Int     @db.SmallInt
+  notes    String? @db.Text
+  ratedBy  String  @map("rated_by") @db.VarChar(30)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  deal        Deal?  @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  ratedByUser User   @relation("ClientRatingAuthor", fields: [ratedBy], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([createdAt(sort: Desc)])
+  @@map("client_ratings")
+}
+
 // =============================================================================
 // MODULO KIRA — Inventario
 // =============================================================================
 
 /// Catalogo global de productos por tenant. El stock es por sucursal.
 model Product {
-  id          String   @id @default(cuid()) @db.VarChar(30)
-  tenantId    String   @db.VarChar(30) @map("tenant_id")
-  sku         String   @db.VarChar(100)
-  name        String   @db.VarChar(255)
-  description String?  @db.Text
-  category    String?  @db.VarChar(100)
-  unit        String   @default("unidad") @db.VarChar(50)
-  salePrice   Decimal? @db.Decimal(15, 2) @map("sale_price")
-  costPrice   Decimal? @db.Decimal(15, 2) @map("cost_price")
-  minStock    Int      @default(0) @map("min_stock")
-  maxStock    Int?     @map("max_stock")
-  abcClass    String?  @db.VarChar(1) @map("abc_class")
-  isActive    Boolean  @default(true) @map("is_active")
+  id                  String   @id @default(cuid()) @db.VarChar(30)
+  tenantId            String   @map("tenant_id") @db.VarChar(30)
+  sku                 String   @db.VarChar(100)
+  name                String   @db.VarChar(255)
+  description         String?  @db.Text
+  category            String?  @db.VarChar(100)
+  unit                String   @default("unidad") @db.VarChar(50)
+  salePrice           Decimal? @map("sale_price") @db.Decimal(15, 2)
+  costPrice           Decimal? @map("cost_price") @db.Decimal(15, 2)
+  minStock            Int      @default(0) @map("min_stock")
+  maxStock            Int?     @map("max_stock")
+  abcClass            String?  @map("abc_class") @db.VarChar(1)
+  /// HU-123 — proveedor preferido para reabastecer este producto (opcional).
+  preferredSupplierId String?  @map("preferred_supplier_id") @db.VarChar(30)
+  isActive            Boolean  @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -468,11 +511,13 @@ model Product {
   stockMovements     StockMovement[]
   quoteItems         QuoteItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  preferredSupplier  Supplier?           @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, sku])
   @@index([tenantId, isActive])
   @@index([tenantId, category])
   @@index([tenantId, abcClass])
+  @@index([preferredSupplierId])
   @@map("products")
 }
 
@@ -480,8 +525,8 @@ model Product {
 /// quantity NUNCA puede ser negativo — validar en la capa de servicio.
 model Stock {
   id        String  @id @default(cuid()) @db.VarChar(30)
-  productId String  @db.VarChar(30) @map("product_id")
-  branchId  String  @db.VarChar(30) @map("branch_id")
+  productId String  @map("product_id") @db.VarChar(30)
+  branchId  String  @map("branch_id") @db.VarChar(30)
   quantity  Decimal @default(0) @db.Decimal(10, 2)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -498,17 +543,17 @@ model Stock {
 /// APPEND-ONLY: nunca se modifica ni elimina un movimiento.
 model StockMovement {
   id             String    @id @default(cuid()) @db.VarChar(30)
-  tenantId       String    @db.VarChar(30) @map("tenant_id")
-  productId      String    @db.VarChar(30) @map("product_id")
-  branchId       String    @db.VarChar(30) @map("branch_id")
-  userId         String?   @db.VarChar(30) @map("user_id")
+  tenantId       String    @map("tenant_id") @db.VarChar(30)
+  productId      String    @map("product_id") @db.VarChar(30)
+  branchId       String    @map("branch_id") @db.VarChar(30)
+  userId         String?   @map("user_id") @db.VarChar(30)
   type           String    @db.VarChar(30)
   quantity       Decimal   @db.Decimal(10, 2)
-  quantityBefore Decimal   @db.Decimal(10, 2) @map("quantity_before")
-  quantityAfter  Decimal   @db.Decimal(10, 2) @map("quantity_after")
-  referenceType  String?   @db.VarChar(50) @map("reference_type")
-  referenceId    String?   @db.VarChar(30) @map("reference_id")
-  lotNumber      String?   @db.VarChar(100) @map("lot_number")
+  quantityBefore Decimal   @map("quantity_before") @db.Decimal(10, 2)
+  quantityAfter  Decimal   @map("quantity_after") @db.Decimal(10, 2)
+  referenceType  String?   @map("reference_type") @db.VarChar(50)
+  referenceId    String?   @map("reference_id") @db.VarChar(30)
+  lotNumber      String?   @map("lot_number") @db.VarChar(100)
   expiryDate     DateTime? @map("expiry_date") @db.Date
   notes          String?   @db.Text
 
@@ -533,12 +578,12 @@ model StockMovement {
 /// Proveedores de la empresa.
 model Supplier {
   id           String  @id @default(cuid()) @db.VarChar(30)
-  tenantId     String  @db.VarChar(30) @map("tenant_id")
+  tenantId     String  @map("tenant_id") @db.VarChar(30)
   name         String  @db.VarChar(255)
-  contactName  String? @db.VarChar(255) @map("contact_name")
+  contactName  String? @map("contact_name") @db.VarChar(255)
   email        String? @db.VarChar(255)
   phone        String? @db.VarChar(20)
-  taxId        String? @db.VarChar(50) @map("tax_id")
+  taxId        String? @map("tax_id") @db.VarChar(50)
   address      String? @db.VarChar(500)
   city         String? @db.VarChar(100)
   paymentTerms Int?    @map("payment_terms")
@@ -548,9 +593,12 @@ model Supplier {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  score          SupplierScore?
-  purchaseOrders PurchaseOrder[]
+  tenant               Tenant           @relation("TenantSuppliers", fields: [tenantId], references: [id], onDelete: Cascade)
+  score                SupplierScore?
+  ratings              SupplierRating[]
+  purchaseOrders       PurchaseOrder[]
+  preferredForProducts Product[]        @relation("ProductPreferredSupplier")
+  defaultForTenants    Tenant[]         @relation("TenantDefaultSupplier")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -558,15 +606,21 @@ model Supplier {
 }
 
 /// Puntuacion calculada automaticamente para cada proveedor (1 a 1 con Supplier).
+/// HU-125 — los ejes son NULLABLE: NULL = "sin datos" (no engañoso) en vez de un valor por defecto.
+///   priceScore    → objetivo, del histórico de precios (NULL si no hay compras recibidas)
+///   deliveryScore → de las calificaciones manuales al recibir (NULL si no hay calificaciones)
+///   qualityScore  → de las calificaciones manuales al recibir (NULL si no hay calificaciones)
+///   overallScore  → promedio de los ejes CON datos (NULL si ninguno tiene datos)
 model SupplierScore {
-  id               String  @id @default(cuid()) @db.VarChar(30)
-  supplierId       String  @unique @db.VarChar(30) @map("supplier_id")
-  priceScore       Decimal @default(0) @db.Decimal(4, 2) @map("price_score")
-  deliveryScore    Decimal @default(0) @db.Decimal(4, 2) @map("delivery_score")
-  qualityScore     Decimal @default(0) @db.Decimal(4, 2) @map("quality_score")
-  overallScore     Decimal @default(0) @db.Decimal(4, 2) @map("overall_score")
-  totalOrders      Int     @default(0) @map("total_orders")
-  onTimeDeliveries Int     @default(0) @map("on_time_deliveries")
+  id               String   @id @default(cuid()) @db.VarChar(30)
+  supplierId       String   @unique @map("supplier_id") @db.VarChar(30)
+  priceScore       Decimal? @map("price_score") @db.Decimal(4, 2)
+  deliveryScore    Decimal? @map("delivery_score") @db.Decimal(4, 2)
+  qualityScore     Decimal? @map("quality_score") @db.Decimal(4, 2)
+  overallScore     Decimal? @map("overall_score") @db.Decimal(4, 2)
+  totalOrders      Int      @default(0) @map("total_orders")
+  onTimeDeliveries Int      @default(0) @map("on_time_deliveries")
+  ratingsCount     Int      @default(0) @map("ratings_count")
 
   calculatedAt DateTime @map("calculated_at") @db.Timestamptz(6)
 
@@ -575,15 +629,40 @@ model SupplierScore {
   @@map("supplier_scores")
 }
 
+/// Calificacion manual de un proveedor al recibir una OC (HU-125).
+/// Fuente explicita de los ejes Entrega y Calidad del score. Escala 1-5.
+/// Una calificacion por OC (purchase_order_id unico). Calificar es opcional.
+model SupplierRating {
+  id              String  @id @default(cuid()) @db.VarChar(30)
+  tenantId        String  @map("tenant_id") @db.VarChar(30)
+  supplierId      String  @map("supplier_id") @db.VarChar(30)
+  purchaseOrderId String? @unique @map("purchase_order_id") @db.VarChar(30)
+  deliveryRating  Int     @map("delivery_rating") @db.SmallInt
+  qualityRating   Int     @map("quality_rating") @db.SmallInt
+  notes           String? @db.Text
+  ratedBy         String  @map("rated_by") @db.VarChar(30)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  ratedByUser   User           @relation("SupplierRatingAuthor", fields: [ratedBy], references: [id])
+
+  @@index([tenantId, supplierId])
+  @@index([createdAt(sort: Desc)])
+  @@map("supplier_ratings")
+}
+
 /// Ordenes de compra emitidas a los proveedores.
 model PurchaseOrder {
   id               String    @id @default(cuid()) @db.VarChar(30)
-  tenantId         String    @db.VarChar(30) @map("tenant_id")
-  supplierId       String?   @db.VarChar(30) @map("supplier_id")
-  branchId         String?   @db.VarChar(30) @map("branch_id")
-  createdBy        String    @db.VarChar(30) @map("created_by")
-  approvedBy       String?   @db.VarChar(30) @map("approved_by")
-  orderNumber      String    @db.VarChar(50) @map("order_number")
+  tenantId         String    @map("tenant_id") @db.VarChar(30)
+  supplierId       String?   @map("supplier_id") @db.VarChar(30)
+  branchId         String?   @map("branch_id") @db.VarChar(30)
+  createdBy        String    @map("created_by") @db.VarChar(30)
+  approvedBy       String?   @map("approved_by") @db.VarChar(30)
+  orderNumber      String    @map("order_number") @db.VarChar(50)
   status           String    @default("draft") @db.VarChar(30)
   subtotal         Decimal   @default(0) @db.Decimal(15, 2)
   tax              Decimal   @default(0) @db.Decimal(15, 2)
@@ -601,6 +680,7 @@ model PurchaseOrder {
   creator  User                @relation("POCreator", fields: [createdBy], references: [id])
   approver User?               @relation("POApprover", fields: [approvedBy], references: [id])
   items    PurchaseOrderItem[]
+  rating   SupplierRating?
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, status])
@@ -611,11 +691,11 @@ model PurchaseOrder {
 /// Lineas de cada orden de compra.
 model PurchaseOrderItem {
   id               String  @id @default(cuid()) @db.VarChar(30)
-  purchaseOrderId  String  @db.VarChar(30) @map("purchase_order_id")
-  productId        String  @db.VarChar(30) @map("product_id")
-  quantityOrdered  Decimal @db.Decimal(10, 2) @map("quantity_ordered")
-  quantityReceived Decimal @default(0) @db.Decimal(10, 2) @map("quantity_received")
-  unitCost         Decimal @db.Decimal(15, 2) @map("unit_cost")
+  purchaseOrderId  String  @map("purchase_order_id") @db.VarChar(30)
+  productId        String  @map("product_id") @db.VarChar(30)
+  quantityOrdered  Decimal @map("quantity_ordered") @db.Decimal(10, 2)
+  quantityReceived Decimal @default(0) @map("quantity_received") @db.Decimal(10, 2)
+  unitCost         Decimal @map("unit_cost") @db.Decimal(15, 2)
   total            Decimal @db.Decimal(15, 2)
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
@@ -633,8 +713,8 @@ model PurchaseOrderItem {
 /// Tipos de servicios o citas que ofrece la empresa.
 model ServiceType {
   id              String   @id @default(cuid()) @db.VarChar(30)
-  tenantId        String   @db.VarChar(30) @map("tenant_id")
-  branchId        String?  @db.VarChar(30) @map("branch_id")
+  tenantId        String   @map("tenant_id") @db.VarChar(30)
+  branchId        String?  @map("branch_id") @db.VarChar(30)
   name            String   @db.VarChar(255)
   description     String?  @db.VarChar(500)
   durationMinutes Int      @default(30) @map("duration_minutes")
@@ -642,8 +722,8 @@ model ServiceType {
   color           String?  @db.VarChar(7)
   isActive        Boolean  @default(true) @map("is_active")
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch        Branch?              @relation(fields: [branchId], references: [id])
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch?               @relation(fields: [branchId], references: [id])
   appointments  Appointment[]
   professionals ServiceProfessional[]
 
@@ -656,11 +736,11 @@ model ServiceType {
 /// Profesionales (usuarios) que pueden realizar un servicio.
 /// Tabla puente ServiceType ↔ User.
 model ServiceProfessional {
-  serviceTypeId String @db.VarChar(30) @map("service_type_id")
-  userId        String @db.VarChar(30) @map("user_id")
+  serviceTypeId String @map("service_type_id") @db.VarChar(30)
+  userId        String @map("user_id") @db.VarChar(30)
 
   serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
-  user        User        @relation(fields: [userId],        references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([serviceTypeId, userId])
   @@index([userId])
@@ -671,8 +751,8 @@ model ServiceProfessional {
 /// Cuando una fecha está bloqueada no se generan slots para esa sucursal ese día.
 model BlockedDate {
   id       String   @id @default(cuid()) @db.VarChar(30)
-  tenantId String   @db.VarChar(30) @map("tenant_id")
-  branchId String?  @db.VarChar(30) @map("branch_id")
+  tenantId String   @map("tenant_id") @db.VarChar(30)
+  branchId String?  @map("branch_id") @db.VarChar(30)
   date     DateTime @db.Date
   reason   String?  @db.VarChar(255)
 
@@ -687,9 +767,9 @@ model BlockedDate {
 /// Horarios de disponibilidad por sucursal o profesional.
 model Availability {
   id        String   @id @default(cuid()) @db.VarChar(30)
-  tenantId  String   @db.VarChar(30) @map("tenant_id")
-  branchId  String?  @db.VarChar(30) @map("branch_id")
-  userId    String?  @db.VarChar(30) @map("user_id")
+  tenantId  String   @map("tenant_id") @db.VarChar(30)
+  branchId  String?  @map("branch_id") @db.VarChar(30)
+  userId    String?  @map("user_id") @db.VarChar(30)
   dayOfWeek Int      @map("day_of_week")
   startTime DateTime @map("start_time") @db.Time(6)
   endTime   DateTime @map("end_time") @db.Time(6)
@@ -706,14 +786,14 @@ model Availability {
 /// Citas agendadas. El agente de IA puede crearlas desde WhatsApp.
 model Appointment {
   id             String   @id @default(cuid()) @db.VarChar(30)
-  tenantId       String   @db.VarChar(30) @map("tenant_id")
-  branchId       String   @db.VarChar(30) @map("branch_id")
-  clientId       String?  @db.VarChar(30) @map("client_id")
-  serviceTypeId  String?  @db.VarChar(30) @map("service_type_id")
-  professionalId String?  @db.VarChar(30) @map("professional_id")
-  clientName     String   @db.VarChar(255) @map("client_name")
-  clientPhone    String?  @db.VarChar(20) @map("client_phone")
-  clientEmail    String?  @db.VarChar(255) @map("client_email")
+  tenantId       String   @map("tenant_id") @db.VarChar(30)
+  branchId       String   @map("branch_id") @db.VarChar(30)
+  clientId       String?  @map("client_id") @db.VarChar(30)
+  serviceTypeId  String?  @map("service_type_id") @db.VarChar(30)
+  professionalId String?  @map("professional_id") @db.VarChar(30)
+  clientName     String   @map("client_name") @db.VarChar(255)
+  clientPhone    String?  @map("client_phone") @db.VarChar(20)
+  clientEmail    String?  @map("client_email") @db.VarChar(255)
   startAt        DateTime @map("start_at") @db.Timestamptz(6)
   endAt          DateTime @map("end_at") @db.Timestamptz(6)
   status         String   @default("scheduled") @db.VarChar(30)
@@ -725,11 +805,11 @@ model Appointment {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id])
-  client       Client?      @relation(fields: [clientId], references: [id])
-  serviceType  ServiceType? @relation(fields: [serviceTypeId], references: [id])
-  professional User?        @relation("AppointmentProfessional", fields: [professionalId], references: [id])
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch                   @relation(fields: [branchId], references: [id])
+  client       Client?                  @relation(fields: [clientId], references: [id])
+  serviceType  ServiceType?             @relation(fields: [serviceTypeId], references: [id])
+  professional User?                    @relation("AppointmentProfessional", fields: [professionalId], references: [id])
   cancelTokens AppointmentCancelToken[]
 
   @@index([tenantId, branchId, startAt])
@@ -743,8 +823,8 @@ model Appointment {
 model AppointmentCancelToken {
   id            String    @id @default(cuid()) @db.VarChar(30)
   token         String    @unique @db.VarChar(64)
-  tenantId      String    @db.VarChar(30) @map("tenant_id")
-  appointmentId String    @db.VarChar(30) @map("appointment_id")
+  tenantId      String    @map("tenant_id") @db.VarChar(30)
+  appointmentId String    @map("appointment_id") @db.VarChar(30)
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
   usedAt        DateTime? @map("used_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -765,28 +845,28 @@ model AppointmentCancelToken {
 /// Solo las transacciones manuales pueden editarse o eliminarse.
 model Transaction {
   id                String   @id @default(cuid()) @db.VarChar(30)
-  tenantId          String   @db.VarChar(30) @map("tenant_id")
-  branchId          String?  @db.VarChar(30) @map("branch_id")
-  categoryId        String?  @db.VarChar(30) @map("category_id")
-  costCenterId      String?  @db.VarChar(30) @map("cost_center_id")
+  tenantId          String   @map("tenant_id") @db.VarChar(30)
+  branchId          String?  @map("branch_id") @db.VarChar(30)
+  categoryId        String?  @map("category_id") @db.VarChar(30)
+  costCenterId      String?  @map("cost_center_id") @db.VarChar(30)
   isManual          Boolean  @default(false) @map("is_manual")
   type              String   @db.VarChar(20)
   amount            Decimal  @db.Decimal(15, 2)
   currency          String   @default("COP") @db.VarChar(3)
   description       String   @db.VarChar(500)
-  externalReference String?  @db.VarChar(255) @map("external_reference")
+  externalReference String?  @map("external_reference") @db.VarChar(255)
   category          String?  @db.VarChar(100)
-  referenceType     String?  @db.VarChar(50)  @map("reference_type")
-  referenceId       String?  @db.VarChar(30)  @map("reference_id")
+  referenceType     String?  @map("reference_type") @db.VarChar(50)
+  referenceId       String?  @map("reference_id") @db.VarChar(30)
   date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch?              @relation(fields: [branchId], references: [id])
-  txCategory   TransactionCategory? @relation(fields: [categoryId], references: [id])
-  costCenter   CostCenter?          @relation(fields: [costCenterId], references: [id])
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch?              @relation(fields: [branchId], references: [id])
+  txCategory TransactionCategory? @relation(fields: [categoryId], references: [id])
+  costCenter CostCenter?          @relation(fields: [costCenterId], references: [id])
 
   @@index([tenantId, date(sort: Desc)])
   @@index([tenantId, type])
@@ -800,15 +880,15 @@ model Transaction {
 /// Las categorias isDefault no pueden eliminarse.
 model TransactionCategory {
   id        String  @id @default(cuid()) @db.VarChar(30)
-  tenantId  String  @db.VarChar(30) @map("tenant_id")
+  tenantId  String  @map("tenant_id") @db.VarChar(30)
   name      String  @db.VarChar(100)
   type      String  @db.VarChar(10)
   color     String? @db.VarChar(7)
   isDefault Boolean @default(false) @map("is_default")
-  isActive  Boolean @default(true)  @map("is_active")
+  isActive  Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -821,13 +901,13 @@ model TransactionCategory {
 /// Centro de costo para clasificacion financiera interna por area del negocio.
 model CostCenter {
   id          String  @id @default(cuid()) @db.VarChar(30)
-  tenantId    String  @db.VarChar(30) @map("tenant_id")
+  tenantId    String  @map("tenant_id") @db.VarChar(30)
   name        String  @db.VarChar(100)
   description String? @db.VarChar(500)
   isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -840,16 +920,16 @@ model CostCenter {
 /// Presupuesto mensual de egresos de VERA. Uno por tenant/sucursal/mes.
 /// Si no hay presupuesto configurado no se generan alertas.
 model MonthlyBudget {
-  id        String   @id @default(cuid()) @db.VarChar(30)
-  tenantId  String   @db.VarChar(30) @map("tenant_id")
-  branchId  String?  @db.VarChar(30) @map("branch_id")
-  year      Int
-  month     Int
-  amount    Decimal  @db.Decimal(15, 2)
-  currency  String   @default("COP") @db.VarChar(3)
+  id       String  @id @default(cuid()) @db.VarChar(30)
+  tenantId String  @map("tenant_id") @db.VarChar(30)
+  branchId String? @map("branch_id") @db.VarChar(30)
+  year     Int
+  month    Int
+  amount   Decimal @db.Decimal(15, 2)
+  currency String  @default("COP") @db.VarChar(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @map("updated_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id])
@@ -860,6 +940,37 @@ model MonthlyBudget {
 }
 
 // =============================================================================
+// DASHBOARD — rollup diario para gráficos de líneas (HU-127)
+// =============================================================================
+
+/// Consolidado DIARIO de métricas del Dashboard, poblado por un job programado.
+/// Una fila por (tenant, sucursal, día). branch_id NULL = consolidado del tenant
+/// (TENANT_ADMIN); branch_id = sucursal (BRANCH_ADMIN). El job hace delete+insert
+/// por (tenant, ventana de días) — por eso no hay UNIQUE, solo índices de lectura.
+/// Distinción: purchase_orders_created = OC creadas; purchases_received = OC recibidas.
+model DashboardDailyRollup {
+  id                    String   @id @default(cuid()) @db.VarChar(30)
+  tenantId              String   @map("tenant_id") @db.VarChar(30)
+  branchId              String?  @map("branch_id") @db.VarChar(30)
+  date                  DateTime @db.Date
+  purchasesReceived     Int      @default(0) @map("purchases_received")
+  purchasesAmount       Decimal  @default(0) @map("purchases_amount") @db.Decimal(15, 2)
+  salesCount            Int      @default(0) @map("sales_count")
+  salesAmount           Decimal  @default(0) @map("sales_amount") @db.Decimal(15, 2)
+  purchaseOrdersCreated Int      @default(0) @map("purchase_orders_created")
+  quotesCreated         Int      @default(0) @map("quotes_created")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, date])
+  @@index([tenantId, branchId, date])
+  @@map("dashboard_daily_rollups")
+}
+
+// =============================================================================
 // CARGA MASIVA — Auditoría de importaciones en lote
 // =============================================================================
 
@@ -867,18 +978,18 @@ model MonthlyBudget {
 /// APPEND-ONLY: nunca se modifica ni elimina un registro.
 /// status: preview | failed | success
 model BulkUploadLog {
-  id           String   @id @default(cuid()) @db.VarChar(30)
-  tenantId     String   @db.VarChar(30) @map("tenant_id")
-  userId       String   @db.VarChar(30) @map("user_id")
-  type         String   @db.VarChar(50)
-  fileName     String   @db.VarChar(500) @map("file_name")
-  fileSize     Int?     @map("file_size")
-  rowCount     Int?     @map("row_count")
-  recordCount  Int      @default(0) @map("record_count")
-  status       String   @db.VarChar(20)
-  errors       Json?    @db.JsonB
-  fileData     Bytes?   @map("file_data")
-  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  tenantId    String    @map("tenant_id") @db.VarChar(30)
+  userId      String    @map("user_id") @db.VarChar(30)
+  type        String    @db.VarChar(50)
+  fileName    String    @map("file_name") @db.VarChar(500)
+  fileSize    Int?      @map("file_size")
+  rowCount    Int?      @map("row_count")
+  recordCount Int       @default(0) @map("record_count")
+  status      String    @db.VarChar(20)
+  errors      Json?     @db.JsonB
+  fileData    Bytes?    @map("file_data")
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -894,12 +1005,12 @@ model BulkUploadLog {
 /// Historial de conversación del chat interno del dashboard.
 /// Un registro por mensaje (user o assistant). Append-only.
 model ChatMessage {
-  id       String     @id @default(cuid()) @db.VarChar(30)
-  tenantId String     @db.VarChar(30) @map("tenant_id")
-  userId   String     @db.VarChar(30) @map("user_id")
+  id       String      @id @default(cuid()) @db.VarChar(30)
+  tenantId String      @map("tenant_id") @db.VarChar(30)
+  userId   String      @map("user_id") @db.VarChar(30)
   /// 'user' = mensaje del empleado, 'assistant' = respuesta del agente
-  role     String     @db.VarChar(20)
-  content  String     @db.Text
+  role     String      @db.VarChar(20)
+  content  String      @db.Text
   /// Módulo al que se enrutó el mensaje (solo en mensajes 'user')
   module   ModuleName?
 
@@ -922,22 +1033,22 @@ model ChatMessage {
 /// Gmail: mensajes del mismo email sin límite de tiempo.
 /// El estado lo actualiza el equipo humano — el agente nunca cambia el status.
 model Conversation {
-  id               String     @id @default(cuid()) @db.VarChar(30)
-  tenantId         String     @db.VarChar(30) @map("tenant_id")
+  id               String      @id @default(cuid()) @db.VarChar(30)
+  tenantId         String      @map("tenant_id") @db.VarChar(30)
   channel          Channel
-  senderIdentifier String     @db.VarChar(255) @map("sender_identifier")
-  senderName       String?    @db.VarChar(255) @map("sender_name")
+  senderIdentifier String      @map("sender_identifier") @db.VarChar(255)
+  senderName       String?     @map("sender_name") @db.VarChar(255)
   relatedModule    ModuleName? @map("related_module")
   /// open | replied | resolved | reassigned
-  status           String     @default("open") @db.VarChar(20)
-  assignedTo       String?    @db.VarChar(30) @map("assigned_to")
-  lastMessageAt    DateTime   @map("last_message_at") @db.Timestamptz(6)
+  status           String      @default("open") @db.VarChar(20)
+  assignedTo       String?     @map("assigned_to") @db.VarChar(30)
+  lastMessageAt    DateTime    @map("last_message_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt       @map("updated_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignedUser User?                  @relation("ConversationAssignee", fields: [assignedTo], references: [id])
+  assignedUser User?                 @relation("ConversationAssignee", fields: [assignedTo], references: [id])
   messages     ConversationMessage[]
 
   @@index([tenantId, channel, senderIdentifier])
@@ -950,19 +1061,19 @@ model Conversation {
 /// direction: inbound (remitente → sistema) | outbound (sistema → remitente).
 /// isFromAgent: true cuando lo generó el AgentRunner; false cuando lo envió un humano.
 model ConversationMessage {
-  id                String  @id @default(cuid()) @db.VarChar(30)
-  conversationId    String  @db.VarChar(30) @map("conversation_id")
-  tenantId          String  @db.VarChar(30) @map("tenant_id")
+  id                String   @id @default(cuid()) @db.VarChar(30)
+  conversationId    String   @map("conversation_id") @db.VarChar(30)
+  tenantId          String   @map("tenant_id") @db.VarChar(30)
   /// inbound | outbound
-  direction         String  @db.VarChar(10)
-  content           String  @db.Text
+  direction         String   @db.VarChar(10)
+  content           String   @db.Text
   /// text | image | document
-  messageType       String  @default("text") @db.VarChar(20) @map("message_type")
-  isFromAgent       Boolean @default(false) @map("is_from_agent")
+  messageType       String   @default("text") @map("message_type") @db.VarChar(20)
+  isFromAgent       Boolean  @default(false) @map("is_from_agent")
   /// userId presente solo cuando direction=outbound y isFromAgent=false
-  userId            String? @db.VarChar(30) @map("user_id")
+  userId            String?  @map("user_id") @db.VarChar(30)
   /// ID externo del mensaje (wamid de Meta o messageId de Gmail)
-  externalMessageId String? @db.VarChar(255) @map("external_message_id")
+  externalMessageId String?  @map("external_message_id") @db.VarChar(255)
   timestamp         DateTime @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

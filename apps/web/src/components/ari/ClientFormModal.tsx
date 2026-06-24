@@ -23,6 +23,9 @@ export interface Client {
   assignedTo: string | null
   branchId: string | null
   isActive: boolean
+  isFavorite?: boolean
+  discountType?: 'percent' | 'amount' | null
+  discountValue?: number | null
   createdAt: string
   updatedAt: string
   assignedUser?: { id: string; name: string } | null
@@ -44,6 +47,9 @@ interface FormFields {
   tags: string
   notes: string
   assignedTo: string
+  isFavorite: boolean
+  discountType: string
+  discountValue: string
 }
 
 interface Props {
@@ -57,6 +63,7 @@ const EMPTY: FormFields = {
   name: '', email: '', phone: '', whatsappId: '',
   company: '', taxId: '', address: '', city: '',
   source: '', tags: '', notes: '', assignedTo: '',
+  isFavorite: false, discountType: '', discountValue: '',
 }
 
 function toFormFields(c: Client): FormFields {
@@ -73,6 +80,9 @@ function toFormFields(c: Client): FormFields {
     tags:       c.tags.join(', '),
     notes:      c.notes      ?? '',
     assignedTo: c.assignedTo ?? '',
+    isFavorite:    c.isFavorite ?? false,
+    discountType:  c.discountType ?? '',
+    discountValue: c.discountValue != null ? String(c.discountValue) : '',
   }
 }
 
@@ -111,6 +121,11 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
     if (!form.name.trim()) e.name = 'El nombre es obligatorio'
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       e.email = 'Email inválido'
+    if (form.discountType === 'percent' || form.discountType === 'amount') {
+      const v = parseFloat(form.discountValue)
+      if (form.discountValue.trim() === '' || isNaN(v) || v <= 0) e.discountValue = 'Ingresa un valor mayor a 0'
+      else if (form.discountType === 'percent' && v > 100) e.discountValue = 'El porcentaje no puede superar 100'
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -139,6 +154,11 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
       notes:      form.notes.trim()      || undefined,
       assignedTo: form.assignedTo        || undefined,
     }
+    // HU-124 — favorito + descuento (tipo y valor van juntos)
+    const hasDiscount = form.discountType === 'percent' || form.discountType === 'amount'
+    body.isFavorite    = form.isFavorite
+    body.discountType  = hasDiscount ? form.discountType : null
+    body.discountValue = hasDiscount ? parseFloat(form.discountValue) : null
 
     try {
       let saved: Client
@@ -343,6 +363,56 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
                       placeholder="vip, recurrente, mayorista"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100" />
+
+              {/* ── Preferencias (HU-124) ───────────────────────────────────── */}
+              <div>
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Preferencias</p>
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer select-none items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={form.isFavorite}
+                      onChange={(e) => setForm((prev) => ({ ...prev, isFavorite: e.target.checked }))}
+                      className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-200"
+                    />
+                    <span className="flex items-center gap-1.5 text-sm text-slate-700">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill={form.isFavorite ? '#f59e0b' : 'none'} stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      </svg>
+                      Cliente favorito
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600">Descuento preferente</label>
+                      <select value={form.discountType} onChange={field('discountType')} className={inp}>
+                        <option value="">Sin descuento</option>
+                        <option value="percent">Porcentaje (%)</option>
+                        <option value="amount">Monto fijo ($)</option>
+                      </select>
+                    </div>
+                    {(form.discountType === 'percent' || form.discountType === 'amount') && (
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                          {form.discountType === 'percent' ? 'Porcentaje' : 'Monto'}
+                        </label>
+                        <div className="relative">
+                          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">{form.discountType === 'percent' ? '%' : '$'}</span>
+                          <input
+                            type="number" min="0" step={form.discountType === 'percent' ? '1' : '1000'}
+                            value={form.discountValue} onChange={field('discountValue')}
+                            className={`${errors.discountValue ? inpErr : inp} pl-7`} placeholder="0"
+                          />
+                        </div>
+                        {errors.discountValue && <p className="mt-1 text-xs text-red-500">{errors.discountValue}</p>}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">El descuento es informativo para el equipo de ventas; no se envía automáticamente al cliente.</p>
                 </div>
               </div>
 

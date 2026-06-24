@@ -1,4 +1,6 @@
+import type { Role } from '@nexor/shared'
 import { prisma, runInTenantTransaction } from '../../lib/prisma'
+import { getBranchFilter } from '../../lib/guards'
 
 // HU-122: cada KPI corre en su propia transacción (runInTenantTransaction) → conexiones
 // separadas en paralelo + SET LOCAL. El timeout contempla el overhead de BEGIN/COMMIT;
@@ -238,4 +240,63 @@ export async function getDashboardKpis(
   })
 
   return result
+}
+
+// =============================================================================
+// HU-127 — Series temporales del Dashboard (lee del rollup diario)
+// =============================================================================
+
+export interface TimeseriesPoint {
+  date:                  string
+  purchasesReceived:     number
+  purchasesAmount:       number
+  salesCount:            number
+  salesAmount:           number
+  purchaseOrdersCreated: number
+  quotesCreated:         number
+}
+
+/**
+ * Series diarias para los gráficos del Dashboard. Lee del rollup (no consulta pesada por carga).
+ * Respeta el rol vía getBranchFilter: TENANT_ADMIN → consolidado (branch_id NULL); BRANCH_ADMIN/
+ * AREA_MANAGER/OPERATIVE → su sucursal. Rellena con 0 los días sin datos. Corre en la tx por-request.
+ */
+export async function getDashboardTimeseries(
+  tenantId: string,
+  user:     { role: Role; branchId: string | null },
+  from:     Date,
+  to:       Date,
+): Promise<{ from: string; to: string; scope: string; points: TimeseriesPoint[] }> {
+  const branchFilter = getBranchFilter(user) // undefined = consolidado del tenant
+
+  const rows = await prisma.dashboardDailyRollup.findMany({
+    where:  { tenantId, date: { gte: from, lte: to }, branchId: branchFilter ?? null },
+    select: {
+      date: true, purchasesReceived: true, purchasesAmount: true,
+      salesCount: true, salesAmount: true, purchaseOrdersCreated: true, quotesCreated: true,
+    },
+    orderBy: { date: 'asc' },
+  })
+
+  const byDate = new Map(rows.map((r) => [r.date.toISOString().slice(0, 10), r]))
+
+  const points: TimeseriesPoint[] = []
+  const cursor = new Date(from); cursor.setUTCHours(0, 0, 0, 0)
+  const end    = new Date(to);   end.setUTCHours(0, 0, 0, 0)
+  while (cursor <= end) {
+    const ds = cursor.toISOString().slice(0, 10)
+    const r  = byDate.get(ds)
+    points.push({
+      date:                  ds,
+      purchasesReceived:     r?.purchasesReceived ?? 0,
+      purchasesAmount:       r ? parseFloat(String(r.purchasesAmount)) : 0,
+      salesCount:            r?.salesCount ?? 0,
+      salesAmount:           r ? parseFloat(String(r.salesAmount)) : 0,
+      purchaseOrdersCreated: r?.purchaseOrdersCreated ?? 0,
+      quotesCreated:         r?.quotesCreated ?? 0,
+    })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), scope: branchFilter ?? 'consolidado', points }
 }

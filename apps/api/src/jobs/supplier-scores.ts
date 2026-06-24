@@ -21,40 +21,44 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 // ─── Cálculo de score para un proveedor (dentro de withTenantContext) ─────────
 
-async function computeSupplierScore(
+export async function computeSupplierScore(
   tx:        Prisma.TransactionClient,
   tenantId:  string,
   supplierId: string,
 ) {
-  // ── Entrega ────────────────────────────────────────────────────────────────
+  // ── Entrega y Calidad: de las CALIFICACIONES manuales (HU-125) ────────────
+  // Escala 1-5 → 0-10 (×2). NULL = "sin datos" (no engañoso) si aún no califican.
+  const ratings = await tx.supplierRating.findMany({
+    where:  { tenantId, supplierId },
+    select: { deliveryRating: true, qualityRating: true },
+  })
+  const ratingsCount = ratings.length
+  const avg = (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length
+  const deliveryScore: number | null = ratingsCount > 0
+    ? parseFloat((avg(ratings.map((r) => r.deliveryRating)) * 2).toFixed(2))
+    : null
+  const qualityScore: number | null = ratingsCount > 0
+    ? parseFloat((avg(ratings.map((r) => r.qualityRating)) * 2).toFixed(2))
+    : null
+
+  // ── Entregas a tiempo: dato OBJETIVO informativo (no alimenta el score) ───
   const receivedOrders = await tx.purchaseOrder.findMany({
     where:  { tenantId, supplierId, status: 'received' },
     select: { expectedDelivery: true, deliveredAt: true },
   })
-
   const totalOrders = receivedOrders.length
-  if (totalOrders === 0) {
-    return { priceScore: 0, deliveryScore: 0, qualityScore: 0, overallScore: 0, totalOrders: 0, onTimeDeliveries: 0 }
-  }
-
-  const ordersWithDates = receivedOrders.filter(
-    (o): o is { expectedDelivery: Date; deliveredAt: Date } =>
-      o.expectedDelivery !== null && o.deliveredAt !== null,
-  )
-  const onTimeDeliveries = ordersWithDates.filter(
-    (o) => o.deliveredAt <= o.expectedDelivery,
+  const onTimeDeliveries = receivedOrders.filter(
+    (o) => o.expectedDelivery !== null && o.deliveredAt !== null && o.deliveredAt <= o.expectedDelivery,
   ).length
-  const deliveryScore = ordersWithDates.length > 0
-    ? parseFloat(Math.min(10, 10 * (onTimeDeliveries / ordersWithDates.length)).toFixed(2))
-    : 5  // neutral si ninguna OC tenía fecha prometida
 
-  // ── Precio: supplier avg vs global avg por producto ───────────────────────
+  // ── Precio: objetivo, supplier avg vs global avg por producto ─────────────
+  // NULL = "sin datos" si no hay compras recibidas con histórico comparable.
   const supplierItems = await tx.purchaseOrderItem.findMany({
     where:  { purchaseOrder: { supplierId, tenantId, status: 'received' } },
     select: { productId: true, unitCost: true },
   })
 
-  let priceScore = 5 // neutral por defecto
+  let priceScore: number | null = null
 
   if (supplierItems.length > 0) {
     // Agrupar en memoria: productId → costos del proveedor
@@ -106,13 +110,13 @@ async function computeSupplierScore(
     }
   }
 
-  // ── Calidad (V1: 10 fijo) ─────────────────────────────────────────────────
-  const qualityScore = 10
+  // ── Score general: promedio de los ejes CON datos (NULL si ninguno) ───────
+  const axes = [priceScore, deliveryScore, qualityScore].filter((v): v is number => v !== null)
+  const overallScore: number | null = axes.length > 0
+    ? parseFloat((axes.reduce((a, b) => a + b, 0) / axes.length).toFixed(2))
+    : null
 
-  // ── Score general (promedio simple) ──────────────────────────────────────
-  const overallScore = parseFloat(((priceScore + deliveryScore + qualityScore) / 3).toFixed(2))
-
-  return { priceScore, deliveryScore, qualityScore, overallScore, totalOrders, onTimeDeliveries }
+  return { priceScore, deliveryScore, qualityScore, overallScore, totalOrders, onTimeDeliveries, ratingsCount }
 }
 
 // ─── Cálculo para todos los proveedores de un tenant ─────────────────────────
@@ -133,7 +137,7 @@ async function calculateScoresForTenant(tenantId: string): Promise<{ updated: nu
     })
 
     for (const supplier of suppliers) {
-      const prevOverall = supplier.score
+      const prevOverall = supplier.score?.overallScore != null
         ? parseFloat(String(supplier.score.overallScore))
         : null
 
@@ -147,7 +151,8 @@ async function calculateScoresForTenant(tenantId: string): Promise<{ updated: nu
 
       // Notificar si el score cae por debajo de 5 (solo la primera vez por caída)
       const droppedBelow5 =
-        scores.overallScore < 5 && (prevOverall === null || prevOverall >= 5)
+        scores.overallScore !== null && scores.overallScore < 5 &&
+        (prevOverall === null || prevOverall >= 5)
 
       if (droppedBelow5) {
         const managers = await tx.user.findMany({

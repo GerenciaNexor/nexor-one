@@ -40,6 +40,12 @@ Sin NEXOR, las empresas gestionan sus clientes en Excel, WhatsApp personal y cua
 **CRM inteligente**  
 Centraliza toda la información de clientes: datos de contacto, historial de interacciones, cotizaciones enviadas y deals activos. Un vendedor puede ver en 10 segundos todo lo que ha pasado con un cliente.
 
+**Cliente favorito + descuento manual (HU-124)**  
+El equipo de ventas puede marcar a un cliente como **favorito** (estrella en la lista y la ficha; filtro "Favoritos") y registrar un **descuento preferente manual** (porcentaje o monto fijo). Ambos son visibles y destacados en la lista y la ficha. El descuento es **informativo**: no dispara envíos automáticos a los canales del cliente (eso depende de plantillas Meta y se trata aparte). Respeta los permisos de ARI (se edita por el `PUT` de cliente, `OPERATIVE.ARI`).
+
+**Calificación interna del cliente al cerrar la venta (HU-126)**  
+Cuando se cierra una venta, el equipo de ventas puede calificar **internamente** al cliente (escala 1-5) para registrar la experiencia de forma consistente. **Disparador (decisión del PO): el deal entra en una etapa GANADA (`isFinalWon`)** — el mismo evento que cuenta como "venta realizada" en el Dashboard (HU-127). Al ganar un deal se ofrece calificar; es **opcional** y no bloquea el cierre. La calificación queda asociada al cliente (tabla `client_ratings`, una por deal), visible en su ficha como promedio + nº de calificaciones, y **disponible para un futuro promedio**. **No** es el CSAT (satisfacción del cliente hacia la empresa) — eso requiere encuestar al cliente por su canal y se trata en una HU aparte.
+
 **Pipeline de ventas visual (Kanban)**  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 
@@ -89,14 +95,26 @@ Las empresas compran a múltiples proveedores sin saber cuál tiene mejor precio
 
 ### Qué hace NIRA
 
-**Gestión de proveedores con scoring automático**  
-Cada proveedor tiene una ficha técnica y un score calculado diariamente con tres variables: precio histórico (comparado contra el promedio del mercado), cumplimiento de entrega (llegó a tiempo vs. se atrasó), y calidad (devoluciones o reclamos). Esto permite comparar proveedores objetivamente.
+**Ranking de proveedores con score Precio / Entrega / Calidad (HU-125)**  
+Cada proveedor tiene un score en escala **0-10** con tres ejes y una fuente explícita por eje:
+
+| Eje | De dónde sale | Fórmula |
+|-----|---------------|---------|
+| **Precio** | Objetivo, del histórico de compras recibidas | `10 / avgRatio`, donde `avgRatio` = promedio por producto de `precioProveedor / precioPromedioMercado` (capado a 0-10). Más barato → más alto. |
+| **Entrega** | **Calificación manual** al recibir la OC | promedio de `delivery_rating` (1-5) × 2 |
+| **Calidad** | **Calificación manual** al recibir la OC | promedio de `quality_rating` (1-5) × 2 |
+| **General** | — | promedio de los ejes **con datos** |
+
+Cuando una OC pasa a `received`, el equipo de compras **califica al proveedor** (Entrega y Calidad, 1-5). Esa calificación es la **fuente única** de esos dos ejes. Si un eje aún no tiene datos (sin calificaciones, o sin compras para el precio) se muestra **"sin datos"** en vez de un valor por defecto engañoso. El score se recalcula al instante al calificar y, además, a diario. Calificar es **opcional**: una OC recibida sin calificar no rompe el flujo (esos ejes quedan "sin datos"). El dato objetivo de entregas a tiempo se conserva como información, pero **no** alimenta el eje Entrega (eso lo hacen las calificaciones). El envío automático de la calificación a canales queda fuera de alcance.
 
 **Órdenes de compra con flujo de aprobación**  
 Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)
 
 **Comparador de cotizaciones**  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.
+
+**Proveedor preferido (HU-123)**  
+Cada producto puede tener un proveedor **preferido**, y la empresa un preferido **global** de respaldo. NIRA lo prioriza: al comparar precios lo marca y lo lista primero, y al proponer una OC lo usa por defecto (queda registrado en las notas del borrador). Resolución: preferido del producto → preferido global del tenant → comportamiento actual. Se gestiona desde el detalle de producto (KIRA) y la página de Proveedores (NIRA). Es una recomendación: el agente puede proponer otro con justificación.
 
 **Integración automática con KIRA**  
 Cuando una OC es marcada como recibida, NIRA genera automáticamente una entrada de stock en KIRA por cada ítem recibido. No hay que registrar la entrada dos veces.
@@ -275,11 +293,25 @@ NIRA: OC aprobada
 
 ---
 
-## Dashboard — KPIs unificados
+## Dashboard — KPIs unificados + series históricas
 **No es un módulo de negocio independiente — agrega datos de todos los módulos activos**  
-**Endpoint:** `GET /v1/dashboard/kpis`
+**Endpoints:** `GET /v1/dashboard/kpis` (puntual) · `GET /v1/dashboard/timeseries` (histórico, HU-127)
 
-### Qué hace
+Hay **dos vistas** distintas en el menú izquierdo:
+- **Inicio** (`/dashboard`): KPIs **puntuales** del momento + bandeja operacional (`/v1/dashboard/kpis`).
+- **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias en el tiempo.
+
+### Dashboard de tendencias (HU-127)
+Apartado nuevo con 6 gráficos de líneas (reutiliza el `LineChart` de VERA) y selector de rango
+(7/30/90 días): **Compras realizadas** (OC recibidas), **Monto comprado**, **Ventas realizadas**
+(deals ganados — disparador HU-126), **Monto vendido**, **Órdenes de compra creadas** (≠ recibidas)
+y **Cotizaciones realizadas**. Los datos salen de un **rollup diario** (job programado
+[dashboard-rollup.ts](./apps/api/src/jobs/dashboard-rollup.ts) → tabla `dashboard_daily_rollups`),
+así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBranchFilter`
+(TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal). **No** incluye satisfacción del cliente ni
+inventario crítico (fuera de alcance).
+
+### KPIs puntuales (Inicio)
 Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
 
 ### KPIs por módulo

@@ -85,6 +85,7 @@ Representa a cada empresa cliente que usa NEXOR. Es el nodo raíz de toda la jer
 | `timezone` | `VARCHAR(50)` | NOT NULL, DEFAULT 'America/Bogota' | Zona horaria para fechas y reportes |
 | `currency` | `VARCHAR(3)` | NOT NULL, DEFAULT 'COP' | Moneda local (ISO 4217) |
 | `logo_url` | `VARCHAR(500)` | NULL | URL del logo para cotizaciones |
+| `default_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor preferido **global** del tenant — respaldo cuando un producto no tiene preferido propio (HU-123) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
@@ -344,10 +345,17 @@ Clientes y prospectos de la empresa. Un cliente puede existir aunque nunca haya 
 | `assigned_to` | `VARCHAR(30)` | FK → users.id, NULL | Vendedor asignado |
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal que lo atiende |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el cliente está activo |
+| `is_favorite` | `BOOLEAN` | NOT NULL, DEFAULT false | Cliente favorito (HU-124) |
+| `discount_type` | `VARCHAR(10)` | NULL | `'percent'` (0-100) \| `'amount'` (monto fijo) \| NULL (HU-124) |
+| `discount_value` | `DECIMAL(15,2)` | NULL | Valor del descuento manual preferente; NULL si no hay (HU-124) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`
+**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`
+
+**Favorito + descuento (HU-124):** marca informativa para el equipo de ventas. `discount_type` y
+`discount_value` van juntos (ambos NULL = sin descuento). El descuento **no** dispara envíos
+automáticos al cliente (fuera de alcance: depende de plantillas Meta). Cubierto por el RLS de `clients`.
 
 ---
 
@@ -460,6 +468,27 @@ Líneas de cada cotización. Referencia al catálogo de productos al momento de 
 
 ---
 
+#### `client_ratings`
+
+Calificación **interna** del equipo de ventas al cliente al cerrar la venta (HU-126). Disparador:
+deal en etapa **ganada** (`isFinalWon`). Una por deal. **No** es el CSAT del cliente. RLS por
+`tenant_id` (alta en `setup-rls.ts`).
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `client_id` | `VARCHAR(30)` | FK → clients.id, NOT NULL | Cliente calificado |
+| `deal_id` | `VARCHAR(30)` | FK → deals.id, UNIQUE, NULL | Deal ganado (una calificación por deal) |
+| `rating` | `SMALLINT` | NOT NULL | Escala 1-5 (interna) |
+| `notes` | `TEXT` | NULL | Observaciones |
+| `rated_by` | `VARCHAR(30)` | FK → users.id, NOT NULL | Quién calificó |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha |
+
+**Índices:** `(deal_id)` UNIQUE, `(tenant_id, client_id)`, `(created_at DESC)`
+
+---
+
 ### MÓDULO NIRA — Compras
 
 ---
@@ -491,19 +520,43 @@ Proveedores de la empresa.
 
 #### `supplier_scores`
 
-Puntuación calculada automáticamente para cada proveedor. Se recalcula diariamente con un job de BullMQ.
+Puntuación calculada para cada proveedor. Se recalcula al **calificar una OC recibida** (HU-125) y a diario.
+Los ejes son **NULLABLE**: `NULL` = "sin datos" (no engañoso). Ver la fórmula de cada eje en
+[README_MODULES.md](./README_MODULES.md) (sección NIRA).
 
 | Columna | Tipo | Restricciones | Descripción |
 |---------|------|---------------|-------------|
 | `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
 | `supplier_id` | `VARCHAR(30)` | FK → suppliers.id, UNIQUE, NOT NULL | Proveedor (1 a 1) |
-| `price_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de precio (0-10) |
-| `delivery_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de cumplimiento en tiempo (0-10) |
-| `quality_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Score de calidad (0-10) |
-| `overall_score` | `DECIMAL(4,2)` | NOT NULL, DEFAULT 0 | Promedio ponderado |
-| `total_orders` | `INTEGER` | NOT NULL, DEFAULT 0 | Total de órdenes procesadas |
-| `on_time_deliveries` | `INTEGER` | NOT NULL, DEFAULT 0 | Entregas a tiempo |
+| `price_score` | `DECIMAL(4,2)` | NULL | Eje Precio (0-10), objetivo del histórico. NULL = sin datos |
+| `delivery_score` | `DECIMAL(4,2)` | NULL | Eje Entrega (0-10), de las calificaciones. NULL = sin datos |
+| `quality_score` | `DECIMAL(4,2)` | NULL | Eje Calidad (0-10), de las calificaciones. NULL = sin datos |
+| `overall_score` | `DECIMAL(4,2)` | NULL | Promedio de los ejes con datos. NULL si ninguno |
+| `total_orders` | `INTEGER` | NOT NULL, DEFAULT 0 | OC recibidas (informativo) |
+| `on_time_deliveries` | `INTEGER` | NOT NULL, DEFAULT 0 | Entregas a tiempo (informativo, NO alimenta el score) |
+| `ratings_count` | `INTEGER` | NOT NULL, DEFAULT 0 | Nº de calificaciones recibidas (HU-125) |
 | `calculated_at` | `TIMESTAMPTZ` | NOT NULL | Última vez que se calculó |
+
+---
+
+#### `supplier_ratings`
+
+Calificación manual del proveedor al recibir una OC (HU-125). Fuente explícita de los ejes
+**Entrega** y **Calidad** del score. Tiene RLS por `tenant_id` (alta en `setup-rls.ts`).
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `supplier_id` | `VARCHAR(30)` | FK → suppliers.id, NOT NULL | Proveedor calificado |
+| `purchase_order_id` | `VARCHAR(30)` | FK → purchase_orders.id, UNIQUE, NULL | OC calificada (una calificación por OC) |
+| `delivery_rating` | `SMALLINT` | NOT NULL | Entrega, escala 1-5 |
+| `quality_rating` | `SMALLINT` | NOT NULL | Calidad, escala 1-5 |
+| `notes` | `TEXT` | NULL | Observaciones |
+| `rated_by` | `VARCHAR(30)` | FK → users.id, NOT NULL | Quién calificó |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha |
+
+**Índices:** `(purchase_order_id)` UNIQUE, `(tenant_id, supplier_id)`, `(created_at DESC)`
 
 ---
 
@@ -598,11 +651,17 @@ Catálogo global de productos por tenant. El stock es por sucursal, pero el prod
 | `min_stock` | `INTEGER` | NOT NULL, DEFAULT 0 | Mínimo de stock — alerta si baja de aquí |
 | `max_stock` | `INTEGER` | NULL | Máximo de stock — alerta si supera aquí |
 | `abc_class` | `VARCHAR(1)` | NULL | Clasificación ABC (A, B, C) calculada automáticamente |
+| `preferred_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor **preferido** del producto — NIRA lo prioriza al reabastecer (HU-123) |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el producto está activo |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, is_active)`, `(tenant_id, category)`, `(tenant_id, abc_class)`
+**Índices:** `UNIQUE(tenant_id, sku)`, `(tenant_id, is_active)`, `(tenant_id, category)`, `(tenant_id, abc_class)`, `(preferred_supplier_id)`
+
+**Preferencia de proveedor (HU-123):** la resolución que usa el agente NIRA es
+`preferred_supplier_id` del producto → `tenants.default_supplier_id` (global) → sin preferencia.
+La columna está cubierta por el RLS existente de `products`; la FK usa `ON DELETE SET NULL` (si el
+proveedor se borra, el producto queda sin preferido en vez de fallar).
 
 > **Nota de rendimiento (HU-093):** El índice `(tenant_id, is_active)` es crítico para KIRA. Toda query de inventario filtra `{ tenantId, isActive: true }` y sin él el planner hacía sequential scan sobre toda la tabla del tenant. Migración: `20260422000000_perf_indexes`.
 
@@ -748,6 +807,34 @@ Registro financiero de todos los movimientos de dinero. Generado automáticament
 
 **Índices:** `(tenant_id, date DESC)`, `(tenant_id, type)`, `(reference_type, reference_id)`  
 **Regla de negocio:** ARI genera una `transaction` de tipo `income` cuando una cotización cambia a `accepted`. NIRA genera una de tipo `expense` cuando una OC cambia a `approved`.
+
+---
+
+### MÓDULO DASHBOARD — Series históricas
+
+#### `dashboard_daily_rollups`
+
+Consolidado **diario** de métricas para los gráficos de líneas del Dashboard (HU-127), poblado por
+un job programado ([apps/api/src/jobs/dashboard-rollup.ts](./apps/api/src/jobs/dashboard-rollup.ts)).
+Una fila por **(tenant, sucursal, día)**: `branch_id` NULL = consolidado del tenant (TENANT_ADMIN);
+`branch_id` = sucursal (BRANCH_ADMIN/otros, vía `getBranchFilter`). El job hace **delete+insert** por
+(tenant, ventana de 120 días) — por eso no hay UNIQUE, solo índices de lectura. RLS por `tenant_id`.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---------|------|---------------|-------------|
+| `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
+| `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa (RLS) |
+| `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal; NULL = consolidado |
+| `date` | `DATE` | NOT NULL | Día de la métrica |
+| `purchases_received` | `INTEGER` | NOT NULL, DEFAULT 0 | **Compras realizadas** = OC recibidas |
+| `purchases_amount` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Monto comprado (suma OC recibidas) |
+| `sales_count` | `INTEGER` | NOT NULL, DEFAULT 0 | **Ventas realizadas** = deals ganados (HU-126) |
+| `sales_amount` | `DECIMAL(15,2)` | NOT NULL, DEFAULT 0 | Monto vendido (suma de `deal.value` ganados) |
+| `purchase_orders_created` | `INTEGER` | NOT NULL, DEFAULT 0 | **Órdenes de compra realizadas** = OC creadas (≠ recibidas) |
+| `quotes_created` | `INTEGER` | NOT NULL, DEFAULT 0 | Cotizaciones creadas (sucursal = la del creador) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo se calculó la fila |
+
+**Índices:** `(tenant_id, date)`, `(tenant_id, branch_id, date)`
 
 ---
 

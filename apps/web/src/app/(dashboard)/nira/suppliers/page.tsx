@@ -102,6 +102,10 @@ export default function SuppliersPage() {
   const [deactivating, setDeactivating]        = useState<Supplier | null>(null)
   const [deactivateLoading, setDeactivateLoad] = useState(false)
 
+  // HU-123 — proveedor preferido global del tenant
+  const [globalPreferred, setGlobalPreferred] = useState<{ id: string; name: string } | null>(null)
+  const [savingGlobal, setSavingGlobal]       = useState(false)
+
   // ── Debounce 300 ms ────────────────────────────────────────────────────────
   function handleSearchInput(value: string) {
     setLiveSearch(value)
@@ -127,6 +131,26 @@ export default function SuppliersPage() {
   }
 
   useEffect(() => { fetchSuppliers() }, [search, activeFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // HU-123 — preferido global del tenant
+  useEffect(() => {
+    apiClient.get<{ data: { id: string; name: string } | null }>('/v1/nira/preferred-supplier')
+      .then((r) => setGlobalPreferred(r.data))
+      .catch(() => {})
+  }, [])
+
+  async function saveGlobalPreferred(supplierId: string | null) {
+    setSavingGlobal(true)
+    try {
+      await apiClient.put('/v1/nira/preferred-supplier', { supplierId })
+      const sup = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined
+      setGlobalPreferred(sup ? { id: sup.id, name: sup.name } : null)
+    } catch (err: unknown) {
+      alert((err as { message?: string }).message ?? 'Error al guardar el preferido global')
+    } finally {
+      setSavingGlobal(false)
+    }
+  }
 
   // ── Modales ────────────────────────────────────────────────────────────────
   function openCreate() { setEditingSupplier(null); setModal('create') }
@@ -190,6 +214,28 @@ export default function SuppliersPage() {
           </button>
         )}
       </div>
+
+      {/* ── Preferido global (HU-123) ───────────────────────────────────── */}
+      {canEdit && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/40 px-4 py-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-violet-500"><path d="M12 2 15.09 8.26 22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <div className="text-sm">
+            <span className="font-medium text-slate-700">Proveedor preferido global</span>
+            <span className="ml-1 text-xs text-slate-500">— NIRA lo usa como respaldo cuando el producto no tiene uno propio</span>
+          </div>
+          <select
+            value={globalPreferred?.id ?? ''}
+            disabled={savingGlobal}
+            onChange={(e) => saveGlobalPreferred(e.target.value || null)}
+            className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
+          >
+            <option value="">Sin preferido global</option>
+            {suppliers.filter((s) => s.isActive).map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* ── Filtros ─────────────────────────────────────────────────────── */}
       <div className="mt-4 flex flex-wrap gap-3">

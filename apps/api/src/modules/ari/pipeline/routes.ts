@@ -6,6 +6,7 @@ import {
   CreateDealSchema,
   MoveDealSchema,
   DealQuerySchema,
+  RateClientSchema,
 } from './schema'
 import {
   listStages,
@@ -17,6 +18,7 @@ import {
   getDeal,
   createDeal,
   moveDeal,
+  rateClientForDeal,
 } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
@@ -279,6 +281,40 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
         request.user.userId,
       )
       return reply.code(200).send(deal)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * POST /v1/ari/pipeline/deals/:id/rate-client — HU-126
+   * Califica internamente al cliente al cerrar la venta (deal en etapa ganada).
+   * Opcional: no calificar no bloquea el cierre. Una calificación por deal.
+   */
+  app.post('/deals/:id/rate-client', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Calificar internamente al cliente (venta ganada)',
+      description: 'Registra la calificación interna del equipo (1-5) al cliente de un deal ganado. Opcional. NO es CSAT del cliente.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(RateClientSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = RateClientSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: parsed.error.errors[0]?.message ?? 'Datos de entrada inválidos',
+        code:  'VALIDATION_ERROR',
+      })
+    }
+    try {
+      const result = await rateClientForDeal(request.user.tenantId, request.user.userId, id, parsed.data)
+      return reply.code(200).send(result)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
