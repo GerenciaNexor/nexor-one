@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { PurchaseOrderFormModal } from '@/components/nira/PurchaseOrderFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import type { OrderExtraction } from '@/components/ocr/OcrExtractButton'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -73,9 +74,9 @@ export default function PurchaseOrdersPage() {
   const alertBranchId  = searchParams.get('branchId')
   const hasAlertParams = Boolean(alertProductId && alertBranchId)
 
-  const [orders,     setOrders]     = useState<PurchaseOrder[]>([])
-  const [total,      setTotal]      = useState(0)
-  const [loading,    setLoading]    = useState(true)
+  const [orders,     setOrders]     = useState<PurchaseOrder[]>(() => getCache<PurchaseOrder[]>('purchase-orders') ?? [])
+  const [total,      setTotal]      = useState(() => getCache<{ total: number }>('purchase-orders-meta')?.total ?? 0)
+  const [loading,    setLoading]    = useState(!getCache<PurchaseOrder[]>('purchase-orders'))
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   const [statusFilter,   setStatusFilter]   = useState<PurchaseOrderStatus | ''>('')
@@ -112,7 +113,8 @@ export default function PurchaseOrdersPage() {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   function fetchOrders() {
-    setLoading(true)
+    const noFilters = !statusFilter && !supplierFilter && !search
+    if (!(noFilters && getCache<PurchaseOrder[]>('purchase-orders'))) setLoading(true)
     setFetchError(null)
     const qs = new URLSearchParams()
     if (statusFilter) qs.set('status', statusFilter)
@@ -128,6 +130,7 @@ export default function PurchaseOrdersPage() {
         })
         setOrders(filtered)
         setTotal(res.total)
+        if (noFilters) { setCache('purchase-orders', filtered); setCache('purchase-orders-meta', { total: res.total }) }
       })
       .catch((err: unknown) => {
         const e = err as { message?: string }

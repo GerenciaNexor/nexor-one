@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { Portal } from '@/components/ui/Portal'
+import { getCache, setCache } from '@/lib/page-cache'
 import { TransactionFormModal, type TxItem } from './TransactionFormModal'
 
 interface Category   { id: string; name: string; type: 'income' | 'expense' | 'both' }
@@ -117,9 +118,9 @@ export function TransactionsView() {
   const [page,            setPage]            = useState(1)
 
   // ── Data states ──────────────────────────────────────────────────────────
-  const [txs,         setTxs]         = useState<TxItem[]>([])
-  const [total,       setTotal]       = useState(0)
-  const [loading,     setLoading]     = useState(true)
+  const [txs,         setTxs]         = useState<TxItem[]>(() => getCache<TxItem[]>('transactions') ?? [])
+  const [total,       setTotal]       = useState(() => getCache<{ total: number }>('transactions-meta')?.total ?? 0)
+  const [loading,     setLoading]     = useState(!getCache<TxItem[]>('transactions'))
   const [branches,    setBranches]    = useState<Branch[]>([])
   const [categories,  setCategories]  = useState<Category[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
@@ -152,7 +153,9 @@ export function TransactionsView() {
 
   // ── Fetch ────────────────────────────────────────────────────────────────
   const fetchTxs = useCallback(() => {
-    setLoading(true)
+    const noFilters = !type && !branchId && !categoryId && !costCenterId &&
+      !dateFrom && !dateTo && !isManual && !committedSearch && page === 1
+    if (!(noFilters && getCache<TxItem[]>('transactions'))) setLoading(true)
     const qs = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
     if (type)            qs.set('type',         type)
     if (branchId)        qs.set('branchId',     branchId)
@@ -164,7 +167,10 @@ export function TransactionsView() {
     if (committedSearch) qs.set('search',       committedSearch)
 
     apiClient.get<{ data: TxItem[]; total: number }>(`/v1/vera/transactions?${qs}`)
-      .then((res) => { setTxs(res.data ?? []); setTotal(res.total ?? 0) })
+      .then((res) => {
+        setTxs(res.data ?? []); setTotal(res.total ?? 0)
+        if (noFilters) { setCache('transactions', res.data ?? []); setCache('transactions-meta', { total: res.total ?? 0 }) }
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [type, branchId, categoryId, costCenterId, dateFrom, dateTo, isManual, committedSearch, page])

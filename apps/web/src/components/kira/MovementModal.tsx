@@ -32,6 +32,7 @@ export interface StockRow {
 
 interface FormFields {
   type:       'entrada' | 'salida' | 'ajuste'
+  reason:     'compra' | 'venta' | 'devolucion' | 'ajuste' | 'traslado'
   productId:  string
   branchId:   string
   quantity:   string
@@ -60,6 +61,7 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
 
   const [form, setForm] = useState<FormFields>({
     type:       'entrada',
+    reason:     'ajuste',
     productId:  initialProductId ?? '',
     branchId:   initialBranchId ?? (isOperative ? (user?.branchId ?? '') : ''),
     quantity:   '',
@@ -130,6 +132,7 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
 
     const body: Record<string, unknown> = {
       type:      form.type,
+      reason:    form.reason,
       productId: form.productId,
       branchId:  form.branchId,
       quantity:  parseFloat(form.quantity),
@@ -176,14 +179,26 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
           >
             <div className="space-y-4">
 
-              {/* Tipo de movimiento */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Tipo *</label>
-                <select value={form.type} onChange={set('type')} className={inp}>
-                  <option value="entrada">Entrada (ingreso)</option>
-                  <option value="salida">Salida (egreso)</option>
-                  <option value="ajuste">Ajuste de inventario</option>
-                </select>
+              {/* Tipo + motivo del movimiento (HU-128) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Tipo *</label>
+                  <select value={form.type} onChange={set('type')} className={inp}>
+                    <option value="entrada">Entrada (ingreso)</option>
+                    <option value="salida">Salida (egreso)</option>
+                    <option value="ajuste">Ajuste de inventario</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Motivo *</label>
+                  <select value={form.reason} onChange={set('reason')} className={inp}>
+                    <option value="ajuste">Ajuste</option>
+                    <option value="traslado">Traslado</option>
+                    <option value="devolucion">Devolución</option>
+                    <option value="compra">Compra</option>
+                    <option value="venta">Venta</option>
+                  </select>
+                </div>
               </div>
 
               {/* Producto */}

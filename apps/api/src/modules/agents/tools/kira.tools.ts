@@ -117,9 +117,10 @@ const registrarMovimiento: AgentTool = {
     },
   },
 
-  async execute({ productId, branchId, tipo, cantidad, notas }, tenantId) {
+  async execute({ productId, branchId, tipo, cantidad, notas }, tenantId, ctx) {
     const qty     = Number(cantidad)
     const tipo_   = (tipo as string).toUpperCase()
+    const typeLower = tipo_.toLowerCase()   // HU-128 — type normalizado en minúsculas
 
     if (tipo_ === 'SALIDA' && qty <= 0)
       return { error: 'SALIDA requires a positive quantity.' }
@@ -165,7 +166,9 @@ const registrarMovimiento: AgentTool = {
           tenantId,
           productId:      productId as string,
           branchId:       branchId as string,
-          type:           tipo_,
+          userId:         ctx?.userId ?? null,   // HU-128 — usuario en cuyo nombre actúa el agente
+          type:           typeLower,             // HU-128 — minúsculas
+          reason:         'ajuste',              // HU-128 — el agente registra ajustes manuales
           quantity:       absQty,
           quantityBefore: before,
           quantityAfter:  after,

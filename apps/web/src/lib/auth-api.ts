@@ -5,6 +5,8 @@ export interface LoginUser {
   email: string
   name: string
   role: string
+  /** Módulo principal del usuario (AREA_MANAGER/OPERATIVE). null para admins transversales. */
+  module: string | null
   tenantId: string
   branchId: string | null
   tenant: { id: string; name: string; slug: string }

@@ -10,6 +10,7 @@ import { SentryUserContext } from '@/components/layout/SentryUserContext'
 import { FloatingChat } from '@/components/chat/FloatingChat'
 import { useChatStore } from '@/store/chat'
 import { useTheme } from '@/hooks/useTheme'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Normalización de links de notificaciones (compatibilidad con links legacy) ─
 
@@ -123,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, toggle: toggleTheme } = useTheme()
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [flags, setFlags] = useState<Record<string, boolean>>({})
+  const [flags, setFlags] = useState<Record<string, boolean>>(() => getCache<Record<string, boolean>>('feature-flags') ?? {})
   const [unreadCount, setUnreadCount] = useState(0)
   const [inboxUnread, setInboxUnread] = useState(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -132,12 +133,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const notifRef = useRef<HTMLDivElement>(null)
 
   // Feature flags: que modulos mostrar en la sidebar.
-  // Se refresca en cada cambio de ruta para reflejar cambios en /admin/modules.
+  // HU-131: se cachean y se piden UNA sola vez al montar (no en cada navegación,
+  // que añadía un request por cambio de ruta — costoso y redundante). Se refrescan
+  // al volver el foco a la pestaña, lo que cubre cambios hechos en /admin/modules.
   useEffect(() => {
-    apiClient.get<Record<string, boolean>>('/v1/tenants/feature-flags')
-      .then(setFlags)
-      .catch(() => {})
-  }, [pathname])
+    let cancelled = false
+    function loadFlags() {
+      apiClient.get<Record<string, boolean>>('/v1/tenants/feature-flags')
+        .then((f) => { if (!cancelled) { setFlags(f); setCache('feature-flags', f) } })
+        .catch(() => {})
+    }
+    loadFlags()
+    window.addEventListener('focus', loadFlags)
+    return () => { cancelled = true; window.removeEventListener('focus', loadFlags) }
+  }, [])
 
   // Polling del conteo de notificaciones no leidas cada 30s.
   // Se pausa cuando la pestaña no es visible (Page Visibility API).

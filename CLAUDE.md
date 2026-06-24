@@ -139,7 +139,10 @@ Next.js 14 App Router. Rutas agrupadas en [apps/web/src/app/](apps/web/src/app/)
 ## Reglas que no se rompen (del README)
 
 1. `tenant_id` siempre del JWT, nunca del body.
-2. `agent_logs` y `stock_movements` son **inmutables** — no se editan ni eliminan.
+2. `agent_logs` y `stock_movements` son **inmutables** (append-only) — no se editan ni eliminan.
+   Todo `stock_movement` registra **quién** (`user_id`), **cómo** (`type`) y **por qué** (`reason`,
+   obligatorio) — HU-128. El stock **nunca queda negativo** (toda salida valida disponibilidad; la
+   venta se bloquea si falta stock). En ventas se congelan `sale_price_frozen`/`cost_price_frozen`.
 3. Tokens de integración (WhatsApp, Gmail) siempre cifrados — nunca en responses de la API
    (cifrado en [apps/api/src/lib/encryption.ts](apps/api/src/lib/encryption.ts); `ENCRYPTION_KEY`
    se valida al arrancar y el server hace `process.exit(1)` si falta).

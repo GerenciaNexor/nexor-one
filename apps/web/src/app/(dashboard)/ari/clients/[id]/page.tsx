@@ -53,6 +53,7 @@ interface ClientDetail extends Client {
 const SOURCE_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
   email:    'Email',
+  web:      'Web',
   manual:   'Manual',
   referido: 'Referido',
 }
@@ -60,6 +61,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_COLORS: Record<string, string> = {
   whatsapp: 'bg-emerald-100 text-emerald-700',
   email:    'bg-blue-100 text-blue-700',
+  web:      'bg-cyan-100 text-cyan-700',
   manual:   'bg-slate-100 text-slate-600',
   referido: 'bg-violet-100 text-violet-700',
 }

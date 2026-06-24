@@ -542,20 +542,27 @@ model Stock {
 /// Historial INMUTABLE de cada cambio en el inventario.
 /// APPEND-ONLY: nunca se modifica ni elimina un movimiento.
 model StockMovement {
-  id             String    @id @default(cuid()) @db.VarChar(30)
-  tenantId       String    @map("tenant_id") @db.VarChar(30)
-  productId      String    @map("product_id") @db.VarChar(30)
-  branchId       String    @map("branch_id") @db.VarChar(30)
-  userId         String?   @map("user_id") @db.VarChar(30)
-  type           String    @db.VarChar(30)
-  quantity       Decimal   @db.Decimal(10, 2)
-  quantityBefore Decimal   @map("quantity_before") @db.Decimal(10, 2)
-  quantityAfter  Decimal   @map("quantity_after") @db.Decimal(10, 2)
-  referenceType  String?   @map("reference_type") @db.VarChar(50)
-  referenceId    String?   @map("reference_id") @db.VarChar(30)
-  lotNumber      String?   @map("lot_number") @db.VarChar(100)
-  expiryDate     DateTime? @map("expiry_date") @db.Date
-  notes          String?   @db.Text
+  id              String    @id @default(cuid()) @db.VarChar(30)
+  tenantId        String    @map("tenant_id") @db.VarChar(30)
+  productId       String    @map("product_id") @db.VarChar(30)
+  branchId        String    @map("branch_id") @db.VarChar(30)
+  userId          String?   @map("user_id") @db.VarChar(30)
+  /// CÓMO se movió: entrada | salida | ajuste (normalizado en minúsculas — HU-128).
+  type            String    @db.VarChar(30)
+  /// POR QUÉ se movió (HU-128, OBLIGATORIO): compra | venta | devolucion | ajuste | traslado | desconocido.
+  /// DEFAULT 'desconocido' = red de seguridad (nunca vacío); el código siempre pone el motivo real.
+  reason          String    @default("desconocido") @db.VarChar(20)
+  quantity        Decimal   @db.Decimal(10, 2)
+  quantityBefore  Decimal   @map("quantity_before") @db.Decimal(10, 2)
+  quantityAfter   Decimal   @map("quantity_after") @db.Decimal(10, 2)
+  referenceType   String?   @map("reference_type") @db.VarChar(50)
+  referenceId     String?   @map("reference_id") @db.VarChar(30)
+  /// HU-128 — en movimientos de VENTA se congela el precio del momento (margen histórico exacto).
+  salePriceFrozen Decimal?  @map("sale_price_frozen") @db.Decimal(15, 2)
+  costPriceFrozen Decimal?  @map("cost_price_frozen") @db.Decimal(15, 2)
+  lotNumber       String?   @map("lot_number") @db.VarChar(100)
+  expiryDate      DateTime? @map("expiry_date") @db.Date
+  notes           String?   @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -568,6 +575,7 @@ model StockMovement {
   @@index([branchId])
   @@index([createdAt(sort: Desc)])
   @@index([referenceType, referenceId])
+  @@index([tenantId, reason])
   @@map("stock_movements")
 }
 

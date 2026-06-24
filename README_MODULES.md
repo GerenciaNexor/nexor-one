@@ -49,6 +49,12 @@ Cuando se cierra una venta, el equipo de ventas puede calificar **internamente**
 **Pipeline de ventas visual (Kanban)**  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 
+**Historial de ventas (HU-133)** — subsección `/ari/history`: lista los deals (ventas finalizadas y
+en proceso) con su **etapa** y un estado derivado **Ganada/Perdida/En proceso** (venta finalizada =
+etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa** y **fecha/rango**
+(`from`/`to` sobre `createdAt`). Cada fila enlaza al pipeline. Respeta rol/sucursal (`getBranchFilter`
+\+ RLS; OPERATIVE solo sus deals). Reutiliza `GET /v1/ari/deals` (filtros añadidos en HU-133).
+
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
@@ -110,6 +116,12 @@ Cuando una OC pasa a `received`, el equipo de compras **califica al proveedor** 
 **Órdenes de compra con flujo de aprobación**  
 Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)
 
+**Historial de compras (HU-133)** — subsección `/nira/history`: lista las OC realizadas y en proceso
+con su **estado canónico**, con filtros por **estado** y **fecha/rango** (`from`/`to` sobre `createdAt`).
+Cada fila enlaza al detalle de la OC. Respeta rol/sucursal (`getBranchFilter` + RLS). Reutiliza el
+endpoint `GET /v1/nira/purchase-orders` (filtros añadidos en HU-133), sin endpoint nuevo. La contraparte
+(proveedor), monto, etc. quedan como mejora futura de filtros.
+
 **Comparador de cotizaciones**  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.
 
@@ -169,8 +181,24 @@ Un vendedor de la Sede Norte puede ver que en la Sede Sur hay stock disponible d
 **Clasificación ABC automática**  
 KIRA calcula semanalmente qué productos generan el 80% del valor del inventario (clase A), cuáles el siguiente 15% (clase B), y cuáles el 5% restante (clase C). Esto permite priorizar esfuerzos de compra y almacenamiento.
 
-**Trazabilidad completa**  
-Cada movimiento registra: quién lo hizo, cuándo, desde qué documento (OC, venta, ajuste manual), número de lote y fecha de caducidad. Es posible rastrear cualquier unidad desde que entró hasta que salió.
+**Trazabilidad completa (HU-128)**  
+Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
+
+**Quién mueve el stock (auditoría HU-128):**
+
+| Camino | `type` | `reason` | Referencia |
+|--------|--------|----------|------------|
+| KIRA manual (`POST /kira/stock/movements`) | entrada/salida/ajuste | el que elija el usuario (default `ajuste`) | — |
+| NIRA recibe OC (`receivePurchaseOrder`) | entrada | `compra` | `purchase_order` |
+| **ARI cierra venta** (deal ganado, **HU-128 nuevo**) | salida | `venta` | `deal` |
+| Agente IA (`registrar_movimiento`) | entrada/salida/ajuste | `ajuste` | — |
+| Carga masiva Excel | ajuste | `ajuste` | `bulk_upload` |
+
+Antes, **ARI vendía sin descontar inventario** (hueco): ahora, al **ganar un deal**, se generan
+salidas (motivo `venta`) por las líneas de la **cotización aceptada** vinculada, congelando el
+precio de venta y el costo del momento. Si **falta stock**, el cierre de la venta se **bloquea**
+(no se vende sin existencias). Si el deal ganado no tiene cotización itemizada, no hay impacto de
+inventario (venta sin itemizar).
 
 **Alertas automáticas**  
 Un job de BullMQ revisa cada hora si algún producto está bajo su mínimo de stock y genera notificaciones para el equipo de bodega y compras.
@@ -297,22 +325,71 @@ NIRA: OC aprobada
 **No es un módulo de negocio independiente — agrega datos de todos los módulos activos**  
 **Endpoints:** `GET /v1/dashboard/kpis` (puntual) · `GET /v1/dashboard/timeseries` (histórico, HU-127)
 
-Hay **dos vistas** distintas en el menú izquierdo:
-- **Inicio** (`/dashboard`): KPIs **puntuales** del momento + bandeja operacional (`/v1/dashboard/kpis`).
-- **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias en el tiempo.
+Hay **dos vistas** distintas en el menú izquierdo, con responsabilidades separadas (HU-132):
+- **Inicio** (`/dashboard`): **lo accionable del día** — lo que requiere atención ahora. No muestra
+  métricas ni tendencias (viven en el Dashboard); enlaza a `/analitica` para ellas.
+- **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias + Top 10 — las métricas.
 
-### Dashboard de tendencias (HU-127)
-Apartado nuevo con 6 gráficos de líneas (reutiliza el `LineChart` de VERA) y selector de rango
-(7/30/90 días): **Compras realizadas** (OC recibidas), **Monto comprado**, **Ventas realizadas**
-(deals ganados — disparador HU-126), **Monto vendido**, **Órdenes de compra creadas** (≠ recibidas)
-y **Cotizaciones realizadas**. Los datos salen de un **rollup diario** (job programado
+### Inicio — información accionable (HU-132)
+El Inicio se reenfocó a **lo que requiere atención hoy** (decisión de producto), dejando las métricas
+al Dashboard. Bloques (solo se piden los endpoints que el **rol/módulo** del usuario puede consultar —
+nunca se llama uno que daría 403, así nada queda permanentemente vacío):
+
+| Bloque | Fuente | Módulo |
+|--------|--------|--------|
+| Stock crítico | `GET /v1/kira/alerts` (→ `{ critical }`) | KIRA |
+| Órdenes esperando aprobación | `GET /v1/nira/purchase-orders?status=submitted` | NIRA |
+| Borradores sin enviar | `GET /v1/nira/purchase-orders?status=draft` | NIRA |
+| Citas de hoy (agendadas/confirmadas) | `GET /v1/agenda/appointments?date=<hoy>` | AGENDA |
+| Notificaciones sin leer | `GET /v1/notifications?isRead=false` | universal |
+
+Cada bloque **enlaza a su sección** (acción directa, no solo información). **Visibilidad por rol:**
+`TENANT_ADMIN/BRANCH_ADMIN` ven todos los módulos activos (transversales); `AREA_MANAGER/OPERATIVE`
+ven **solo su módulo** (se usa `user.module`, ahora incluido en la respuesta de login) + notificaciones.
+La sucursal la aplica cada endpoint (`getBranchFilter`/RLS): admin consolida, los demás su sucursal.
+
+> **Diagnóstico previo (HU-132 FASE 1):** los bloques antiguos aparecían vacíos por **contratos
+> frontend↔backend desalineados y endpoints mal direccionados**, no por RLS/BUG-006: "Stock crítico"
+> pegaba a `/kira/alerts/stock` (404; el real es `/kira/alerts`) y leía `data` en vez de `critical`;
+> "Top proveedores" leía `supplierName`/`overallScore` cuando la API devuelve `name`/`score.overallScore`
+> (nombres en blanco); y los KPIs/listas NIRA-KIRA se pedían para **todos** los usuarios, devolviendo
+> 403 a quienes no son de ese módulo — error que el `.catch(()=>[])` del cliente ocultaba como "vacío".
+> El reenfoque se construyó sobre contratos verificados y endpoints accesibles por rol.
+
+### Dashboard de tendencias (HU-127 + HU-129)
+Apartado nuevo (`/analitica`) con gráficos de líneas (reutiliza el `LineChart` de VERA). Muestra
+**4 líneas** (HU-129): **Compras realizadas** (OC recibidas), **Ventas realizadas** (deals ganados —
+disparador HU-126), **Monto comprado** y **Monto vendido**. *(Las líneas "OC creadas" y "Cotizaciones
+realizadas" se retiraron de la vista en HU-129; el rollup las sigue calculando, reversible sin migración.)*
+
+**Filtros (HU-129):** date picker de **fecha específica o rango libre** (desde/hasta, admite un solo
+día con `from=to`) + atajos (Hoy/7/30/90 días), y un control para **mostrar/ocultar gráficos** cuya
+selección se **persiste por usuario** (localStorage `nexor-dashboard-charts:<userId>`) y se restaura
+en la siguiente visita.
+
+Los datos salen de un **rollup diario** (job programado
 [dashboard-rollup.ts](./apps/api/src/jobs/dashboard-rollup.ts) → tabla `dashboard_daily_rollups`),
 así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBranchFilter`
-(TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal). **No** incluye satisfacción del cliente ni
-inventario crítico (fuera de alcance).
+(TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal) y valida el rango. **No** incluye satisfacción
+del cliente ni inventario crítico (fuera de alcance).
 
-### KPIs puntuales (Inicio)
-Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
+### Top 10 de productos (HU-130)
+Gráfico de **barras** (ranking, no líneas) con dos vistas seleccionables:
+- **Más vendidos** — suma de **unidades** salidas con motivo `venta`.
+- **Mayor ganancia** — suma de **(precio de venta − precio de costo) × unidades**, con los precios
+  **congelados** en cada `stock_movement` del momento de la venta (HU-128), nunca con los precios
+  actuales del producto.
+
+No siempre coinciden (el que más unidades mueve no es el que más deja). El dato sale **directo de
+`stock_movements`** (solo salidas con motivo `venta`; gracias a la trazabilidad de HU-128) vía
+`GET /v1/dashboard/top-products` — agregado por producto en una sola consulta, sin tabla de rollup
+nueva. Respeta el mismo filtro de fechas y el rol del Dashboard. Si no hay ventas en el rango,
+muestra un estado vacío claro.
+
+### KPIs puntuales — `GET /v1/dashboard/kpis`
+Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada.
+*(Desde HU-132 el **Inicio ya no consume** este endpoint — las métricas viven en el Dashboard
+`/analitica`; el endpoint sigue disponible para consumidores que lo necesiten.)*
 
 ### KPIs por módulo
 

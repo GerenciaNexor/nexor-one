@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/nira/suppliers',       label: 'Proveedores' },
   { href: '/nira/purchase-orders', label: 'Órdenes de compra' },
+  { href: '/nira/history',         label: 'Historial' },
   { href: '/nira/compare',         label: 'Comparador' },
   { href: '/nira/ranking',         label: 'Ranking' },
   { href: '/nira/reports',         label: 'Reportes' },
