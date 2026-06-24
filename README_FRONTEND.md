@@ -37,7 +37,7 @@ app/
 │   └── login/page.tsx      ← Inicio de sesión
 └── (dashboard)/            ← Rutas autenticadas (requieren token)
     ├── layout.tsx          ← Monta AppShell + guarda de sesión
-    ├── dashboard/page.tsx  ← Panel de inicio (KPIs)
+    ├── dashboard/page.tsx  ← Inicio: lo accionable del día por rol/módulo (HU-132)
     ├── ari/                ← Ventas: clients, pipeline, quotes, reports
     ├── nira/               ← Compras: suppliers, purchase-orders, compare, ranking, reports
     ├── kira/               ← Inventario: products, stock, movements

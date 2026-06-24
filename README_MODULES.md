@@ -313,9 +313,36 @@ NIRA: OC aprobada
 **No es un módulo de negocio independiente — agrega datos de todos los módulos activos**  
 **Endpoints:** `GET /v1/dashboard/kpis` (puntual) · `GET /v1/dashboard/timeseries` (histórico, HU-127)
 
-Hay **dos vistas** distintas en el menú izquierdo:
-- **Inicio** (`/dashboard`): KPIs **puntuales** del momento + bandeja operacional (`/v1/dashboard/kpis`).
-- **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias en el tiempo.
+Hay **dos vistas** distintas en el menú izquierdo, con responsabilidades separadas (HU-132):
+- **Inicio** (`/dashboard`): **lo accionable del día** — lo que requiere atención ahora. No muestra
+  métricas ni tendencias (viven en el Dashboard); enlaza a `/analitica` para ellas.
+- **Dashboard** (`/analitica`, HU-127): **gráficos de líneas** con tendencias + Top 10 — las métricas.
+
+### Inicio — información accionable (HU-132)
+El Inicio se reenfocó a **lo que requiere atención hoy** (decisión de producto), dejando las métricas
+al Dashboard. Bloques (solo se piden los endpoints que el **rol/módulo** del usuario puede consultar —
+nunca se llama uno que daría 403, así nada queda permanentemente vacío):
+
+| Bloque | Fuente | Módulo |
+|--------|--------|--------|
+| Stock crítico | `GET /v1/kira/alerts` (→ `{ critical }`) | KIRA |
+| Órdenes esperando aprobación | `GET /v1/nira/purchase-orders?status=submitted` | NIRA |
+| Borradores sin enviar | `GET /v1/nira/purchase-orders?status=draft` | NIRA |
+| Citas de hoy (agendadas/confirmadas) | `GET /v1/agenda/appointments?date=<hoy>` | AGENDA |
+| Notificaciones sin leer | `GET /v1/notifications?isRead=false` | universal |
+
+Cada bloque **enlaza a su sección** (acción directa, no solo información). **Visibilidad por rol:**
+`TENANT_ADMIN/BRANCH_ADMIN` ven todos los módulos activos (transversales); `AREA_MANAGER/OPERATIVE`
+ven **solo su módulo** (se usa `user.module`, ahora incluido en la respuesta de login) + notificaciones.
+La sucursal la aplica cada endpoint (`getBranchFilter`/RLS): admin consolida, los demás su sucursal.
+
+> **Diagnóstico previo (HU-132 FASE 1):** los bloques antiguos aparecían vacíos por **contratos
+> frontend↔backend desalineados y endpoints mal direccionados**, no por RLS/BUG-006: "Stock crítico"
+> pegaba a `/kira/alerts/stock` (404; el real es `/kira/alerts`) y leía `data` en vez de `critical`;
+> "Top proveedores" leía `supplierName`/`overallScore` cuando la API devuelve `name`/`score.overallScore`
+> (nombres en blanco); y los KPIs/listas NIRA-KIRA se pedían para **todos** los usuarios, devolviendo
+> 403 a quienes no son de ese módulo — error que el `.catch(()=>[])` del cliente ocultaba como "vacío".
+> El reenfoque se construyó sobre contratos verificados y endpoints accesibles por rol.
 
 ### Dashboard de tendencias (HU-127 + HU-129)
 Apartado nuevo (`/analitica`) con gráficos de líneas (reutiliza el `LineChart` de VERA). Muestra
@@ -347,8 +374,10 @@ No siempre coinciden (el que más unidades mueve no es el que más deja). El dat
 nueva. Respeta el mismo filtro de fechas y el rol del Dashboard. Si no hay ventas en el rango,
 muestra un estado vacío claro.
 
-### KPIs puntuales (Inicio)
-Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada, para que el dashboard ejecutivo del frontend pueda cargarse con una sola request.
+### KPIs puntuales — `GET /v1/dashboard/kpis`
+Consolida los KPIs más importantes de todos los módulos activos del tenant en una sola llamada.
+*(Desde HU-132 el **Inicio ya no consume** este endpoint — las métricas viven en el Dashboard
+`/analitica`; el endpoint sigue disponible para consumidores que lo necesiten.)*
 
 ### KPIs por módulo
 
