@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { DealFormModal, type PipelineStage, type Deal } from '@/components/ari/DealFormModal'
+import { RateClientModal } from '@/components/ari/RateClientModal'
 import { Portal } from '@/components/ui/Portal'
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
@@ -331,6 +332,7 @@ export default function PipelinePage() {
   const [createModal, setCreateModal]         = useState<{ stageId: string } | null>(null)
   const [wonConfirmState, setWonConfirmState] = useState<WonConfirmState | null>(null)
   const [lostReasonState, setLostReasonState] = useState<LostReasonState | null>(null)
+  const [rateClientDeal, setRateClientDeal]   = useState<Deal | null>(null)  // HU-126
   const [moveLoading, setMoveLoading]         = useState(false)
 
   // ── Fetch usuarios para filtro de manager ────────────────────────────────
@@ -404,8 +406,11 @@ export default function PipelinePage() {
 
   async function handleWonConfirm() {
     if (!wonConfirmState) return
+    const closedDeal = wonConfirmState.deal
     await executeMoveOnDeal(wonConfirmState.deal.id, wonConfirmState.stageId)
     setWonConfirmState(null)
+    // HU-126 — venta cerrada (deal ganado): se ofrece calificar al cliente (opcional)
+    setRateClientDeal(closedDeal)
   }
 
   async function handleLostConfirm(reason: string) {
@@ -668,6 +673,17 @@ export default function PipelinePage() {
           onConfirm={handleLostConfirm}
           onCancel={() => setLostReasonState(null)}
           loading={moveLoading}
+        />
+      )}
+
+      {/* ── Modal calificar cliente (HU-126) ─────────────────────────────────── */}
+      {rateClientDeal && (
+        <RateClientModal
+          dealId={rateClientDeal.id}
+          dealTitle={rateClientDeal.title}
+          clientName={rateClientDeal.client.name}
+          onClose={() => setRateClientDeal(null)}
+          onRated={() => setRateClientDeal(null)}
         />
       )}
     </div>

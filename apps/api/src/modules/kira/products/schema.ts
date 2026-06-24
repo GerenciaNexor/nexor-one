@@ -24,6 +24,8 @@ export const UpdateProductSchema = z.object({
   costPrice:   z.number().positive('El precio de costo debe ser positivo').optional(),
   minStock:    z.number().int().min(0, 'El stock mínimo no puede ser negativo').optional(),
   maxStock:    z.number().int().positive('El stock máximo debe ser positivo').optional(),
+  // HU-123 — proveedor preferido del producto. null para quitarlo.
+  preferredSupplierId: z.string().min(1).nullable().optional(),
 })
 
 // La validación cruzada minStock/maxStock en updates se hace en el service,

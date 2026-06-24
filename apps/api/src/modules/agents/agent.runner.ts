@@ -18,7 +18,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { directPrisma, withTenantContext } from '../../lib/prisma'
+import { directPrisma, withTenantContext, runInTenantTransaction } from '../../lib/prisma'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
@@ -277,10 +277,16 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
           if (!toolsUsed.includes(block.name)) toolsUsed.push(block.name)
 
           try {
-            const output = await tool.execute(
-              block.input as Record<string, unknown>,
-              input.tenantId,
-              { userId: input.userId, userRole: input.userRole },
+            // HU-123/HU-122: el agente corre en el worker (sin transacción por-request).
+            // Cada tool se ejecuta dentro de su propia transacción con SET LOCAL para que
+            // bajo nexor_app vea/escriba los datos del tenant (RLS). Las llamadas a Claude
+            // quedan FUERA de la transacción (no se retiene conexión durante el I/O externo).
+            const output = await runInTenantTransaction(input.tenantId, () =>
+              tool.execute(
+                block.input as Record<string, unknown>,
+                input.tenantId,
+                { userId: input.userId, userRole: input.userRole },
+              ),
             )
             const content = JSON.stringify(output)
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })

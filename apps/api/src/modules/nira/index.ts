@@ -14,11 +14,13 @@ import { suppliersRoutes }      from './suppliers/routes'
 import { purchaseOrdersRoutes } from './purchase-orders/routes'
 import { compareRoutes }        from './compare/routes'
 import { reportsRoutes }        from './reports/routes'
+import { preferredSupplierRoutes } from './preferred/routes'
 
 export default async function niraModule(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireFeatureFlag('NIRA'))
-  await app.register(suppliersRoutes,      { prefix: '/suppliers' })
-  await app.register(purchaseOrdersRoutes, { prefix: '/purchase-orders' })
-  await app.register(compareRoutes,        { prefix: '/compare' })
-  await app.register(reportsRoutes,        { prefix: '/reports' })
+  await app.register(suppliersRoutes,         { prefix: '/suppliers' })
+  await app.register(purchaseOrdersRoutes,    { prefix: '/purchase-orders' })
+  await app.register(compareRoutes,           { prefix: '/compare' })
+  await app.register(reportsRoutes,           { prefix: '/reports' })
+  await app.register(preferredSupplierRoutes, { prefix: '/preferred-supplier' })
 }

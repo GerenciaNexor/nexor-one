@@ -6,12 +6,13 @@ import { apiClient } from '@/lib/api-client'
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface SupplierScore {
-  priceScore:       number
-  deliveryScore:    number
-  qualityScore:     number
-  overallScore:     number
+  priceScore:       number | null
+  deliveryScore:    number | null
+  qualityScore:     number | null
+  overallScore:     number | null
   totalOrders:      number
   onTimeDeliveries: number
+  ratingsCount:     number
   calculatedAt:     string
 }
 
@@ -29,7 +30,9 @@ interface RankingResult {
 
 // ─── Auxiliares ───────────────────────────────────────────────────────────────
 
-function ScoreBar({ value, color }: { value: number; color: string }) {
+// HU-125 — un eje NULL es "sin datos" (no engañoso), no se dibuja barra.
+function ScoreBar({ value, color }: { value: number | null; color: string }) {
+  if (value == null) return <span className="text-xs italic text-slate-300">sin datos</span>
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
@@ -45,7 +48,8 @@ function ScoreBar({ value, color }: { value: number; color: string }) {
   )
 }
 
-function OverallBadge({ score }: { score: number }) {
+function OverallBadge({ score }: { score: number | null }) {
+  if (score == null) return <span className="text-xs italic text-slate-300">sin datos</span>
   const color =
     score >= 7 ? 'bg-emerald-100 text-emerald-700' :
     score >= 5 ? 'bg-amber-100 text-amber-700' :
@@ -81,7 +85,7 @@ export default function RankingPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-slate-900">Ranking de proveedores</h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          Proveedores ordenados por score general. Calculado diariamente a partir de precio, entrega a tiempo y calidad.
+          Proveedores ordenados por score general (0-10). Se recalcula al calificar una OC recibida y a diario.
         </p>
       </div>
 
@@ -99,18 +103,16 @@ export default function RankingPage() {
         </div>
       )}
 
-      {/* ── Leyenda de dimensiones ─────────────────────────────────────────── */}
+      {/* ── Leyenda: qué mide cada eje y de dónde sale (HU-125) ─────────────── */}
       {result && !loading && (
-        <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> Precio
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-violet-500" /> Entrega
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> Calidad
-          </span>
+        <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3 text-xs text-slate-500">
+          <p className="mb-1.5 font-medium text-slate-600">Cómo se calcula cada eje (escala 0-10):</p>
+          <div className="flex flex-col gap-1">
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> <strong className="text-slate-600">Precio</strong> — objetivo: precio del proveedor frente al promedio del mercado en el histórico de compras recibidas.</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-violet-500" /> <strong className="text-slate-600">Entrega</strong> — promedio de las calificaciones (1-5) registradas al recibir cada OC.</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> <strong className="text-slate-600">Calidad</strong> — promedio de las calificaciones (1-5) registradas al recibir cada OC.</span>
+          </div>
+          <p className="mt-1.5"><strong className="text-slate-600">&quot;sin datos&quot;</strong> = aún no hay calificaciones (Entrega/Calidad) o compras recibidas (Precio) para ese eje. El <strong className="text-slate-600">general</strong> es el promedio de los ejes con datos.</p>
         </div>
       )}
 
@@ -150,19 +152,21 @@ export default function RankingPage() {
                       {s.city && <p className="text-xs text-slate-400">{s.city}</p>}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {s.score ? <OverallBadge score={s.score.overallScore} /> : <span className="text-slate-300">—</span>}
+                      <OverallBadge score={s.score?.overallScore ?? null} />
                     </td>
                     <td className="px-4 py-3">
-                      {s.score ? <ScoreBar value={s.score.priceScore} color="bg-blue-500" /> : <span className="text-slate-300 text-xs">—</span>}
+                      <ScoreBar value={s.score?.priceScore ?? null} color="bg-blue-500" />
                     </td>
                     <td className="px-4 py-3">
-                      {s.score ? <ScoreBar value={s.score.deliveryScore} color="bg-violet-500" /> : <span className="text-slate-300 text-xs">—</span>}
+                      <ScoreBar value={s.score?.deliveryScore ?? null} color="bg-violet-500" />
                     </td>
                     <td className="px-4 py-3">
-                      {s.score ? <ScoreBar value={s.score.qualityScore} color="bg-emerald-500" /> : <span className="text-slate-300 text-xs">—</span>}
+                      <ScoreBar value={s.score?.qualityScore ?? null} color="bg-emerald-500" />
                     </td>
                     <td className="px-4 py-3 text-center text-slate-500">
-                      {s.score ? s.score.totalOrders : '—'}
+                      {s.score ? (
+                        <span>{s.score.totalOrders}<span className="ml-1 text-[10px] text-slate-400">· {s.score.ratingsCount} calif.</span></span>
+                      ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-center text-xs text-slate-400">
                       {s.score
@@ -207,28 +211,26 @@ export default function RankingPage() {
                       {s.city && <p className="text-xs text-slate-400">{s.city}</p>}
                     </div>
                   </div>
-                  {s.score ? <OverallBadge score={s.score.overallScore} /> : <span className="text-slate-300 text-sm">—</span>}
+                  <OverallBadge score={s.score?.overallScore ?? null} />
                 </div>
 
-                {s.score && (
-                  <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
-                    <div>
-                      <p className="mb-1 text-xs text-slate-400">Precio</p>
-                      <ScoreBar value={s.score.priceScore} color="bg-blue-500" />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs text-slate-400">Entrega</p>
-                      <ScoreBar value={s.score.deliveryScore} color="bg-violet-500" />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs text-slate-400">Calidad</p>
-                      <ScoreBar value={s.score.qualityScore} color="bg-emerald-500" />
-                    </div>
+                <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+                  <div>
+                    <p className="mb-1 text-xs text-slate-400">Precio</p>
+                    <ScoreBar value={s.score?.priceScore ?? null} color="bg-blue-500" />
                   </div>
-                )}
+                  <div>
+                    <p className="mb-1 text-xs text-slate-400">Entrega</p>
+                    <ScoreBar value={s.score?.deliveryScore ?? null} color="bg-violet-500" />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-400">Calidad</p>
+                    <ScoreBar value={s.score?.qualityScore ?? null} color="bg-emerald-500" />
+                  </div>
+                </div>
 
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                  <span>{s.score ? `${s.score.totalOrders} OC recibidas` : 'Sin datos'}</span>
+                  <span>{s.score ? `${s.score.totalOrders} OC · ${s.score.ratingsCount} calif.` : 'Sin datos'}</span>
                   {s.score && (
                     <span>
                       {new Date(s.score.calculatedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}

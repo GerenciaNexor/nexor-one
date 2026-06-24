@@ -34,6 +34,29 @@ const SOURCE_COLORS: Record<string, string> = {
   referido: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
 }
 
+// HU-124 — etiqueta legible del descuento manual
+function discountLabel(c: Client): string | null {
+  if (!c.discountType || c.discountValue == null) return null
+  return c.discountType === 'percent'
+    ? `${c.discountValue}% dto.`
+    : `$${c.discountValue.toLocaleString('es-CO')} dto.`
+}
+
+function StarToggle({ active, onClick }: { active: boolean; onClick: (ev: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={active ? 'Quitar de favoritos' : 'Marcar como favorito'}
+      title={active ? 'Quitar de favoritos' : 'Marcar como favorito'}
+      className="shrink-0 text-amber-400 transition-transform hover:scale-110"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill={active ? '#f59e0b' : 'none'} stroke={active ? '#f59e0b' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </button>
+  )
+}
+
 // ─── Modal de desactivar ──────────────────────────────────────────────────────
 
 function DeactivateModal({
@@ -106,6 +129,7 @@ export default function ClientsPage() {
   const [liveSearch, setLiveSearch] = useState('')
   const [sourceFilter, setSource]   = useState('')
   const [vendorFilter, setVendor]   = useState('')
+  const [favoriteOnly, setFavoriteOnly] = useState(false)
   const searchTimer                 = useRef<ReturnType<typeof setTimeout>>()
 
   // Vendedores para el filtro
@@ -139,6 +163,7 @@ export default function ClientsPage() {
     if (search)       qs.set('search', search)
     if (sourceFilter) qs.set('source', sourceFilter)
     if (vendorFilter) qs.set('assignedTo', vendorFilter)
+    if (favoriteOnly) qs.set('favorite', 'true')
     const query = qs.toString()
     apiClient.get<ClientsResponse>(`/v1/ari/clients${query ? `?${query}` : ''}`)
       .then((res) => { setClients(res.data); setTotal(res.total) })
@@ -149,7 +174,19 @@ export default function ClientsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { fetchClients() }, [search, sourceFilter, vendorFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchClients() }, [search, sourceFilter, vendorFilter, favoriteOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // HU-124 — alternar favorito sin abrir el formulario (optimista)
+  async function toggleFavorite(c: Client, ev: React.MouseEvent) {
+    ev.stopPropagation()
+    const next = !c.isFavorite
+    setClients((prev) => prev.map((x) => (x.id === c.id ? { ...x, isFavorite: next } : x)))
+    try {
+      await apiClient.put(`/v1/ari/clients/${c.id}`, { isFavorite: next })
+    } catch {
+      setClients((prev) => prev.map((x) => (x.id === c.id ? { ...x, isFavorite: !next } : x)))
+    }
+  }
 
   // ── Modales ──────────────────────────────────────────────────────────────
   function openCreate() { setEditingClient(null); setModal('create') }
@@ -243,6 +280,20 @@ export default function ClientsPage() {
             <option key={u.id} value={u.id}>{u.name}</option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={() => setFavoriteOnly((v) => !v)}
+          aria-pressed={favoriteOnly}
+          className={['inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+            favoriteOnly
+              ? 'border-amber-300 bg-amber-50 text-amber-700'
+              : 'border-slate-200 text-slate-600 hover:bg-slate-50'].join(' ')}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill={favoriteOnly ? '#f59e0b' : 'none'} stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          Favoritos
+        </button>
       </div>
 
       {/* ── Tabla (desktop) ─────────────────────────────────────────────── */}
@@ -284,11 +335,23 @@ export default function ClientsPage() {
                   <tr
                     key={c.id}
                     onClick={() => router.push(`/ari/clients/${c.id}`)}
-                    className={['cursor-pointer transition-colors hover:bg-slate-50', !c.isActive ? 'opacity-50' : ''].join(' ')}
+                    className={['cursor-pointer transition-colors', c.isFavorite ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50', !c.isActive ? 'opacity-50' : ''].join(' ')}
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{c.name}</p>
-                      {c.email && <p className="text-xs text-slate-400">{c.email}</p>}
+                      <div className="flex items-center gap-2">
+                        <StarToggle active={!!c.isFavorite} onClick={(ev) => toggleFavorite(c, ev)} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-slate-900">{c.name}</p>
+                            {discountLabel(c) && (
+                              <span className="inline-flex shrink-0 items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                {discountLabel(c)}
+                              </span>
+                            )}
+                          </div>
+                          {c.email && <p className="text-xs text-slate-400">{c.email}</p>}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">
                       {c.phone ?? <span className="text-slate-300">—</span>}
@@ -377,13 +440,21 @@ export default function ClientsPage() {
             <div
               key={c.id}
               onClick={() => router.push(`/ari/clients/${c.id}`)}
-              className={['cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50', !c.isActive ? 'opacity-50' : ''].join(' ')}
+              className={['cursor-pointer rounded-xl border bg-white p-4 transition-colors', c.isFavorite ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50' : 'border-slate-200 hover:bg-slate-50', !c.isActive ? 'opacity-50' : ''].join(' ')}
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-slate-900">{c.name}</p>
-                  {c.company && <p className="mt-0.5 text-xs text-slate-400">{c.company}</p>}
-                  {c.email   && <p className="mt-0.5 text-xs text-slate-400">{c.email}</p>}
+                <div className="flex items-start gap-2">
+                  <StarToggle active={!!c.isFavorite} onClick={(ev) => toggleFavorite(c, ev)} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-900">{c.name}</p>
+                      {discountLabel(c) && (
+                        <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">{discountLabel(c)}</span>
+                      )}
+                    </div>
+                    {c.company && <p className="mt-0.5 text-xs text-slate-400">{c.company}</p>}
+                    {c.email   && <p className="mt-0.5 text-xs text-slate-400">{c.email}</p>}
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {c.source && (

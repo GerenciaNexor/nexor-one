@@ -23,6 +23,9 @@ const CLIENT_SELECT = {
   assignedTo: true,
   branchId:   true,
   isActive:   true,
+  isFavorite:    true,
+  discountType:  true,
+  discountValue: true,
   createdAt:  true,
   updatedAt:  true,
   assignedUser: { select: { id: true, name: true } },
@@ -45,7 +48,12 @@ const INTERACTION_SELECT = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toApiClient(c: any) {
   const { _count, ...rest } = c
-  return { ...rest, activeDealsCount: _count?.deals ?? 0 }
+  return {
+    ...rest,
+    // HU-124 — Decimal de Prisma → number para la respuesta JSON
+    discountValue: rest.discountValue != null ? parseFloat(String(rest.discountValue)) : null,
+    activeDealsCount: _count?.deals ?? 0,
+  }
 }
 
 // =============================================================================
@@ -65,6 +73,7 @@ export async function listClients(
     // OPERATIVE solo ve sus clientes asignados
     ...(!isManager ? { assignedTo: userId } : {}),
     ...(query.source ? { source: query.source } : {}),
+    ...(query.favorite ? { isFavorite: query.favorite === 'true' } : {}),
     ...(query.assignedTo === 'me'
       ? { assignedTo: userId }
       : query.assignedTo ? { assignedTo: query.assignedTo } : {}),
@@ -94,7 +103,24 @@ export async function getClient(tenantId: string, clientId: string) {
     select: CLIENT_SELECT,
   })
   if (!client) throw { statusCode: 404, message: 'Cliente no encontrado', code: 'NOT_FOUND' }
-  return toApiClient(client)
+
+  // HU-126 — calificación INTERNA del equipo (promedio + recientes). NO es CSAT.
+  const ratings = await prisma.clientRating.findMany({
+    where:   { clientId, tenantId },
+    select:  { rating: true, notes: true, createdAt: true, ratedByUser: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+  const count   = ratings.length
+  const average = count > 0 ? parseFloat((ratings.reduce((s, r) => s + r.rating, 0) / count).toFixed(2)) : null
+
+  return {
+    ...toApiClient(client),
+    internalRating: {
+      average,
+      count,
+      recent: ratings.slice(0, 5).map((r) => ({ rating: r.rating, notes: r.notes, createdAt: r.createdAt, by: r.ratedByUser?.name ?? null })),
+    },
+  }
 }
 
 export async function createClient(
@@ -118,6 +144,9 @@ export async function createClient(
       notes:      input.notes      ?? null,
       assignedTo: input.assignedTo ?? userId,
       branchId:   input.branchId   ?? null,
+      isFavorite:    input.isFavorite ?? false,
+      discountType:  input.discountType  ?? null,
+      discountValue: input.discountValue ?? null,
     },
     select: CLIENT_SELECT,
   })
@@ -151,6 +180,9 @@ export async function updateClient(
       ...(input.notes      !== undefined && { notes:      input.notes      ?? null }),
       ...(input.assignedTo !== undefined && { assignedTo: input.assignedTo ?? null }),
       ...(input.branchId   !== undefined && { branchId:   input.branchId   ?? null }),
+      ...(input.isFavorite    !== undefined && { isFavorite:    input.isFavorite }),
+      ...(input.discountType  !== undefined && { discountType:  input.discountType  ?? null }),
+      ...(input.discountValue !== undefined && { discountValue: input.discountValue ?? null }),
     },
     select: CLIENT_SELECT,
   })

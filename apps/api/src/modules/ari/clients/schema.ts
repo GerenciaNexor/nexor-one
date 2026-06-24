@@ -2,6 +2,31 @@ import { z } from 'zod'
 
 // ─── Cliente ──────────────────────────────────────────────────────────────────
 
+// HU-124 — favorito + descuento manual. discountType y discountValue van juntos:
+// ambos null (sin descuento) o ambos con valor válido (percent 0-100 / amount > 0).
+const favoriteDiscountShape = {
+  isFavorite:    z.boolean().optional(),
+  discountType:  z.enum(['percent', 'amount']).nullable().optional(),
+  discountValue: z.number().nonnegative().nullable().optional(),
+}
+
+function refineDiscount(
+  data: { discountType?: 'percent' | 'amount' | null; discountValue?: number | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.discountType === undefined && data.discountValue === undefined) return
+  const type = data.discountType ?? null
+  const value = data.discountValue ?? null
+  if ((type === null) !== (value === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discountValue'], message: 'El descuento requiere tipo y valor juntos (o ambos vacíos para quitarlo)' })
+    return
+  }
+  if (type !== null && value !== null) {
+    if (value <= 0) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discountValue'], message: 'El valor del descuento debe ser mayor a 0' })
+    if (type === 'percent' && value > 100) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discountValue'], message: 'El porcentaje no puede superar 100' })
+  }
+}
+
 export const CreateClientSchema = z.object({
   name:       z.string().min(1, 'El nombre es requerido').max(255),
   email:      z.string().email('Email inválido').optional(),
@@ -16,7 +41,8 @@ export const CreateClientSchema = z.object({
   notes:      z.string().optional(),
   assignedTo: z.string().optional(),
   branchId:   z.string().optional(),
-})
+  ...favoriteDiscountShape,
+}).superRefine(refineDiscount)
 
 export const UpdateClientSchema = z.object({
   name:       z.string().min(1).max(255).optional(),
@@ -32,12 +58,14 @@ export const UpdateClientSchema = z.object({
   notes:      z.string().nullable().optional(),
   assignedTo: z.string().nullable().optional(),
   branchId:   z.string().nullable().optional(),
-})
+  ...favoriteDiscountShape,
+}).superRefine(refineDiscount)
 
 export const ClientQuerySchema = z.object({
   search:     z.string().optional(),
   source:     z.string().optional(),
   assignedTo: z.string().optional(),
+  favorite:   z.enum(['true', 'false']).optional(),
 })
 
 // ─── Interacciones ────────────────────────────────────────────────────────────

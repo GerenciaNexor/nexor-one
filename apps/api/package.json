@@ -17,6 +17,7 @@
     "db:reset": "prisma migrate reset --force && tsx prisma/setup-rls.ts && prisma db seed",
     "db:seed": "prisma db seed",
     "db:seed-e2e": "tsx prisma/seed-e2e.ts",
+    "db:seed-nexor": "tsx prisma/seed-nexor.ts",
     "db:seed:staging": "tsx prisma/seed-staging.ts",
     "db:rls": "tsx prisma/setup-rls.ts",
     "db:studio": "prisma studio",

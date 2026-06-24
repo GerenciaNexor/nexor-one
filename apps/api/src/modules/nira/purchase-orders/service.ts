@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
-import { prisma } from '../../../lib/prisma'
-import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, PurchaseOrderQuery, ReceivePurchaseOrderInput, FromAlertInput } from './schema'
+import { prisma, withTenantContext } from '../../../lib/prisma'
+import { computeSupplierScore } from '../../../jobs/supplier-scores'
+import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, PurchaseOrderQuery, ReceivePurchaseOrderInput, FromAlertInput, RatePurchaseOrderInput } from './schema'
 
 // ─── Estado válido ────────────────────────────────────────────────────────────
 
@@ -51,6 +52,8 @@ const PO_DETAIL_SELECT = {
       product: { select: { id: true, sku: true, name: true, unit: true } },
     },
   },
+  // HU-125 — calificación del proveedor para esta OC (si ya se calificó)
+  rating: { select: { deliveryRating: true, qualityRating: true, notes: true, createdAt: true } },
 } as const
 
 // ─── Conversión Decimal → number ──────────────────────────────────────────────
@@ -479,6 +482,57 @@ export async function receivePurchaseOrder(
     }
 
     return toApiPO(updated)
+  })
+}
+
+// ─── HU-125: calificar al proveedor al recibir la OC ──────────────────────────
+// Calificación (Entrega + Calidad, 1-5) + recálculo del score en UNA sola
+// transacción, para que el score consuma la calificación recién registrada.
+// La ruta opta por salir del wrapper de tenant-tx (config.tenantTx=false).
+
+export async function ratePurchaseOrder(
+  tenantId: string,
+  userId:   string,
+  id:       string,
+  input:    RatePurchaseOrderInput,
+) {
+  return withTenantContext(tenantId, async (tx) => {
+    const po = await tx.purchaseOrder.findFirst({
+      where:  { id, tenantId },
+      select: { id: true, status: true, supplierId: true },
+    })
+    if (!po) throw { statusCode: 404, message: 'Orden de compra no encontrada', code: 'NOT_FOUND' }
+    if (po.status !== 'received') {
+      throw { statusCode: 400, message: 'Solo se puede calificar una OC en estado received', code: 'INVALID_STATE' }
+    }
+    if (!po.supplierId) {
+      throw { statusCode: 400, message: 'La OC no tiene proveedor asociado para calificar', code: 'VALIDATION_ERROR' }
+    }
+
+    // Una calificación por OC (upsert por purchaseOrderId — se puede corregir).
+    const rating = await tx.supplierRating.upsert({
+      where:  { purchaseOrderId: id },
+      create: {
+        tenantId, supplierId: po.supplierId, purchaseOrderId: id,
+        deliveryRating: input.deliveryRating, qualityRating: input.qualityRating,
+        notes: input.notes ?? null, ratedBy: userId,
+      },
+      update: {
+        deliveryRating: input.deliveryRating, qualityRating: input.qualityRating,
+        notes: input.notes ?? null, ratedBy: userId,
+      },
+      select: { id: true, deliveryRating: true, qualityRating: true, notes: true, createdAt: true },
+    })
+
+    // Recalcular el score del proveedor de inmediato (no esperar al job diario).
+    const scores = await computeSupplierScore(tx, tenantId, po.supplierId)
+    await tx.supplierScore.upsert({
+      where:  { supplierId: po.supplierId },
+      create: { supplierId: po.supplierId, ...scores, calculatedAt: new Date() },
+      update: { ...scores, calculatedAt: new Date() },
+    })
+
+    return { success: true, rating, score: scores, mensaje: 'Calificación registrada; el score del proveedor fue actualizado.' }
   })
 }
 

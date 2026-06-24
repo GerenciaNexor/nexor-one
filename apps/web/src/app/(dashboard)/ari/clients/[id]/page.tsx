@@ -40,6 +40,12 @@ interface QuoteSummary {
 
 interface ClientDetail extends Client {
   assignedUser: { id: string; name: string } | null
+  // HU-126 — calificación INTERNA del equipo (no CSAT)
+  internalRating?: {
+    average: number | null
+    count:   number
+    recent:  { rating: number; notes: string | null; createdAt: string; by: string | null }[]
+  }
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -290,6 +296,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </button>
           <div>
             <div className="flex items-center gap-2">
+              {client.isFavorite && (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" aria-label="Cliente favorito">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              )}
               <h1 className="text-xl font-semibold text-slate-900">{client.name}</h1>
               {client.company && (
                 <span className="text-sm text-slate-400">{client.company}</span>
@@ -300,11 +311,30 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                 </span>
               )}
             </div>
-            {client.source && (
-              <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[client.source] ?? 'bg-slate-100 text-slate-600'}`}>
-                {SOURCE_LABELS[client.source] ?? client.source}
-              </span>
-            )}
+            <div className="mt-1 flex items-center gap-2">
+              {client.source && (
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[client.source] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {SOURCE_LABELS[client.source] ?? client.source}
+                </span>
+              )}
+              {client.discountType && client.discountValue != null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                  Descuento {client.discountType === 'percent' ? `${client.discountValue}%` : `$${client.discountValue.toLocaleString('es-CO')}`}
+                </span>
+              )}
+              {client.internalRating && client.internalRating.count > 0 && client.internalRating.average != null && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700"
+                  title="Calificación interna del equipo (no es satisfacción del cliente / CSAT)"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                  {client.internalRating.average.toFixed(1)} interna
+                  <span className="font-normal text-blue-400">({client.internalRating.count})</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

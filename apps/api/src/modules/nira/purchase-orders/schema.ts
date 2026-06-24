@@ -44,8 +44,16 @@ export const FromAlertSchema = z.object({
   branchId:  z.string().min(1, 'El branchId es requerido'),
 })
 
+// HU-125 — calificación del proveedor al recibir la OC (Entrega + Calidad, escala 1-5).
+export const RatePurchaseOrderSchema = z.object({
+  deliveryRating: z.number().int().min(1, 'Mínimo 1').max(5, 'Máximo 5'),
+  qualityRating:  z.number().int().min(1, 'Mínimo 1').max(5, 'Máximo 5'),
+  notes:          z.string().max(1000).optional(),
+})
+
 export type CreatePurchaseOrderInput  = z.infer<typeof CreatePurchaseOrderSchema>
 export type UpdatePurchaseOrderInput  = z.infer<typeof UpdatePurchaseOrderSchema>
 export type PurchaseOrderQuery        = z.infer<typeof PurchaseOrderQuerySchema>
 export type ReceivePurchaseOrderInput = z.infer<typeof ReceivePurchaseOrderSchema>
 export type FromAlertInput            = z.infer<typeof FromAlertSchema>
+export type RatePurchaseOrderInput    = z.infer<typeof RatePurchaseOrderSchema>

@@ -253,7 +253,7 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 #### `GET /v1/ari/clients` 🤖
 **Propósito:** Listar clientes del tenant con búsqueda y filtros.  
-**Query:** `?search=juan&source=whatsapp&assignedTo=me&page=1&limit=20`
+**Query:** `?search=juan&source=whatsapp&assignedTo=me&favorite=true` (`favorite` filtra solo favoritos — HU-124)
 
 #### `GET /v1/ari/clients/:id` 🤖
 **Propósito:** Ver ficha completa de un cliente con historial de interacciones, deals y cotizaciones.
@@ -263,6 +263,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Request:** `{ "name", "phone", "email", "source", "whatsappId", "branchId" }`
 
 #### `PUT /v1/ari/clients/:id`
+**Propósito:** Editar cliente. Acepta además `isFavorite` (bool) y el descuento manual
+`discountType` (`'percent'`|`'amount'`|null) + `discountValue` (van juntos) — HU-124. Guard `OPERATIVE.ARI`.
 #### `DELETE /v1/ari/clients/:id` — Soft delete
 
 ---
@@ -288,6 +290,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Propósito:** Mover un deal a otra etapa del pipeline.  
 **Request:** `{ "stageId": "clxstage2" }`  
 **Efecto secundario:** Si la nueva etapa es `is_final_won: true`, genera una `transaction` de ingreso en VERA.
+
+#### `POST /v1/ari/deals/:id/rate-client` 🆕 HU-126
+**Propósito:** Calificar **internamente** al cliente al cerrar la venta (deal en etapa ganada).  
+**Request:** `{ "rating": 4, "notes": "opcional" }` (escala 1-5)  
+**Notas:** Opcional (no bloquea el cierre). Una calificación por deal (upsert). **No** es CSAT. Guard `OPERATIVE.ARI`. El promedio se ve en la ficha del cliente (`GET /v1/ari/clients/:id` → `internalRating`).
 
 ---
 
@@ -358,6 +365,14 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Rol requerido:** `AREA_MANAGER` de NIRA o superior  
 **Propósito:** Desactivar proveedor (soft delete). Las OC existentes no se ven afectadas.
 
+#### `GET /v1/nira/preferred-supplier`
+**Propósito:** Consultar el proveedor preferido **global** del tenant (`tenants.default_supplier_id`). Devuelve `{ data: { id, name, isActive } | null }`. (HU-123)
+
+#### `PUT /v1/nira/preferred-supplier`
+**Rol requerido:** `AREA_MANAGER` de NIRA o superior  
+**Body:** `{ "supplierId": "sup_xxx" | null }` (`null` lo quita)  
+**Propósito:** Fijar/quitar el preferido global. Respaldo cuando un producto no tiene preferido propio. El preferido **por producto** se fija con `PUT /v1/kira/products/:id` (`preferredSupplierId`). (HU-123)
+
 ---
 
 ### Órdenes de compra
@@ -393,6 +408,11 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 **Propósito:** Registrar recepción (total o parcial) de una OC.  
 **Request:** `{ "items": [{ "purchaseOrderItemId": "xxx", "quantityReceived": 80 }] }`  
 **Efecto secundario:** Genera `stock_movement` de entrada en KIRA por cada ítem recibido.
+
+#### `POST /v1/nira/purchase-orders/:id/rate` 🆕 HU-125
+**Propósito:** Calificar al proveedor (Entrega + Calidad, 1-5) de una OC en estado `received`. Recalcula su score al instante.  
+**Request:** `{ "deliveryRating": 5, "qualityRating": 4, "notes": "opcional" }`  
+**Notas:** Opcional (no rompe el flujo de recepción). Una calificación por OC (upsert). Guard `OPERATIVE.NIRA`.
 
 #### `POST /v1/nira/purchase-orders/from-alert`
 **Propósito:** Crear una OC borrador a partir de una alerta de stock crítico de KIRA.  
@@ -831,6 +851,13 @@ Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MA
 }
 ```
 **Comportamiento de fallos:** Si un módulo falla o supera 800 ms, devuelve `{ data: null, error: "timeout after 800ms" }` sin afectar los demás módulos.
+
+### `GET /v1/dashboard/timeseries` 🆕 HU-127
+**Propósito:** Series **diarias** para los gráficos de líneas del Dashboard (Inicio es distinto: KPIs puntuales). Lee del rollup diario — no consulta pesada por carga.  
+**Query:** `?from=YYYY-MM-DD&to=YYYY-MM-DD` (default: últimos 30 días; máx 366).  
+**Rol:** `OPERATIVE`+. Respeta la sucursal vía `getBranchFilter` (TENANT_ADMIN → `scope: "consolidado"`; BRANCH_ADMIN/otros → su `branchId`).  
+**Response:** `{ success, data: { from, to, scope, points: [{ date, purchasesReceived, purchasesAmount, salesCount, salesAmount, purchaseOrdersCreated, quotesCreated }] } }` (días sin datos → 0).  
+**Distinción:** `purchaseOrdersCreated` = OC creadas; `purchasesReceived` = OC recibidas. `salesCount` = deals ganados (disparador HU-126).
 
 ---
 

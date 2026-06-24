@@ -149,13 +149,28 @@ export const KIRA_TOOLS = [
 | Tool | Qué hace |
 |------|---------|
 | `listar_proveedores` | Lista proveedores, opcionalmente filtrados por producto |
-| `comparar_precios` | Devuelve historial de precios por proveedor |
-| `crear_borrador_oc` | Crea borrador de OC pendiente de aprobación |
+| `comparar_precios` | Historial de precios por proveedor. **Marca el proveedor preferido (`preferido=true`) y lo lista primero** (HU-123) |
+| `crear_borrador_oc` | Crea borrador de OC pendiente de aprobación. `supplierId` es **opcional**: si se omite usa el **proveedor preferido** y deja constancia en las notas (HU-123) |
 | `consultar_presupuesto` | Verifica presupuesto disponible del mes |
 | `notificar_jefe_compras` | Notificación in-app urgente al AREA_MANAGER de NIRA |
 | `consultar_ordenes_compra` | Consulta órdenes de compra del tenant |
-| `consultar_ranking_proveedores` | Devuelve el ranking de proveedores por score |
+| `consultar_ranking_proveedores` | Ranking por score Precio/Entrega/Calidad (0-10). Entrega y Calidad salen de las calificaciones al recibir la OC; Precio del histórico. Un eje sin datos devuelve `"sin datos"`, no 0 (HU-125) |
 | `consultar_reporte_costos` | Devuelve el reporte/resumen de costos |
+
+**Proveedor preferido (HU-123).** Cada producto puede tener un proveedor preferido y el tenant
+uno **global** de respaldo. La resolución que aplican las tools es:
+
+```
+preferido del producto (products.preferred_supplier_id, si está activo)
+  → preferido global del tenant (tenants.default_supplier_id, si está activo)
+  → comportamiento actual (sin preferencia)
+```
+
+`comparar_precios` lo marca y lo ordena primero; `crear_borrador_oc` lo propone por defecto. El
+`system prompt` de NIRA ([prompts.ts](./apps/api/src/modules/agents/prompts.ts)) indica al agente
+recomendarlo primero —es una recomendación, no un bloqueo: puede proponer otro con justificación.
+Se gestiona desde la UI (detalle de producto en KIRA y página de Proveedores en NIRA) o vía API
+(`PUT /v1/kira/products/:id` con `preferredSupplierId`, y `GET/PUT /v1/nira/preferred-supplier`).
 
 ### KIRA — Tools de inventario
 

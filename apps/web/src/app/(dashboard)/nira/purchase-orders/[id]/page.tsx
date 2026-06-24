@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { Portal } from '@/components/ui/Portal'
 import { ReceiveModal } from '@/components/nira/ReceiveModal'
+import { RatePurchaseOrderModal } from '@/components/nira/RatePurchaseOrderModal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ interface PurchaseOrder {
   creator:  { id: string; name: string }
   approver: { id: string; name: string } | null
   items:    POItem[]
+  rating:   { deliveryRating: number; qualityRating: number; notes: string | null; createdAt: string } | null
 }
 
 // ─── Auxiliares ───────────────────────────────────────────────────────────────
@@ -127,16 +129,19 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
   const [confirm,         setConfirm]         = useState<'submit' | 'approve' | 'cancel' | null>(null)
   const [showReceive,     setShowReceive]     = useState(false)
   const [receivedSuccess, setReceivedSuccess] = useState(false)
+  const [showRate,        setShowRate]        = useState(false)
 
-  useEffect(() => {
-    apiClient.get<PurchaseOrder>(`/v1/nira/purchase-orders/${id}`)
+  function fetchPO() {
+    return apiClient.get<PurchaseOrder>(`/v1/nira/purchase-orders/${id}`)
       .then(setPo)
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setError(e.message ?? 'Error al cargar la orden de compra')
       })
       .finally(() => setLoading(false))
-  }, [id])
+  }
+
+  useEffect(() => { fetchPO() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function executeAction(action: 'submit' | 'approve' | 'cancel') {
     setActionLoading(true)
@@ -187,6 +192,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
   const canApprove = po.status === 'submitted' && isManager
   const canCancel  = ['draft', 'submitted', 'approved', 'sent', 'partial'].includes(po.status) && isManager
   const canReceive = ['approved', 'sent', 'partial'].includes(po.status)
+  const canRate    = po.status === 'received'  // HU-125 — calificar al proveedor
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -233,6 +239,15 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
               Registrar recepción
             </button>
           )}
+          {canRate && (
+            <button onClick={() => setShowRate(true)} disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-60">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+              {po.rating ? 'Editar calificación' : 'Calificar proveedor'}
+            </button>
+          )}
           {canCancel && (
             <button onClick={() => setConfirm('cancel')} disabled={actionLoading}
               className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors disabled:opacity-60">
@@ -257,6 +272,14 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
       )}
       {actionError && (
         <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{actionError}</div>
+      )}
+      {po.rating && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-violet-100 bg-violet-50/50 px-4 py-3 text-sm">
+          <span className="font-medium text-slate-700">Calificación al proveedor:</span>
+          <span className="text-violet-700">Entrega {po.rating.deliveryRating}/5</span>
+          <span className="text-emerald-700">Calidad {po.rating.qualityRating}/5</span>
+          {po.rating.notes && <span className="truncate text-slate-400">· {po.rating.notes}</span>}
+        </div>
       )}
 
       {/* ── Contenido ───────────────────────────────────────────────────── */}
@@ -438,7 +461,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
             setPo(updated as typeof po)
             setShowReceive(false)
             setReceivedSuccess(true)
+            // HU-125 — al quedar recibida, se ofrece calificar al proveedor (opcional)
+            if ((updated as { status?: string }).status === 'received') setShowRate(true)
           }}
+        />
+      )}
+
+      {/* ── Modal de calificación (HU-125) ───────────────────────────────── */}
+      {showRate && (
+        <RatePurchaseOrderModal
+          poId={po.id}
+          orderNumber={po.orderNumber}
+          supplierName={po.supplier?.name ?? 'Proveedor'}
+          initial={po.rating}
+          onClose={() => setShowRate(false)}
+          onRated={() => { setShowRate(false); fetchPO() }}
         />
       )}
     </div>
