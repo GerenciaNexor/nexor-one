@@ -23,6 +23,7 @@ interface User { id: string; name: string }
 const SOURCE_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
   email:    'Email',
+  web:      'Web',
   manual:   'Manual',
   referido: 'Referido',
 }
@@ -30,6 +31,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_COLORS: Record<string, string> = {
   whatsapp: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   email:    'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  web:      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   manual:   'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
   referido: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
 }
