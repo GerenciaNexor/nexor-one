@@ -90,6 +90,7 @@ const SOURCE_OPTIONS = [
   { value: '',          label: 'Sin especificar' },
   { value: 'whatsapp',  label: 'WhatsApp' },
   { value: 'email',     label: 'Email' },
+  { value: 'web',       label: 'Web' },
   { value: 'manual',    label: 'Manual' },
   { value: 'referido',  label: 'Referido' },
 ]

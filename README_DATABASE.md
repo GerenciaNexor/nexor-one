@@ -694,20 +694,33 @@ Historial inmutable de cada cambio en el inventario. Trazabilidad completa.
 | `tenant_id` | `VARCHAR(30)` | FK → tenants.id, NOT NULL | Empresa |
 | `product_id` | `VARCHAR(30)` | FK → products.id, NOT NULL | Producto |
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NOT NULL | Sucursal donde ocurrió el movimiento |
-| `user_id` | `VARCHAR(30)` | FK → users.id, NULL | Usuario responsable (NULL = sistema) |
-| `type` | `VARCHAR(30)` | NOT NULL | entrada, salida, ajuste, transferencia, merma |
-| `quantity` | `DECIMAL(10,2)` | NOT NULL | Cantidad del movimiento (positivo=entrada, negativo=salida) |
+| `user_id` | `VARCHAR(30)` | FK → users.id, NULL | Usuario responsable (el código siempre lo setea; histórico puede ser NULL) |
+| `type` | `VARCHAR(30)` | NOT NULL | **CÓMO**: `entrada` \| `salida` \| `ajuste` (normalizado en minúsculas — HU-128) |
+| `reason` | `VARCHAR(20)` | NOT NULL, DEFAULT `'desconocido'` | **POR QUÉ** (HU-128, obligatorio): `compra` \| `venta` \| `devolucion` \| `ajuste` \| `traslado` \| `desconocido` |
+| `quantity` | `DECIMAL(10,2)` | NOT NULL | Cantidad del movimiento (valor absoluto del delta) |
 | `quantity_before` | `DECIMAL(10,2)` | NOT NULL | Stock antes del movimiento |
 | `quantity_after` | `DECIMAL(10,2)` | NOT NULL | Stock después del movimiento |
-| `reference_type` | `VARCHAR(50)` | NULL | Tipo de referencia (purchase_order, quote, manual) |
+| `reference_type` | `VARCHAR(50)` | NULL | Documento de origen: `purchase_order` (compra), `deal` (venta), `bulk_upload` |
 | `reference_id` | `VARCHAR(30)` | NULL | ID del documento que generó el movimiento |
+| `sale_price_frozen` | `DECIMAL(15,2)` | NULL | HU-128 — precio de venta CONGELADO del momento (solo ventas) → margen histórico |
+| `cost_price_frozen` | `DECIMAL(15,2)` | NULL | HU-128 — precio de costo CONGELADO del momento (solo ventas) |
 | `lot_number` | `VARCHAR(100)` | NULL | Número de lote |
 | `expiry_date` | `DATE` | NULL | Fecha de caducidad del lote |
 | `notes` | `TEXT` | NULL | Notas del movimiento |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Cuándo ocurrió |
 
-**Índices:** `(tenant_id, product_id)`, `(branch_id)`, `(created_at DESC)`, `(reference_type, reference_id)`  
+**Índices:** `(tenant_id, product_id)`, `(branch_id)`, `(created_at DESC)`, `(reference_type, reference_id)`, `(tenant_id, reason)`  
 **Notas:** Esta tabla es APPEND-ONLY. Nunca se modifica ni elimina un movimiento.
+
+**Trazabilidad (HU-128):** todo movimiento registra **quién** (`user_id`), **cómo** (`type`) y
+**por qué** (`reason`, obligatorio), con referencia al documento de origen. En las **ventas** se
+congelan `sale_price_frozen` y `cost_price_frozen` (precio de la línea de cotización + costo del
+producto del momento) para calcular margen histórico exacto sin depender de los precios actuales.
+
+**Backfill (HU-128):** la migración rellenó `reason` de los movimientos históricos derivándolo de
+`reference_type`/`type` (`purchase_order`→compra, `deal`/`quote`→venta, `bulk_upload`/`ajuste`→ajuste);
+lo no derivable quedó marcado **`desconocido`**. Los precios congelados históricos quedan NULL (no
+reconstruibles). El DEFAULT `'desconocido'` garantiza que el motivo nunca quede vacío.
 
 ---
 

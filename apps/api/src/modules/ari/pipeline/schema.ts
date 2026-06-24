@@ -49,6 +49,9 @@ export const DealQuerySchema = z.object({
   stageId:    z.string().optional(),
   assignedTo: z.string().optional(),
   clientId:   z.string().optional(),
+  // HU-133 — Historial: filtro por fecha/rango sobre createdAt (inclusivo).
+  from:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido (YYYY-MM-DD)').optional(),
+  to:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido (YYYY-MM-DD)').optional(),
 })
 
 // HU-126 — calificación interna del equipo al cliente al cerrar la venta (deal ganado). Escala 1-5.

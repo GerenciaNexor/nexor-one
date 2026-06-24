@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   }
   // Movimientos de inventario (inmutables). Entradas/salidas de ejemplo.
   const mv = (prod: typeof products[number], branchId: string, type: 'entrada' | 'salida', qty: number, before: number, userId: string, n: number) =>
-    prisma.stockMovement.create({ data: { tenantId: tenant.id, productId: prod.id, branchId, userId, type, quantity: qty, quantityBefore: before, quantityAfter: type === 'entrada' ? before + qty : before - qty, notes: type === 'entrada' ? 'Recepción de compra' : 'Venta mostrador', createdAt: day(-n) } })
+    prisma.stockMovement.create({ data: { tenantId: tenant.id, productId: prod.id, branchId, userId, type, reason: type === 'entrada' ? 'compra' : 'venta', quantity: qty, quantityBefore: before, quantityAfter: type === 'entrada' ? before + qty : before - qty, notes: type === 'entrada' ? 'Recepción de compra' : 'Venta mostrador', createdAt: day(-n) } })
   await mv(products[0]!, bogota.id, 'entrada', 50, 0, uInv.id, 12)
   await mv(products[0]!, bogota.id, 'salida', 5, 50, uOper.id, 6)
   await mv(products[1]!, bogota.id, 'entrada', 70, 0, uInv.id, 11)
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
     { name: 'Juan Martínez', email: 'juanm@gmail.com', phone: '3003334455', company: null, city: 'Cali', source: 'referido', tags: ['minorista'], fav: false, dtype: null, dval: null },
     { name: 'Café del Centro', email: 'admin@cafecentro.co', phone: '3004445566', company: 'Café del Centro', city: 'Bogotá', source: 'whatsapp', tags: [], fav: false, dtype: null, dval: null },
     { name: 'Estudio Creativo DC', email: 'hola@estudiodc.co', phone: '3005556677', company: 'Estudio DC', city: 'Bogotá', source: 'web', tags: ['recurrente'], fav: true, dtype: 'percent' as const, dval: 5 },
-    { name: 'Laura Fernández', email: 'lauraf@outlook.com', phone: '3006667788', company: null, city: 'Barranquilla', source: 'gmail', tags: ['lead'], fav: false, dtype: null, dval: null },
+    { name: 'Laura Fernández', email: 'lauraf@outlook.com', phone: '3006667788', company: null, city: 'Barranquilla', source: 'email', tags: ['lead'], fav: false, dtype: null, dval: null },
   ]
   const clients = []
   for (const c of clientDefs) clients.push(await prisma.client.create({ data: { tenantId: tenant.id, name: c.name, email: c.email, phone: c.phone, company: c.company ?? undefined, city: c.city, source: c.source, tags: c.tags, assignedTo: uVentas.id, branchId: bogota.id, isFavorite: c.fav, discountType: c.dtype, discountValue: c.dval } }))

@@ -8,6 +8,7 @@ import { SupplierFormModal } from '@/components/nira/SupplierFormModal'
 import type { Supplier } from '@/components/nira/SupplierFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { Portal } from '@/components/ui/Portal'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -83,9 +84,9 @@ export default function SuppliersPage() {
                   user?.role === 'TENANT_ADMIN'  || user?.role === 'SUPER_ADMIN'
 
   // Lista
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [total, setTotal]         = useState(0)
-  const [loading, setLoading]     = useState(true)
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => getCache<Supplier[]>('suppliers') ?? [])
+  const [total, setTotal]         = useState(() => getCache<{ total: number }>('suppliers-meta')?.total ?? 0)
+  const [loading, setLoading]     = useState(!getCache<Supplier[]>('suppliers'))
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Filtros
@@ -115,14 +116,18 @@ export default function SuppliersPage() {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   function fetchSuppliers() {
-    setLoading(true)
+    const noFilters = !search && !activeFilter
+    if (!(noFilters && getCache<Supplier[]>('suppliers'))) setLoading(true)
     setFetchError(null)
     const qs = new URLSearchParams()
     if (search)       qs.set('search', search)
     if (activeFilter) qs.set('active', activeFilter)
     const query = qs.toString()
     apiClient.get<SuppliersResponse>(`/v1/nira/suppliers${query ? `?${query}` : ''}`)
-      .then((res) => { setSuppliers(res.data); setTotal(res.total) })
+      .then((res) => {
+        setSuppliers(res.data); setTotal(res.total)
+        if (noFilters) { setCache('suppliers', res.data); setCache('suppliers-meta', { total: res.total }) }
+      })
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setFetchError(e.message ?? 'Error al cargar proveedores')

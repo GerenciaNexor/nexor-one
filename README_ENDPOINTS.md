@@ -280,7 +280,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 
 #### `GET /v1/ari/deals` 🤖
 **Propósito:** Listar deals. Por defecto los del usuario autenticado. AREA_MANAGER ve todos.  
-**Query:** `?stageId=xxx&assignedTo=me&clientId=xxx`
+**Query:** `?stageId=xxx&assignedTo=me&clientId=xxx&from=YYYY-MM-DD&to=YYYY-MM-DD`  
+**Notas (HU-133):** `from`/`to` filtran por `createdAt` (rango inclusivo) — usado por el **Historial de ventas**. Respeta sucursal vía `getBranchFilter` (admin = todas; los demás su sucursal). La venta finalizada = etapa `isFinalWon` (HU-126).
 
 #### `POST /v1/ari/deals` 🤖
 **Propósito:** Crear nuevo deal (el agente lo usa cuando detecta intención de compra).  
@@ -378,7 +379,8 @@ Estos endpoints los llaman servicios externos (Meta, Google), no el frontend.
 ### Órdenes de compra
 
 #### `GET /v1/nira/purchase-orders` 🤖
-**Query:** `?status=submitted&supplierId=xxx&branchId=xxx`
+**Query:** `?status=submitted&supplierId=xxx&branchId=xxx&from=YYYY-MM-DD&to=YYYY-MM-DD`  
+**Notas (HU-133):** `status` usa el vocabulario **canónico** (HU-116: draft, submitted, approved, sent, partial, received, cancelled); `from`/`to` filtran por `createdAt` (rango inclusivo) — usado por el **Historial de compras**. Respeta sucursal vía `getBranchFilter` (admin = todas; los demás su sucursal).
 
 #### `POST /v1/nira/purchase-orders` 🤖
 **Request:**
@@ -858,6 +860,12 @@ Requiere autenticación JWT. Todos los roles pueden acceder; OPERATIVE y AREA_MA
 **Rol:** `OPERATIVE`+. Respeta la sucursal vía `getBranchFilter` (TENANT_ADMIN → `scope: "consolidado"`; BRANCH_ADMIN/otros → su `branchId`).  
 **Response:** `{ success, data: { from, to, scope, points: [{ date, purchasesReceived, purchasesAmount, salesCount, salesAmount, purchaseOrdersCreated, quotesCreated }] } }` (días sin datos → 0).  
 **Distinción:** `purchaseOrdersCreated` = OC creadas; `purchasesReceived` = OC recibidas. `salesCount` = deals ganados (disparador HU-126).
+
+### `GET /v1/dashboard/top-products` 🆕 HU-130
+**Propósito:** Top 10 de productos del rango: **más vendidos** (unidades) y **mayor ganancia** (margen). Sale de `stock_movements` (solo salidas con motivo `venta`; márgenes con **precios congelados** de HU-128).  
+**Query:** `?from=YYYY-MM-DD&to=YYYY-MM-DD` (mismo validador que timeseries).  
+**Rol:** `OPERATIVE`+. Respeta la sucursal vía `getBranchFilter`.  
+**Response:** `{ success, data: { from, to, scope, byUnits: [{ productId, name, sku, units, profit }], byProfit: [...] } }` (sin ventas → arrays vacíos). `profit = Σ (sale_price_frozen − cost_price_frozen) × units`.
 
 ---
 

@@ -8,6 +8,7 @@ import { ClientFormModal } from '@/components/ari/ClientFormModal'
 import type { Client } from '@/components/ari/ClientFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { Portal } from '@/components/ui/Portal'
+import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface User { id: string; name: string }
 const SOURCE_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
   email:    'Email',
+  web:      'Web',
   manual:   'Manual',
   referido: 'Referido',
 }
@@ -30,6 +32,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_COLORS: Record<string, string> = {
   whatsapp: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   email:    'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  web:      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   manual:   'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
   referido: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
 }
@@ -119,9 +122,9 @@ export default function ClientsPage() {
   const canEdit       = true // todos los roles pueden editar
 
   // Lista
-  const [clients, setClients]       = useState<Client[]>([])
-  const [total, setTotal]           = useState(0)
-  const [loading, setLoading]       = useState(true)
+  const [clients, setClients]       = useState<Client[]>(() => getCache<Client[]>('clients') ?? [])
+  const [total, setTotal]           = useState(() => getCache<{ total: number }>('clients-meta')?.total ?? 0)
+  const [loading, setLoading]       = useState(!getCache<Client[]>('clients'))
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Filtros
@@ -157,7 +160,8 @@ export default function ClientsPage() {
 
   // ── Fetch clientes ───────────────────────────────────────────────────────
   function fetchClients() {
-    setLoading(true)
+    const noFilters = !search && !sourceFilter && !vendorFilter && !favoriteOnly
+    if (!(noFilters && getCache<Client[]>('clients'))) setLoading(true)
     setFetchError(null)
     const qs = new URLSearchParams()
     if (search)       qs.set('search', search)
@@ -166,7 +170,10 @@ export default function ClientsPage() {
     if (favoriteOnly) qs.set('favorite', 'true')
     const query = qs.toString()
     apiClient.get<ClientsResponse>(`/v1/ari/clients${query ? `?${query}` : ''}`)
-      .then((res) => { setClients(res.data); setTotal(res.total) })
+      .then((res) => {
+        setClients(res.data); setTotal(res.total)
+        if (noFilters) { setCache('clients', res.data); setCache('clients-meta', { total: res.total }) }
+      })
       .catch((err: unknown) => {
         const e = err as { message?: string }
         setFetchError(e.message ?? 'Error al cargar clientes')
