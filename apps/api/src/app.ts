@@ -90,9 +90,18 @@ app.addHook('onClose', async () => {
 app.register(swaggerPlugin)
 
 // ─── Plugins globales ────────────────────────────────────────────────────────
+// CORS: orígenes permitidos desde la env var CORS_ORIGIN (lista separada por comas).
+// Se recorta cada valor y se descartan vacíos → tolera espacios tras la coma en la
+// config de Railway (evita un fallo silencioso de CORS por un espacio de más).
+const corsOrigins = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
 app.register(fastifyCors, {
-  origin: process.env['CORS_ORIGIN']?.split(',') ?? 'http://localhost:3000',
+  origin: corsOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 })
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
