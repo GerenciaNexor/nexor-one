@@ -53,8 +53,9 @@ aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo
 `setup-rls.ts` cubre **26 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
-desde HU-127). `db:rls` es la **fuente única de verdad** del RLS: re-aplica todas las políticas
-tras un restore.
+desde HU-127). Además (HU-134) habilita RLS **deny-all** en `platform_admins` (sin política: `nexor_app`
+no puede leerla; solo `directPrisma`). `db:rls` es la **fuente única de verdad** del RLS: re-aplica
+todas las políticas tras un restore.
 
 ### E2E (un proyecto/archivo concreto)
 
@@ -68,6 +69,15 @@ pnpm --filter @nexor/e2e exec playwright test tests/kira.spec.ts
 
 Una sola base de datos compartida, aislada por `tenant_id` vía **Row-Level Security** de PostgreSQL.
 
+- **Dos identidades separadas por diseño (HU-134):**
+  - **Clientes** → tabla `users` (con `tenant_id` **NOT NULL**). Login en `/v1/auth/login`;
+    JWT `{ userId, tenantId, branchId, role, module }`.
+  - **Equipo NEXOR (plataforma)** → tabla `platform_admins` (**sin `tenant_id`**). Login propio en
+    `/v1/platform/auth/login`; JWT `{ platformAdminId, role: 'SUPER_ADMIN' }` **sin tenantId**. Nunca
+    pertenece a una empresa ni ve sus datos de negocio. Un token de plataforma en una ruta de tenant
+    → **403 `PLATFORM_IDENTITY_FORBIDDEN`**; el acceso a datos de un cliente es solo por
+    **impersonación** (`/v1/admin/tenants/:id/impersonate` → JWT `{ platformAdminId, tenantId, imp:true }`).
+    `platform_admins` tiene **RLS deny-all** para `nexor_app` (solo `directPrisma` la lee).
 - El `tenant_id` **siempre** sale del JWT (`{ userId, tenantId, branchId, role, module }`),
   nunca del body del request.
 - **Contexto por-request (HU-122):** cada handler protegido corre dentro de una **transacción

@@ -137,7 +137,31 @@ Todos los usuarios del sistema, de todos los roles y tenants.
 **Índices:** `(email)` UNIQUE, `(tenant_id)`, `(tenant_id, role)`, `(branch_id)`  
 **Enum `Role`:** `SUPER_ADMIN | TENANT_ADMIN | BRANCH_ADMIN | AREA_MANAGER | OPERATIVE`  
 **Enum `Module`:** `ARI | NIRA | KIRA | AGENDA | VERA`  
-**RLS:** Solo usuarios del mismo `tenant_id`. SUPER_ADMIN ve todos.
+**RLS:** Solo usuarios del mismo `tenant_id`. `tenant_id` es **NOT NULL** para todos los roles.
+**HU-134:** el equipo NEXOR **ya no vive aquí** — está en `platform_admins`. Ningún registro de `users`
+tiene rol `SUPER_ADMIN` (se retiran con `db:migrate-superadmins`); el modelo de clientes no se debilita.
+
+---
+
+#### `platform_admins` (HU-134)
+
+Identidad del **equipo NEXOR** (operadores de la plataforma). Tabla **SEPARADA** de `users`, **sin
+`tenant_id`**: no pertenece a ninguna empresa.
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | cuid |
+| `email` | VARCHAR(255) UNIQUE | login |
+| `name` | VARCHAR(255) | |
+| `password_hash` | VARCHAR(255) | bcrypt |
+| `is_active` | BOOLEAN | default true |
+| `last_login_at` | TIMESTAMPTZ | |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Login:** `/v1/platform/auth/login` → JWT **sin `tenantId`** (`{ platformAdminId, role: 'SUPER_ADMIN' }`).
+**RLS:** **deny-all** — se habilita RLS **sin política**, así `nexor_app` no puede leerla ni filtrarla
+como si fuera un usuario de tenant; solo `directPrisma` (superuser) la accede en el camino de auth de
+plataforma. Un `platform_admin` **nunca** aparece como usuario de ninguna empresa.
 
 ---
 

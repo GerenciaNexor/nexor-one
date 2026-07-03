@@ -18,19 +18,26 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
 
 ## Descripción detallada de cada rol
 
-### SUPER_ADMIN
-**Quién lo tiene:** Solo el equipo interno de NEXOR (máximo 2-3 personas).  
+### SUPER_ADMIN — identidad de PLATAFORMA (HU-134)
+**Quién lo tiene:** Solo el equipo interno de NEXOR (máximo 2-3 personas).
+
+> **Identidad separada por diseño (HU-134):** el SUPER_ADMIN **NO es un usuario de tenant**. Vive en
+> la tabla **`platform_admins`** (sin `tenant_id`), con **login propio** (`/v1/platform/auth/login`)
+> que emite un **JWT sin `tenantId`** (`{ platformAdminId, role: 'SUPER_ADMIN' }`). Así nunca está
+> atado a una empresa ni ve sus datos de negocio. El valor `SUPER_ADMIN` del enum `Role` se conserva
+> (lo lleva el JWT de plataforma y el de impersonación), pero **ningún registro de `users` tiene ese rol**.
+
 **Qué puede hacer:**
-- Ver todos los tenants de la plataforma
-- Activar y desactivar tenants
-- Impersonar cualquier cuenta para soporte técnico (queda en audit log con timestamp, IP y userId)
-- Modificar feature flags de cualquier tenant
-- Acceder a todos los endpoints bajo `/v1/admin/*`
+- Ver todos los tenants de la plataforma · activar/desactivar tenants · modificar feature flags
+- Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
+- Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)
 
 **Qué NO puede hacer:**
-- Modificar datos de negocio (clientes, productos, OCs) de un tenant sin impersonar — y al impersonar, la acción queda registrada
+- Acceder a rutas de tenant con su token de plataforma → **403 `PLATFORM_IDENTITY_FORBIDDEN`**. El
+  único camino a datos de una empresa es la **impersonación** (explícita y auditada).
 
-**Cómo se crea:** Solo mediante script directo en la DB. No existe endpoint para crear SUPER_ADMIN.
+**Cómo se crea:** Insertando en `platform_admins` (script/seed con `directPrisma`). Los SUPER_ADMIN
+que existieran en `users` se migran con `pnpm --filter @nexor/api db:migrate-superadmins`.
 
 ---
 

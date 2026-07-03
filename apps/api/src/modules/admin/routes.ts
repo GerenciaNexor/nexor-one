@@ -3,10 +3,13 @@ import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation, toggle
 import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
+import { isPlatformAdminActive } from '../platform/service'
 
 /**
  * Hook onRequest para el scope /v1/admin.
- * Verifica el JWT y exige exactamente el rol SUPER_ADMIN.
+ * HU-134 — exige una identidad de PLATAFORMA (platform_admins), no un usuario de tenant.
+ * Solo un JWT de plataforma (con platformAdminId + rol SUPER_ADMIN) pasa; un token de
+ * cliente (aunque manipulara su rol) no lleva platformAdminId → 403.
  */
 export async function superAdminHook(
   request: FastifyRequest,
@@ -17,11 +20,15 @@ export async function superAdminHook(
   } catch {
     return reply.code(401).send({ error: 'Token invalido o expirado', code: 'UNAUTHORIZED' })
   }
-  if (request.user.role !== 'SUPER_ADMIN') {
+  const { platformAdminId, role } = request.user
+  if (!platformAdminId || role !== 'SUPER_ADMIN') {
     return reply.code(403).send({
-      error: 'Solo el Super Admin puede acceder a este panel',
+      error: 'Solo el equipo NEXOR (plataforma) puede acceder a este panel',
       code: 'FORBIDDEN',
     })
+  }
+  if (!(await isPlatformAdminActive(platformAdminId))) {
+    return reply.code(403).send({ error: 'Cuenta de plataforma desactivada.', code: 'ACCOUNT_DISABLED' })
   }
 }
 
@@ -160,18 +167,23 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
+    // HU-134 — token de impersonación: identidad = el operador de plataforma
+    // (platformAdminId), con tenantId del objetivo y `imp: true`. El tenantHook lo
+    // reconoce (verifica platform_admins, no users) y le aplica contexto de tenant.
+    const platformAdminId = request.user.platformAdminId as string
     const token = app.jwt.sign(
       {
-        userId: request.user.userId,
+        platformAdminId,
         tenantId: id,
         branchId: null,
         role: 'TENANT_ADMIN' as const,
+        imp: true,
       },
       { expiresIn: '1h' },
     )
 
     const requestIp = request.ip
-    await logImpersonation(id, request.user.userId, requestIp)
+    await logImpersonation(id, platformAdminId, requestIp)
 
     return reply.code(200).send({ token, expiresIn: '1h' })
   })

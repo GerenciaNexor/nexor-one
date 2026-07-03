@@ -200,6 +200,26 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+/// Identidad del equipo NEXOR — operadores de la PLATAFORMA (HU-134).
+/// Tabla SEPARADA de `users`: NO tiene tenant_id ni pertenece a ninguna empresa.
+/// Su login es propio y su JWT no lleva tenantId. El aislamiento plataforma/cliente
+/// queda garantizado por diseño (tablas distintas), no por reglas de aplicación.
+/// Solo se accede vía directPrisma (superuser); RLS habilitada sin política =
+/// nexor_app no puede leerla ni filtrarla como si fuera un usuario de tenant.
+model PlatformAdmin {
+  id           String    @id @default(cuid()) @db.VarChar(30)
+  email        String    @unique @db.VarChar(255)
+  name         String    @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_admins")
+}
+
 /// Modulos activos por tenant. Se crea un registro por modulo al crear el tenant.
 model FeatureFlag {
   id       String     @id @default(cuid()) @db.VarChar(30)
