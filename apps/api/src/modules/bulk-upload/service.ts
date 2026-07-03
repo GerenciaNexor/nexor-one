@@ -720,35 +720,21 @@ async function notifyFailure(
   errorCount: number,
 ): Promise<void> {
   try {
-    const [admins, superAdmins] = await Promise.all([
-      prisma.user.findMany({
-        where: { tenantId, role: 'TENANT_ADMIN', isActive: true },
-        select: { id: true },
-      }),
-      prisma.user.findMany({
-        where: { role: 'SUPER_ADMIN', isActive: true },
-        select: { id: true, tenantId: true },
-      }),
-    ])
+    // Notifica a los admins del tenant. El equipo NEXOR (plataforma) NO recibe notificaciones
+    // in-app: supervisa las cargas desde la plataforma (/platform/supervision, HU-137/HU-140).
+    const admins = await prisma.user.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', isActive: true },
+      select: { id: true },
+    })
 
-    const notificationData = [
-      ...admins.map((u) => ({
-        tenantId,
-        userId:  u.id,
-        type:    'bulk_upload_failed',
-        title:   'Carga masiva con errores',
-        message: `El archivo "${fileName}" (${type}) tuvo ${errorCount} error(es). Revisa el detalle para corregirlos.`,
-        link:    `/settings/bulk-upload/${logId}`,
-      })),
-      ...superAdmins.map((sa) => ({
-        tenantId: sa.tenantId,
-        userId:   sa.id,
-        type:     'bulk_upload_failed',
-        title:    `Carga masiva fallida — tenant ${tenantId}`,
-        message:  `El archivo "${fileName}" (${type}) tuvo ${errorCount} error(es).`,
-        link:     `/admin/bulk-uploads/${logId}`,
-      })),
-    ]
+    const notificationData = admins.map((u) => ({
+      tenantId,
+      userId:  u.id,
+      type:    'bulk_upload_failed',
+      title:   'Carga masiva con errores',
+      message: `El archivo "${fileName}" (${type}) tuvo ${errorCount} error(es). Revisa el detalle para corregirlos.`,
+      link:    `/settings/bulk-upload/${logId}`,
+    }))
 
     if (notificationData.length > 0) {
       await prisma.notification.createMany({ data: notificationData })
@@ -767,22 +753,24 @@ async function notifySuccess(
   startedAt: Date,
 ): Promise<void> {
   try {
-    const superAdmins = await prisma.user.findMany({
-      where: { role: 'SUPER_ADMIN', isActive: true },
-      select: { id: true, tenantId: true },
+    // Notifica a los admins del tenant. El equipo NEXOR supervisa desde la plataforma
+    // (/platform/supervision, HU-140), sin notificaciones in-app.
+    const admins = await prisma.user.findMany({
+      where: { tenantId, role: 'TENANT_ADMIN', isActive: true },
+      select: { id: true },
     })
 
     const durationSec = Math.round((Date.now() - startedAt.getTime()) / 1000)
 
-    if (superAdmins.length > 0) {
+    if (admins.length > 0) {
       await prisma.notification.createMany({
-        data: superAdmins.map((sa) => ({
-          tenantId: sa.tenantId,
-          userId:   sa.id,
+        data: admins.map((u) => ({
+          tenantId,
+          userId:   u.id,
           type:     'bulk_upload_success',
-          title:    `Carga masiva completada — tenant ${tenantId}`,
-          message:  `"${fileName}" (${type}): ${count} registros en ${durationSec}s. Log: ${logId}`,
-          link:     `/admin/bulk-uploads/${logId}`,
+          title:    'Carga masiva completada',
+          message:  `"${fileName}" (${type}): ${count} registros en ${durationSec}s.`,
+          link:     `/settings/bulk-upload/${logId}`,
         })),
       })
     }

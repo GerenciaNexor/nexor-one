@@ -468,7 +468,15 @@ Importación masiva de datos por Excel, con **validación y preview antes de pro
 Incluye plantillas por tipo de dato e historial de cargas realizadas.
 
 ### Acceso
-Disponible para el rol TENANT_ADMIN.
+Disponible para el rol TENANT_ADMIN (el cliente sube sus propios archivos en `/settings/bulk-upload`).
+
+### Supervisión de plataforma (HU-140)
+El equipo NEXOR ve las cargas de **todos los clientes** (tenant, tipo, estado, fecha) desde la
+**consola de plataforma**: **Supervisión** (`/platform/supervision` → `GET /v1/admin/bulk-upload/logs`).
+Es **solo de plataforma** (`platform_admins`; guard `superAdminHook`) — ningún cliente ve la de otros,
+y no expone datos de negocio más allá del registro de carga. La antigua pantalla de supervisión dentro
+del panel de cliente (`/admin/bulk-uploads`) se **retiró**: hay una sola supervisión, en la plataforma.
+El equipo NEXOR **no** recibe notificaciones in-app de cargas (supervisa por esta pantalla, no por push).
 
 ---
 

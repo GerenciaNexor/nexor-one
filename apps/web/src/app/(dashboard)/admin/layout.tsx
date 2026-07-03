@@ -2,31 +2,25 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useAuthStore } from '@/store/auth'
 import type { ReactNode } from 'react'
 
+// Administración del TENANT (para TENANT_ADMIN). La supervisión de plataforma (SUPER_ADMIN)
+// vive en /platform (HU-137/HU-140), fuera del panel de cliente.
 const TENANT_TABS = [
   { href: '/admin/branches',      label: 'Sucursales'     },
   { href: '/admin/users',         label: 'Usuarios'       },
   { href: '/admin/modules',       label: 'Módulos'        },
 ] as const
 
-const SUPER_ADMIN_TABS = [
-  { href: '/admin/bulk-uploads',  label: 'Cargas masivas' },
-] as const
-
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const { user }  = useAuthStore()
-  const tabs      = user?.role === 'SUPER_ADMIN' ? SUPER_ADMIN_TABS : TENANT_TABS
+  const tabs     = TENANT_TABS
 
   return (
     <>
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center gap-6 py-3">
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {user?.role === 'SUPER_ADMIN' ? 'Supervisión' : 'Administracion'}
-          </span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Administracion</span>
           <nav className="flex">
             {tabs.map((t) => (
               <Link
