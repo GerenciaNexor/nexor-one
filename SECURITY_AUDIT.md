@@ -8,6 +8,48 @@
 
 ---
 
+## HU-135 — Auditoría de aislamiento de las 26 tablas con RLS (2026-07-03)
+
+**Veredicto: ✅ 26/26 tablas AISLADAS. Sin fuga cross-tenant en lectura ni escritura.**
+
+**Metodología (reproducible):** `pnpm --filter @nexor/api db:audit-rls`
+([apps/api/prisma/audit-rls.ts](apps/api/prisma/audit-rls.ts)). Crea una **BD temporal** en el
+servidor (nunca toca `railway` prod), aplica **todas las migraciones + `db:rls`**, siembra **2
+tenants (A, B) con una fila en cada una de las 26 tablas**, y ejecuta las pruebas **bajo el rol REAL
+de producción `nexor_app`** (verificado `superuser=false`, `bypassrls=false`) vía `SET LOCAL ROLE` +
+`set_config('app.current_tenant_id', …)`. Por tabla comprueba:
+
+| Prueba | Criterio | Resultado (las 26) |
+|--------|----------|--------------------|
+| **Catálogo** | RLS `ENABLED` + `FORCED` + política `tenant_isolation` (USING + WITH CHECK) | ✅ |
+| **Lectura propia** | contexto A ve su fila | ✅ (1) |
+| **Lectura cross** | contexto A → filas de B, incluso `WHERE tenant_id=B` | ✅ (0) |
+| **Escritura cross (UPDATE)** | contexto A → `UPDATE … WHERE tenant_id=B` | ✅ (0 filas) |
+| **Escritura cross (INSERT)** | contexto A → `INSERT` con `tenant_id=B` (WITH CHECK) | ✅ bloqueado (clients, products, users) |
+| **Fail-safe** | rol sin `app.current_tenant_id` | ✅ (0 filas) |
+| **Concurrencia** | 30 tx en paralelo alternando contexto A/B (patrón HU-122) | ✅ sin cruce |
+
+**Tablas cubiertas (26):** branches, users, feature_flags, integrations, agent_logs, notifications,
+clients, client_ratings, pipeline_stages, deals, interactions, quotes, products, stock_movements,
+suppliers, purchase_orders, supplier_ratings, service_types, availability, appointments, transactions,
+conversations, conversation_messages, bulk_upload_logs, chat_messages, dashboard_daily_rollups.
+
+**Gestión de usuarios (criterio específico):** la tabla `users` pasó lectura + escritura cross-tenant
+(propio=1, leeB=0, updB=0, INSERT cross bloqueado) → el cliente A crea/edita/desactiva sus usuarios
+sin que B los vea ni se vea afectado.
+
+**Fuera de las 26 (reportadas, sin RLS directa):** `stock`, `quote_items`, `purchase_order_items`,
+`supplier_scores`, `service_professionals`, `refresh_tokens` se aíslan **vía la tabla padre** (que sí
+tiene RLS). `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`, `cost_centers`,
+`monthly_budgets` **tienen `tenant_id` pero no están en `db:rls`** — su aislamiento hoy depende del
+filtrado por `tenant_id` en el servicio (defensa en profundidad de app, no de BD). *Recomendación de
+seguimiento:* añadirlas a `db:rls`. `platform_admins` (HU-134) tiene **RLS deny-all** (no es de tenant).
+
+**Regla confirmada:** RLS es la capa de BD; **no reemplaza** el filtrado por `tenant_id` en los
+servicios (defensa en profundidad). El `tenant_id` siempre sale del JWT, nunca del body.
+
+---
+
 ## Metodología
 
 Se revisó el código fuente completo de la API con foco en los vectores de ataque listados en los criterios de aceptación de HU-091:
