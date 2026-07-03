@@ -1,4 +1,4 @@
-/* HU-135 — Auditoría de aislamiento cross-tenant de las 26 tablas con RLS, bajo el rol
+/* HU-135 — Auditoría de aislamiento cross-tenant de las 31 tablas con RLS, bajo el rol
  * REAL nexor_app (NOSUPERUSER NOBYPASSRLS). BD temporal Railway (nunca prod). Cubre:
  *   catálogo (RLS enabled+forced + política) · lectura cross-tenant · escritura
  *   (UPDATE/DELETE/INSERT) cross-tenant · fail-safe sin contexto · concurrencia. */
@@ -17,6 +17,8 @@ const TABLES = [
   'suppliers','purchase_orders','supplier_ratings','service_types','availability','appointments',
   'transactions','conversations','conversation_messages','bulk_upload_logs','chat_messages',
   'dashboard_daily_rollups',
+  // HU-135-fix — 5 tablas restantes (cobertura RLS completa: 31 tablas).
+  'blocked_dates','appointment_cancel_tokens','transaction_categories','cost_centers','monthly_budgets',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -49,7 +51,13 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.stockMovement.create({ data: { tenantId: t, productId: p, branchId: br, type: 'entrada', quantity: new Prisma.Decimal(1), quantityBefore: new Prisma.Decimal(0), quantityAfter: new Prisma.Decimal(1) } })
   await db.purchaseOrder.create({ data: { id: po, tenantId: t, createdBy: u, orderNumber: `PO-${s}` } })
   await db.supplierRating.create({ data: { tenantId: t, supplierId: sp, purchaseOrderId: po, deliveryRating: 5, qualityRating: 5, ratedBy: u } })
-  await db.appointment.create({ data: { tenantId: t, branchId: br, clientName: 'C', startAt: new Date(), endAt: new Date(Date.now() + 3600e3) } })
+  await db.appointment.create({ data: { id: `ap_${s}`, tenantId: t, branchId: br, clientName: 'C', startAt: new Date(), endAt: new Date(Date.now() + 3600e3) } })
+  // HU-135-fix — 5 tablas restantes
+  await db.blockedDate.create({ data: { tenantId: t, branchId: br, date: new Date() } })
+  await db.appointmentCancelToken.create({ data: { token: `tok-${s}`, tenantId: t, appointmentId: `ap_${s}`, expiresAt: new Date(Date.now() + 3600e3) } })
+  await db.transactionCategory.create({ data: { tenantId: t, name: 'Cat', type: 'income' } })
+  await db.costCenter.create({ data: { tenantId: t, name: 'CC' } })
+  await db.monthlyBudget.create({ data: { tenantId: t, year: 2026, month: 1, amount: new Prisma.Decimal(1000) } })
 }
 
 async function main(): Promise<void> {
@@ -71,7 +79,7 @@ async function main(): Promise<void> {
   console.log(`   rol nexor_app → superuser=${rc[0]!.rolsuper}  bypassrls=${rc[0]!.rolbypassrls}  (RLS aplica ✅)`)
   await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO nexor_app`)
   await db.$executeRawUnsafe(`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO nexor_app`)
-  console.log('== sembrando 2 tenants (A, B) en las 26 tablas ==')
+  console.log(`== sembrando 2 tenants (A, B) en las ${TABLES.length} tablas ==`)
   await seedTenant(db, 'a')
   await seedTenant(db, 'b')
 
@@ -137,7 +145,7 @@ async function main(): Promise<void> {
   const concOk = conc.every(Boolean)
 
   // ── Veredicto ──
-  console.log('\n══════════ VEREDICTO POR TABLA (26 con RLS · rol nexor_app) ══════════')
+  console.log(`\n══════════ VEREDICTO POR TABLA (${TABLES.length} con RLS · rol nexor_app) ══════════`)
   console.log('tabla'.padEnd(26), 'propio', 'leeB', 'updB', 'sinCtx', 'catálogo', 'veredicto')
   let fails = 0
   for (const table of TABLES) {
@@ -155,7 +163,7 @@ async function main(): Promise<void> {
   console.log(`INSERT cross-tenant products: ${insProducts}`)
   console.log(`INSERT cross-tenant users:    ${insUsers}`)
   console.log(`Concurrencia (30 tx A/B en paralelo, sin cruce): ${concOk ? '✅' : '❌'}`)
-  console.log(`\nRESULTADO: ${fails === 0 && concOk ? '✅ 26/26 AISLADAS — sin fuga cross-tenant' : `❌ ${fails} tabla(s) con riesgo`}`)
+  console.log(`\nRESULTADO: ${fails === 0 && concOk ? `✅ ${TABLES.length}/${TABLES.length} AISLADAS — sin fuga cross-tenant` : `❌ ${fails} tabla(s) con riesgo`}`)
 
   await db.$disconnect()
   const admin2 = new PrismaClient({ datasources: { db: { url: DIRECT } } })

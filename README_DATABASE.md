@@ -955,3 +955,23 @@ CREATE POLICY tenant_isolation ON clients
 ```
 
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
+
+En la práctica no se aplica a mano: **`setup-rls.ts` (`pnpm --filter @nexor/api db:rls`) es la fuente
+única de verdad** y debe correrse tras cada migración y tras cualquier restore de backup (RLS no se
+preserva en un `pg_restore`). Cubre **31 tablas de negocio** con la política `tenant_isolation`
+(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). Las 5 últimas se añadieron en **HU-135-fix**
+(cierre de cobertura 26→31): `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
+`cost_centers`, `monthly_budgets` — forzadas también por la migración
+`20260703120000_rls_remaining_tables`. Antes de forzarlas se verificó que ningún job ni ruta las
+leyera fuera de contexto de tenant: la **ruta pública de cancelación** (`/v1/agenda/cancel`) y el
+**job de recordatorios** (`appointment-reminders`) pasaron a `directPrisma` con filtro `tenantId`
+explícito (patrón webhook/worker).
+
+Además, las tablas de **plataforma** (`platform_admins`, `platform_audit_logs`, `subscriptions`)
+llevan RLS **deny-all** (RLS habilitado sin política): `nexor_app` no las lee ni las filtra; solo
+`directPrisma` (superuser) las accede.
+
+**Auditoría:** `pnpm --filter @nexor/api db:audit-rls` levanta una BD temporal (nunca prod), migra
+desde cero, aplica `db:rls`, siembra 2 tenants en las 31 tablas y verifica —**bajo el rol real
+`nexor_app` (NOSUPERUSER NOBYPASSRLS)**— que no hay fuga cross-tenant en lectura ni escritura, que el
+acceso sin contexto devuelve 0 filas y que el aislamiento se mantiene bajo concurrencia.

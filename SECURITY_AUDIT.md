@@ -8,6 +8,33 @@
 
 ---
 
+## HU-135-fix — Cierre de cobertura RLS: 26 → 31 tablas (2026-07-03)
+
+**Veredicto: ✅ 31/31 tablas AISLADAS. Cerradas las 5 tablas que HU-135 dejó sin RLS de BD.**
+
+Da seguimiento a la recomendación de HU-135. Se fuerza RLS de base de datos en las 5 tablas que
+tenían `tenant_id` pero solo se aislaban por el filtrado en el servicio: **`blocked_dates`,
+`appointment_cancel_tokens`, `transaction_categories`, `cost_centers`, `monthly_budgets`**.
+
+- **Migración real** [`20260703120000_rls_remaining_tables`](apps/api/prisma/migrations/20260703120000_rls_remaining_tables/migration.sql):
+  `ENABLE` + `FORCE ROW LEVEL SECURITY`, política `tenant_isolation` (USING + WITH CHECK, fail-safe con
+  `NULLIF(current_setting(...), '')`) y `GRANT` a `nexor_app` — mismo patrón que HU-114/HU-117. Las 5
+  se añadieron también a `setup-rls.ts` (`db:rls`, fuente única de verdad tras un restore).
+- **Verificación previa de contexto (criterio bloqueante):** antes de forzar RLS se auditó que ningún
+  job ni consulta leyera esas tablas fuera de contexto de tenant. Dos flujos lo hacían y se ajustaron:
+  - **Ruta pública de cancelación** `/v1/agenda/cancel/:token` — sin JWT ni contexto de tenant (el
+    token es la credencial): pasó a `directPrisma` (bypass RLS, patrón webhook/auth).
+  - **Job de recordatorios** `appointment-reminders` — corre fuera de request y creaba
+    `appointment_cancel_tokens`: pasó a `directPrisma` con filtro `tenantId` explícito (patrón worker;
+    evita además la transacción larga de `withTenantContext` con envío de emails dentro).
+
+  El resto de consumos (VERA/`monthly_budgets` en `budget-alerts` y dashboard, AGENDA, agente) ya corría
+  en contexto (`withTenantContext` / `runInTenantTransaction` / request tx) — sin cambios.
+- **Auditoría bajo `nexor_app`:** `db:audit-rls` re-ejecutado ahora sobre las **31 tablas** → todas
+  ✅ AISLADA (catálogo ok, lectura/escritura cross-tenant = 0, fail-safe = 0, concurrencia ✅).
+
+---
+
 ## HU-135 — Auditoría de aislamiento de las 26 tablas con RLS (2026-07-03)
 
 **Veredicto: ✅ 26/26 tablas AISLADAS. Sin fuga cross-tenant en lectura ni escritura.**

@@ -60,6 +60,14 @@ const BUSINESS_TABLES = [
   'chat_messages',
   // HU-127 — rollup diario del Dashboard (tenant_id propio).
   'dashboard_daily_rollups',
+  // HU-135-fix — cierre de cobertura: 5 tablas con tenant_id que faltaban en db:rls.
+  // Su migración (20260703120000_rls_remaining_tables) las fuerza; se listan aquí para que
+  // db:rls siga siendo la fuente única de verdad (re-aplica tras un restore).
+  'blocked_dates',
+  'appointment_cancel_tokens',
+  'transaction_categories',
+  'cost_centers',
+  'monthly_budgets',
 ] as const
 
 async function setupRLS(): Promise<void> {
