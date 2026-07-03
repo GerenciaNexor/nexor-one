@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
+import { createTenantWithAdmin, getSubscription, setSubscriptionAmount } from '../platform/tenants'
 
 /**
  * Hook onRequest para el scope /v1/admin.
@@ -35,6 +36,26 @@ export async function superAdminHook(
 
 const ToggleSchema = z.object({ isActive: z.boolean(), reason: z.string().max(500).optional() })
 
+// HU-138 — alta de cliente + gestión de suscripción
+const CreateTenantSchema = z.object({
+  name:          z.string().min(2, 'Nombre requerido').max(255),
+  slug:          z.string().max(80).optional(),
+  legalName:     z.string().max(255).optional(),
+  taxId:         z.string().max(50).optional(),
+  currency:      z.string().length(3).optional(),
+  adminName:     z.string().min(2, 'Nombre del admin requerido').max(255),
+  adminEmail:    z.string().email('Email inválido'),
+  adminPassword: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  modules:       z.array(z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'])).optional(),
+  amount:        z.number().min(0).optional(),
+  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const SubscriptionSchema = z.object({
+  amount:   z.number().min(0, 'El monto no puede ser negativo'),
+  currency: z.string().length(3).optional(),
+  reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /v1/admin/tenants
@@ -60,6 +81,62 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20)))
     const result = await listAllTenants(page, limit)
     return reply.code(200).send(result)
+  })
+
+  /**
+   * POST /v1/admin/tenants  (HU-138) — crear un cliente + su primer admin + suscripción.
+   */
+  app.post('/tenants', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Crear cliente (tenant)',
+      description: 'Da de alta una empresa con su primer TENANT_ADMIN, módulos y suscripción (monto). Auditado. Solo plataforma.',
+      security:    bearerAuth,
+      response:    { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const parsed = CreateTenantSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const created = await createTenantWithAdmin(parsed.data, request.user.platformAdminId as string, request.ip)
+      return reply.code(200).send({ success: true, data: created })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * GET /v1/admin/tenants/:id/subscription  (HU-138)
+   */
+  app.get('/tenants/:id/subscription', {
+    schema: { tags: ['Admin'], summary: 'Suscripción del cliente', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const sub = await getSubscription(id)
+    return reply.code(200).send({ success: true, data: sub })
+  })
+
+  /**
+   * PUT /v1/admin/tenants/:id/subscription  (HU-138) — definir/editar el monto.
+   */
+  app.put('/tenants/:id/subscription', {
+    schema: { tags: ['Admin'], summary: 'Definir/editar el monto de la suscripción', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = SubscriptionSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const sub = await setSubscriptionAmount(id, parsed.data.amount, parsed.data.currency, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: sub })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
   })
 
   /**

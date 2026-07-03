@@ -18,6 +18,15 @@ interface TenantDetail {
   branches: { id: string; name: string; city: string | null; isActive: boolean }[]
   users:    { id: string; name: string; email: string; role: string; module: string | null; isActive: boolean; lastLoginAt: string | null }[]
   featureFlags: Record<string, boolean>
+  subscription: { amount: number; currency: string; status: string; startedAt: string | null; cancelledAt: string | null } | null
+}
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function fmtMoney(amount: number, cur?: string): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: cur || 'COP', maximumFractionDigits: 0 }).format(amount)
 }
 
 // ─── Prompt de motivo (acciones sensibles) ──────────────────────────────────────
@@ -65,6 +74,7 @@ export default function PlatformClientDetailPage() {
   const [error, setError]   = useState<string | null>(null)
   const [busy, setBusy]     = useState(false)
   const [reasonModal, setReasonModal] = useState<null | 'activate' | 'deactivate'>(null)
+  const [amountModal, setAmountModal] = useState(false)
 
   function load(): void {
     apiClient.get<TenantDetail>(`/v1/admin/tenants/${id}`)
@@ -97,6 +107,21 @@ export default function PlatformClientDetailPage() {
     } catch (e: unknown) {
       alert((e as { message?: string }).message ?? 'No se pudo cambiar la suscripción')
     } finally { setBusy(false) }
+  }
+
+  function onAmountUpdated(sub: { amount: number; currency: string; status: string }): void {
+    if (!t) return
+    setT({
+      ...t,
+      subscription: {
+        amount: sub.amount,
+        currency: sub.currency,
+        status: sub.status,
+        startedAt: t.subscription?.startedAt ?? null,
+        cancelledAt: t.subscription?.cancelledAt ?? null,
+      },
+    })
+    setAmountModal(false)
   }
 
   async function impersonate(): Promise<void> {
@@ -172,6 +197,39 @@ export default function PlatformClientDetailPage() {
           </dl>
         </div>
 
+        {/* Suscripción */}
+        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-200">Suscripción</h2>
+            <button onClick={() => setAmountModal(true)}
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-white/10">
+              Editar monto
+            </button>
+          </div>
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Estado</dt>
+              <dd>
+                {(t.subscription ? t.subscription.status === 'active' : t.isActive)
+                  ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Activa</span>
+                  : <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-300">Cancelada</span>}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Monto mensual</dt>
+              <dd className="text-slate-300">
+                {t.subscription && t.subscription.amount > 0
+                  ? fmtMoney(t.subscription.amount, t.subscription.currency)
+                  : 'Sin definir'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Desde</dt>
+              <dd className="text-slate-300">{t.subscription?.startedAt ? fmtDate(t.subscription.startedAt) : '—'}</dd>
+            </div>
+          </dl>
+        </div>
+
         {/* Módulos */}
         <div className="rounded-xl border border-white/10 bg-white/5 p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-200">Módulos activos</h2>
@@ -212,6 +270,76 @@ export default function PlatformClientDetailPage() {
           onCancel={() => setReasonModal(null)}
         />
       )}
+
+      {amountModal && (
+        <AmountModal
+          tenantId={t.id}
+          tenantName={t.name}
+          initialAmount={t.subscription?.amount ?? 0}
+          onUpdated={onAmountUpdated}
+          onCancel={() => setAmountModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal editar monto ─────────────────────────────────────────────────────────
+
+function AmountModal({ tenantId, tenantName, initialAmount, onUpdated, onCancel }: {
+  tenantId: string; tenantName: string; initialAmount: number
+  onUpdated: (sub: { amount: number; currency: string; status: string }) => void
+  onCancel: () => void
+}) {
+  const [amount, setAmount] = useState(initialAmount ? String(initialAmount) : '')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    setErr(null)
+    const num = Number(amount)
+    if (amount.trim() === '' || Number.isNaN(num) || num < 0) { setErr('Ingresa un monto válido.'); return }
+    if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
+    setSaving(true)
+    try {
+      const res = await apiClient.put<{ success: true; data: { amount: number; currency: string; status: string } }>(
+        `/v1/admin/tenants/${tenantId}/subscription`,
+        { amount: num, reason: reason.trim() },
+      )
+      onUpdated(res.data)
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo actualizar el monto.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
+        <h3 className="text-base font-semibold text-slate-100">Editar monto mensual de {tenantName}</h3>
+
+        <label className="mt-4 block text-xs font-medium text-slate-400">Monto mensual</label>
+        <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
+          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+
+        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo (obligatorio)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Ej.: ajuste de plan, renegociación…"
+          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+
+        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50">Cancelar</button>
+          <button onClick={submit} disabled={saving}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
+            {saving ? 'Guardando…' : 'Guardar monto'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

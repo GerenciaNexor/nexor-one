@@ -103,6 +103,7 @@ model Tenant {
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
+  subscription          Subscription?
 
   @@map("tenants")
 }
@@ -246,6 +247,29 @@ model PlatformAuditLog {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([platformAdminId])
   @@map("platform_audit_logs")
+}
+
+/// Suscripción de un cliente (tenant) — gestión MANUAL (HU-138). Sin pasarela de cobro.
+/// Pertenece al mundo de la PLATAFORMA: RLS deny-all (ningún user de tenant la ve).
+/// `status` se mantiene coherente con `tenants.is_active`: cancelar → is_active=false
+/// (bloquea el acceso vía tenantHook); activar → is_active=true.
+model Subscription {
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  tenantId    String    @unique @map("tenant_id") @db.VarChar(30)
+  /// Monto mensual que paga el cliente (gestión manual).
+  amount      Decimal   @default(0) @db.Decimal(15, 2)
+  currency    String    @default("COP") @db.VarChar(3)
+  /// active | cancelled
+  status      String    @default("active") @db.VarChar(20)
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
 }
 
 /// Modulos activos por tenant. Se crea un registro por modulo al crear el tenant.

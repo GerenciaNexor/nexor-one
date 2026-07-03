@@ -113,9 +113,21 @@ El JWT lleva `{ platformAdminId, role: 'SUPER_ADMIN' }` — sin `tenantId`. Con 
 **Query:** `?tenantId=&action=&page=&limit=`  
 **Response 200:** `{ "data": [{ "id", "action", "reason", "metadata", "ip", "createdAt", "platformAdmin": { "email", "name" }, "tenant": { "name" } | null }], "total", "page", "totalPages" }`
 
+### `POST /v1/admin/tenants` · HU-138
+**Propósito:** Crear un cliente (tenant) + su primer `TENANT_ADMIN` + módulos + suscripción. Auditado (`tenant.create`).  
+**Request:** `{ "name", "slug"?, "legalName"?, "taxId"?, "currency"?, "adminName", "adminEmail", "adminPassword", "modules"?: ["ARI",…], "amount"?, "reason" }`  
+**Response 200:** `{ "success": true, "data": { "id", "name", "slug", "isActive", "adminEmail", "amount", "currency", "status" } }` · Errores `409 SLUG_TAKEN | EMAIL_TAKEN`.
+
 ### `GET /v1/admin/tenants`
 **Propósito:** Listar todos los tenants de la plataforma.  
-**Response 200:** `{ "data": [{ "id", "name", "slug", "isActive", "createdAt" }], "total" }`
+**Response 200:** `{ "data": [{ "id", "name", "slug", "isActive", "createdAt", "subscription": { "amount", "currency", "status" } | null }], "total" }`
+
+### `GET /v1/admin/tenants/:id/subscription` · HU-138
+**Response 200:** `{ "success": true, "data": { "amount", "currency", "status", "startedAt", "cancelledAt" } | null }`
+
+### `PUT /v1/admin/tenants/:id/subscription` · HU-138
+**Propósito:** Definir/editar el monto que paga el cliente. Auditado (`subscription.update`, con monto + motivo).  
+**Request:** `{ "amount", "currency"?, "reason" }`
 
 ### `GET /v1/admin/tenants/:id`
 **Propósito:** Ver detalle completo de un tenant (usuarios, módulos activos, integraciones).

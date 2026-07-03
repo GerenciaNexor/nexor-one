@@ -188,6 +188,28 @@ con `directPrisma`. **Lectura:** `GET /v1/admin/audit-logs` (solo SUPER_ADMIN).
 
 ---
 
+#### `subscriptions` (HU-138)
+
+Suscripción **manual** de cada cliente (tenant): monto + estado. **Sin pasarela de cobro** (fase
+posterior). Una por tenant (`tenant_id` UNIQUE).
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | |
+| `tenant_id` | VARCHAR(30) UNIQUE FK→tenants | 1:1 con el cliente |
+| `amount` | DECIMAL(15,2) | monto mensual (gestión manual) |
+| `currency` | VARCHAR(3) | default COP |
+| `status` | VARCHAR(20) | `active` \| `cancelled` |
+| `started_at` / `cancelled_at` / `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Coherencia con el acceso:** `status` se mantiene sincronizado con `tenants.is_active` —
+**cancelar** la suscripción pone `is_active=false` (el `tenantHook` **bloquea el acceso** del cliente,
+`403 TENANT_DISABLED`); **activar** lo revierte. La sincronización vive en `toggleTenant`.
+**RLS:** **deny-all** (mundo de la plataforma) — ningún usuario de tenant ve su suscripción; solo
+`directPrisma`. Alta y cambios de monto/estado quedan **auditados** (`platform_audit_logs`).
+
+---
+
 #### `feature_flags`
 
 Controla qué módulos están activos para cada tenant. Permite activar/desactivar funcionalidades sin tocar código.

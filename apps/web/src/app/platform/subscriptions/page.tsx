@@ -5,12 +5,15 @@ import { apiClient } from '@/lib/api-client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+type Subscription = { amount: number; currency: string; status: 'active' | 'cancelled' }
+
 type Tenant = {
-  id:        string
-  name:      string
-  slug:      string
-  isActive:  boolean
-  createdAt: string
+  id:           string
+  name:         string
+  slug:         string
+  isActive:     boolean
+  createdAt:    string
+  subscription: Subscription | null
 }
 
 type TenantsResponse = { data: Tenant[]; total: number }
@@ -25,6 +28,12 @@ function fmtDate(iso: string) {
   })
 }
 
+function fmtMoney(amount: number, cur?: string) {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency', currency: cur || 'COP', maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function SubscriptionsPage() {
@@ -33,11 +42,14 @@ export default function SubscriptionsPage() {
   const [error,   setError]   = useState<string | null>(null)
   const [filter,  setFilter]  = useState<Filter>('all')
 
-  // Modal state
+  // Modal state (toggle activar/cancelar)
   const [target,   setTarget]   = useState<Tenant | null>(null)
   const [reason,   setReason]   = useState('')
   const [saving,   setSaving]   = useState(false)
   const [modalErr, setModalErr] = useState<string | null>(null)
+
+  // Modal state (editar monto)
+  const [amountTarget, setAmountTarget] = useState<Tenant | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -102,12 +114,17 @@ export default function SubscriptionsPage() {
     }
   }
 
+  function onAmountUpdated(id: string, sub: Subscription) {
+    setTenants((prev) => prev.map((t) => (t.id === id ? { ...t, subscription: sub } : t)))
+    setAmountTarget(null)
+  }
+
   return (
     <div className="p-6">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-100">Suscripciones</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Estado de cada cliente. Activar o cancelar (queda auditado).
+          Estado y monto mensual de cada cliente. Activar, cancelar o editar el monto (queda auditado).
         </p>
       </header>
 
@@ -178,23 +195,34 @@ export default function SubscriptionsPage() {
                           {t.isActive ? 'Activa' : 'Cancelada'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-400">
-                        <span className="text-slate-300">—</span>
-                        <span className="ml-2 text-xs text-slate-500">definido en HU-138</span>
+                      <td className="px-5 py-3.5">
+                        {t.subscription && t.subscription.amount > 0 ? (
+                          <span className="text-slate-200">{fmtMoney(t.subscription.amount, t.subscription.currency)}<span className="text-xs text-slate-500">/mes</span></span>
+                        ) : (
+                          <span className="text-slate-500">Sin definir</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-400">{fmtDate(t.createdAt)}</td>
                       <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => openModal(t)}
-                          className={[
-                            'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                            t.isActive
-                              ? 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20',
-                          ].join(' ')}
-                        >
-                          {t.isActive ? 'Cancelar' : 'Activar'}
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setAmountTarget(t)}
+                            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+                          >
+                            Editar monto
+                          </button>
+                          <button
+                            onClick={() => openModal(t)}
+                            className={[
+                              'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                              t.isActive
+                                ? 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20',
+                            ].join(' ')}
+                          >
+                            {t.isActive ? 'Cancelar' : 'Activar'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -205,10 +233,10 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal activar/cancelar */}
       {target && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-slate-900 p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-100">
               {target.isActive ? 'Cancelar suscripción' : 'Activar suscripción'}
             </h3>
@@ -259,6 +287,102 @@ export default function SubscriptionsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal editar monto */}
+      {amountTarget && (
+        <EditAmountModal
+          tenant={amountTarget}
+          onClose={() => setAmountTarget(null)}
+          onUpdated={onAmountUpdated}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal editar monto ─────────────────────────────────────────────────────
+
+function EditAmountModal({
+  tenant, onClose, onUpdated,
+}: {
+  tenant: Tenant
+  onClose: () => void
+  onUpdated: (id: string, sub: Subscription) => void
+}) {
+  const [amount, setAmount] = useState(tenant.subscription?.amount ? String(tenant.subscription.amount) : '')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit() {
+    setErr(null)
+    const numAmount = Number(amount)
+    if (amount.trim() === '' || Number.isNaN(numAmount) || numAmount < 0) {
+      setErr('Ingresa un monto válido.')
+      return
+    }
+    if (!reason.trim()) {
+      setErr('El motivo es obligatorio.')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await apiClient.put<{ success: true; data: { amount: number; currency: string; status: string } }>(
+        `/v1/admin/tenants/${tenant.id}/subscription`,
+        { amount: numAmount, reason: reason.trim() },
+      )
+      onUpdated(tenant.id, {
+        amount: res.data.amount,
+        currency: res.data.currency,
+        status: res.data.status === 'active' ? 'active' : 'cancelled',
+      })
+    } catch (e) {
+      const e2 = e as { message?: string }
+      setErr(e2.message ?? 'No se pudo actualizar el monto.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
+        <h3 className="text-lg font-semibold text-slate-100">Editar monto mensual</h3>
+        <p className="mt-1 text-sm text-slate-400">
+          Suscripción de <span className="font-medium text-slate-200">{tenant.name}</span>.
+        </p>
+
+        <label className="mt-4 block text-xs font-medium text-slate-400">Monto mensual</label>
+        <input
+          type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)}
+          placeholder="0"
+          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60"
+        />
+
+        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo <span className="text-red-400">*</span></label>
+        <textarea
+          value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Explica por qué (queda auditado)…"
+          className="mt-1 w-full resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-violet-500/60"
+        />
+
+        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose} disabled={saving}
+            className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submit} disabled={saving}
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+          >
+            {saving ? 'Guardando…' : 'Guardar monto'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

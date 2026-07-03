@@ -28,6 +28,8 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
 > (lo lleva el JWT de plataforma y el de impersonación), pero **ningún registro de `users` tiene ese rol**.
 
 **Qué puede hacer:**
+- **Crear clientes** (tenants) con su primer admin, módulos y **suscripción** (monto), y **editar el
+  monto** o **activar/cancelar** la suscripción — gestión manual, sin cobro automático (HU-138).
 - Ver todos los tenants de la plataforma · activar/desactivar tenants · modificar feature flags
 - Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
 - Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)
