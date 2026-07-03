@@ -1,19 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Tenant = {
-  id:        string
-  name:      string
-  slug:      string
-  isActive:  boolean
-  createdAt: string
+  id:       string
+  name:     string
+  isActive: boolean
 }
 
-type TenantsResponse = { data: Tenant[]; total: number }
+type TenantsResponse = { data: Tenant[] }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -45,26 +44,9 @@ export default function IntegrationsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-100">Integraciones por cliente</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Canales de WhatsApp y Gmail conectados a cada cliente.
+          Conecta o desconecta WhatsApp/Gmail de cada cliente desde su ficha.
         </p>
       </header>
-
-      {/* Info panel */}
-      <div className="mb-6 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300">
-            i
-          </span>
-          <div>
-            <p className="text-sm font-medium text-violet-200">Próximamente (HU-139)</p>
-            <p className="mt-1 text-sm text-slate-300">
-              La conexión de canales (WhatsApp / Gmail) por cliente llega con HU-139. Por ahora
-              esta vista solo muestra el listado de clientes; la gestión de canales se habilitará
-              en esa entrega.
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Clients list */}
       {error ? (
@@ -104,7 +86,6 @@ export default function IntegrationsPage() {
                     <tr key={t.id} className="border-t border-white/5 hover:bg-white/5">
                       <td className="px-5 py-3.5">
                         <span className="font-medium text-slate-100">{t.name}</span>
-                        <span className="ml-1.5 text-xs text-slate-500">@{t.slug}</span>
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={[
@@ -117,13 +98,12 @@ export default function IntegrationsPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <button
-                          disabled
-                          title="Disponible con HU-139"
-                          className="cursor-not-allowed rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-500"
+                        <Link
+                          href={`/platform/clients/${t.id}`}
+                          className="inline-flex rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10"
                         >
                           Gestionar canales
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))

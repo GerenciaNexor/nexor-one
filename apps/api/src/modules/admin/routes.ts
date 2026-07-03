@@ -6,6 +6,7 @@ import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/opena
 import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
 import { createTenantWithAdmin, getSubscription, setSubscriptionAmount } from '../platform/tenants'
+import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
 
 /**
  * Hook onRequest para el scope /v1/admin.
@@ -55,6 +56,19 @@ const SubscriptionSchema = z.object({
   currency: z.string().length(3).optional(),
   reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
 })
+
+// HU-139 — gestión de canales por el equipo NEXOR (motivo obligatorio)
+const ConnectWhatsAppSchema = z.object({
+  phoneNumberId: z.string().min(1, 'Phone Number ID requerido'),
+  accessToken:   z.string().min(1, 'Access Token requerido'),
+  branchId:      z.string().optional(),
+  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const ConnectGmailSchema = z.object({
+  email:  z.string().email('Email inválido'),
+  reason: z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const DisconnectSchema = z.object({ reason: z.string().min(1, 'El motivo es obligatorio').max(500) })
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -137,6 +151,70 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
     }
+  })
+
+  // ─── HU-139 — Canales (WhatsApp/Gmail) de un cliente, gestionados por la plataforma ───
+  const chanErr = (reply: FastifyReply, err: unknown) => {
+    const e = err as { statusCode?: number; message?: string; code?: string }
+    return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+  }
+
+  /** GET /v1/admin/tenants/:id/integrations — estado de los canales (sin tokens). */
+  app.get('/tenants/:id/integrations', {
+    schema: { tags: ['Admin'], summary: 'Canales del cliente', security: bearerAuth, params: idParam, response: { 200: listRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    return reply.code(200).send({ success: true, data: await listTenantIntegrations(id) })
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/whatsapp — conectar WhatsApp por el cliente. */
+  app.post('/tenants/:id/integrations/whatsapp', {
+    schema: { tags: ['Admin'], summary: 'Conectar WhatsApp del cliente', description: 'El access_token se cifra y nunca aparece en respuestas. Auditado (channel.connect).', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ConnectWhatsAppSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await connectWhatsAppForTenant(id, parsed.data, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/gmail — preparar Gmail del cliente. */
+  app.post('/tenants/:id/integrations/gmail', {
+    schema: { tags: ['Admin'], summary: 'Preparar Gmail del cliente', description: 'Registra el buzón; el consumo entrante depende de permisos de Google. Auditado.', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ConnectGmailSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await connectGmailForTenant(id, parsed.data, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/:integrationId/test — verificar el token. */
+  app.post('/tenants/:id/integrations/:integrationId/test', {
+    schema: { tags: ['Admin'], summary: 'Verificar canal del cliente', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id, integrationId } = request.params as { id: string; integrationId: string }
+    try {
+      const r = await testTenantIntegration(id, integrationId)
+      return reply.code(200).send({ success: r.success, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/:integrationId/disconnect — desconectar (motivo). */
+  app.post('/tenants/:id/integrations/:integrationId/disconnect', {
+    schema: { tags: ['Admin'], summary: 'Desconectar canal del cliente', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id, integrationId } = request.params as { id: string; integrationId: string }
+    const parsed = DisconnectSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      await disconnectTenantIntegration(id, integrationId, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true })
+    } catch (err) { return chanErr(reply, err) }
   })
 
   /**

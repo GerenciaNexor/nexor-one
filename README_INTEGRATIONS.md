@@ -4,6 +4,16 @@
 
 ---
 
+## Quién gestiona las credenciales (HU-139)
+
+**El equipo NEXOR** conecta/desconecta WhatsApp y Gmail de cada cliente **desde la plataforma
+SUPER_ADMIN** (`/v1/admin/tenants/:id/integrations/*`). El **cliente ya NO** ve la pantalla de
+credenciales de Meta ni toca tokens: en su panel (`/settings/integrations`, `GET /v1/integrations`,
+**solo lectura**) solo ve el **estado** (Conectado / No conectado / última verificación). Los tokens
+siguen **cifrados (AES-256)** y **nunca** aparecen en respuestas; conectar/desconectar queda
+**auditado** (`channel.connect`/`channel.disconnect`, HU-136). Gmail queda **preparado** en la
+plataforma aunque su consumo entrante siga supeditado a permisos de Google.
+
 ## Principio de diseño
 
 NEXOR tiene **un solo webhook para todos los tenants** — no uno por cliente. Esto es fundamental para operar a escala.

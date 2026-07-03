@@ -218,28 +218,38 @@ El JWT lleva `{ platformAdminId, role: 'SUPER_ADMIN' }` — sin `tenantId`. Con 
 
 ---
 
-## Integraciones — `/v1/integrations`
+## Integraciones — `/v1/integrations` (CLIENTE · solo lectura desde HU-139)
 
 ---
 
 ### `GET /v1/integrations`
-**Propósito:** Listar integraciones configuradas (WhatsApp, Gmail) del tenant.  
-**Nota:** `token_encrypted` NUNCA aparece en la response.
-
-### `POST /v1/integrations/whatsapp`
-**Rol requerido:** `TENANT_ADMIN` o `BRANCH_ADMIN`  
-**Propósito:** Conectar un número de WhatsApp Business.  
-**Request:** `{ "branchId": "clxbranch1", "phoneNumberId": "103910...", "accessToken": "EAAx..." }`
-
-### `POST /v1/integrations/gmail/oauth`
-**Propósito:** Iniciar flujo OAuth2 para conectar Gmail.  
-**Response 200:** `{ "authUrl": "https://accounts.google.com/o/oauth2/auth?..." }`
+**Propósito:** Estado de los canales del tenant (Conectado / No conectado / última verificación).  
+**Nota:** `token_encrypted` NUNCA aparece en la response. **Solo lectura:** desde HU-139 el cliente
+**ya no** conecta/desconecta ni ve credenciales; eso lo hace el equipo NEXOR desde la plataforma.
 
 ### `GET /v1/integrations/gmail/callback`
-**Propósito:** Callback de OAuth2 de Google. Guarda el token cifrado.
+**Propósito:** Callback OAuth2 de Google (público). Guarda el token cifrado.
 
-### `DELETE /v1/integrations/:id`
-**Propósito:** Desconectar una integración. Elimina el token cifrado.
+---
+
+## Canales por cliente (PLATAFORMA) — `/v1/admin/tenants/:id/integrations` · HU-139
+Solo **plataforma** (SUPER_ADMIN). Los tokens se cifran (AES-256) y **nunca** salen en respuestas.
+Conectar/desconectar queda **auditado** (`channel.connect` / `channel.disconnect`, con motivo).
+
+### `GET /v1/admin/tenants/:id/integrations`
+Estado de los canales del cliente (sin tokens).
+
+### `POST /v1/admin/tenants/:id/integrations/whatsapp`
+**Request:** `{ "phoneNumberId", "accessToken", "branchId"?, "reason" }` — conecta WhatsApp del cliente.
+
+### `POST /v1/admin/tenants/:id/integrations/gmail`
+**Request:** `{ "email", "reason" }` — prepara Gmail (consumo entrante pendiente de permisos de Google).
+
+### `POST /v1/admin/tenants/:id/integrations/:integrationId/test`
+Verifica el token contra el proveedor (WhatsApp → Graph API de Meta). Actualiza `is_active`.
+
+### `POST /v1/admin/tenants/:id/integrations/:integrationId/disconnect`
+**Request:** `{ "reason" }` — borra el token cifrado y marca `is_active:false`.
 
 ### `POST /v1/integrations/:id/test`
 **Propósito:** Verificar que la integración sigue activa (ping).  

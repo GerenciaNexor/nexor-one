@@ -29,6 +29,38 @@ function fmtMoney(amount: number, cur?: string): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: cur || 'COP', maximumFractionDigits: 0 }).format(amount)
 }
 
+// ─── Canales (WhatsApp / Gmail) ──────────────────────────────────────────────
+
+interface ChannelIntegration {
+  id:             string
+  channel:        'WHATSAPP' | 'GMAIL'
+  identifier:     string
+  isActive:       boolean
+  lastVerifiedAt: string | null
+}
+
+type ChannelStatus = 'connected' | 'pending' | 'none'
+
+function channelStatus(i: ChannelIntegration | undefined): ChannelStatus {
+  if (!i) return 'none'
+  return i.isActive ? 'connected' : 'pending'
+}
+
+function channelBadge(channel: 'WHATSAPP' | 'GMAIL', status: ChannelStatus): { label: string; cls: string } {
+  if (status === 'connected') return { label: 'Conectado', cls: 'bg-emerald-500/15 text-emerald-300' }
+  if (status === 'pending') {
+    return channel === 'WHATSAPP'
+      ? { label: 'Pendiente',  cls: 'bg-amber-500/15 text-amber-300' }
+      : { label: 'Preparado',  cls: 'bg-amber-500/15 text-amber-300' }
+  }
+  return { label: 'No conectado', cls: 'bg-white/10 text-slate-400' }
+}
+
+type ChannelModalState = {
+  kind: 'wa-connect' | 'wa-disconnect' | 'gmail-prepare' | 'gmail-disconnect'
+  integrationId?: string
+}
+
 // ─── Prompt de motivo (acciones sensibles) ──────────────────────────────────────
 
 function ReasonModal({ title, confirmLabel, onConfirm, onCancel, danger }: {
@@ -76,13 +108,59 @@ export default function PlatformClientDetailPage() {
   const [reasonModal, setReasonModal] = useState<null | 'activate' | 'deactivate'>(null)
   const [amountModal, setAmountModal] = useState(false)
 
+  const [integrations, setIntegrations] = useState<ChannelIntegration[]>([])
+  const [channelModal, setChannelModal] = useState<ChannelModalState | null>(null)
+  const [testing, setTesting]           = useState<string | null>(null)
+
   function load(): void {
     apiClient.get<TenantDetail>(`/v1/admin/tenants/${id}`)
       .then(setT)
       .catch((e: unknown) => setError((e as { message?: string }).message ?? 'Error al cargar la empresa'))
       .finally(() => setLoad(false))
   }
-  useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function loadIntegrations(): Promise<void> {
+    return apiClient.get<{ success: boolean; data: ChannelIntegration[] }>(`/v1/admin/tenants/${id}/integrations`)
+      .then((res) => { setIntegrations(res.data ?? []) })
+      .catch(() => { /* la tarjeta muestra "No conectado" si falla */ })
+  }
+
+  useEffect(() => { load(); loadIntegrations() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function testChannel(integrationId: string): Promise<void> {
+    setTesting(integrationId)
+    try {
+      const res = await apiClient.post<{ success: boolean; data: { message: string } }>(
+        `/v1/admin/tenants/${id}/integrations/${integrationId}/test`, {},
+      )
+      alert(res.data.message)
+      await loadIntegrations()
+    } catch (e: unknown) {
+      alert((e as { message?: string }).message ?? 'No se pudo verificar el canal')
+    } finally {
+      setTesting(null)
+    }
+  }
+
+  async function submitChannelModal(values: Record<string, string>): Promise<void> {
+    if (!channelModal) return
+    const { kind, integrationId } = channelModal
+    if (kind === 'wa-connect') {
+      await apiClient.post(`/v1/admin/tenants/${id}/integrations/whatsapp`, {
+        phoneNumberId: values.phoneNumberId, accessToken: values.accessToken, reason: values.reason,
+      })
+    } else if (kind === 'gmail-prepare') {
+      await apiClient.post(`/v1/admin/tenants/${id}/integrations/gmail`, {
+        email: values.email, reason: values.reason,
+      })
+    } else if (kind === 'wa-disconnect' || kind === 'gmail-disconnect') {
+      await apiClient.post(`/v1/admin/tenants/${id}/integrations/${integrationId}/disconnect`, {
+        reason: values.reason,
+      })
+    }
+    setChannelModal(null)
+    await loadIntegrations()
+  }
 
   async function toggleModule(mod: ModuleName): Promise<void> {
     if (!t) return
@@ -259,6 +337,96 @@ export default function PlatformClientDetailPage() {
             ))}
           </div>
         </div>
+
+        {/* Canales (WhatsApp / Gmail) */}
+        <div className="rounded-xl border border-white/10 bg-white/5 p-5 lg:col-span-3">
+          <h2 className="mb-3 text-sm font-semibold text-slate-200">Canales (WhatsApp / Gmail)</h2>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* WhatsApp */}
+            {(() => {
+              const wa     = integrations.find((i) => i.channel === 'WHATSAPP')
+              const status = channelStatus(wa)
+              const badge  = channelBadge('WHATSAPP', status)
+              return (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-slate-200">WhatsApp Business</span>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                  </div>
+                  {wa ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-slate-400">Phone Number ID: <span className="font-mono text-slate-300">{wa.identifier}</span></p>
+                      {wa.lastVerifiedAt && (
+                        <p className="text-xs text-slate-500">Última verificación: {fmtDate(wa.lastVerifiedAt)}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">Sin credenciales configuradas.</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {wa ? (
+                      <>
+                        <button onClick={() => testChannel(wa.id)} disabled={testing === wa.id}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50">
+                          {testing === wa.id ? 'Verificando…' : 'Verificar'}
+                        </button>
+                        <button onClick={() => setChannelModal({ kind: 'wa-disconnect', integrationId: wa.id })}
+                          className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20">
+                          Desconectar
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => setChannelModal({ kind: 'wa-connect' })}
+                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
+                        Conectar WhatsApp
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Gmail */}
+            {(() => {
+              const gm     = integrations.find((i) => i.channel === 'GMAIL')
+              const status = channelStatus(gm)
+              const badge  = channelBadge('GMAIL', status)
+              return (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-slate-200">Gmail</span>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                  </div>
+                  {gm ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-slate-400">Cuenta: <span className="font-mono text-slate-300">{gm.identifier}</span></p>
+                      {gm.lastVerifiedAt && (
+                        <p className="text-xs text-slate-500">Última verificación: {fmtDate(gm.lastVerifiedAt)}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">Sin cuenta preparada.</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {gm ? (
+                      <button onClick={() => setChannelModal({ kind: 'gmail-disconnect', integrationId: gm.id })}
+                        className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20">
+                        Desconectar
+                      </button>
+                    ) : (
+                      <button onClick={() => setChannelModal({ kind: 'gmail-prepare' })}
+                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
+                        Preparar Gmail
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">Gmail: consumo entrante pendiente de permisos de Google.</p>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
       </div>
 
       {reasonModal && (
@@ -280,6 +448,102 @@ export default function PlatformClientDetailPage() {
           onCancel={() => setAmountModal(false)}
         />
       )}
+
+      {channelModal && (() => {
+        const cfg = {
+          'wa-connect':      { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
+            fields: [
+              { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
+              { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
+            ] },
+          'gmail-prepare':   { title: `Preparar Gmail de ${t.name}`, confirmLabel: 'Preparar', danger: false,
+            fields: [
+              { name: 'email', label: 'Email', placeholder: 'ventas@empresa.com', type: 'email' },
+            ] },
+          'wa-disconnect':   { title: `Desconectar WhatsApp de ${t.name}`,  confirmLabel: 'Desconectar', danger: true,  fields: [] },
+          'gmail-disconnect':{ title: `Desconectar Gmail de ${t.name}`,     confirmLabel: 'Desconectar', danger: true,  fields: [] },
+        }[channelModal.kind]
+        return (
+          <ChannelModal
+            title={cfg.title}
+            confirmLabel={cfg.confirmLabel}
+            danger={cfg.danger}
+            fields={cfg.fields}
+            onConfirm={submitChannelModal}
+            onCancel={() => setChannelModal(null)}
+          />
+        )
+      })()}
+    </div>
+  )
+}
+
+// ─── Modal de canales (conectar / preparar / desconectar) ───────────────────────
+
+function ChannelModal({ title, confirmLabel, danger, fields, onConfirm, onCancel }: {
+  title: string
+  confirmLabel: string
+  danger?: boolean
+  fields: { name: string; label: string; placeholder?: string; type?: string }[]
+  onConfirm: (values: Record<string, string>) => Promise<void>
+  onCancel: () => void
+}) {
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    setErr(null)
+    for (const f of fields) {
+      if (!(values[f.name] ?? '').trim()) { setErr(`${f.label} es obligatorio.`); return }
+    }
+    if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
+    setSaving(true)
+    try {
+      const payload: Record<string, string> = { reason: reason.trim() }
+      for (const f of fields) payload[f.name] = (values[f.name] ?? '').trim()
+      await onConfirm(payload)
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo completar la acción.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
+        <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+
+        {fields.map((f) => (
+          <div key={f.name}>
+            <label className="mt-4 block text-xs font-medium text-slate-400">{f.label}</label>
+            <input
+              type={f.type ?? 'text'}
+              value={values[f.name] ?? ''}
+              onChange={(e) => setValues((p) => ({ ...p, [f.name]: e.target.value }))}
+              placeholder={f.placeholder}
+              autoComplete={f.type === 'password' ? 'new-password' : 'off'}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+          </div>
+        ))}
+
+        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo (obligatorio)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Ej.: solicitud del cliente, activación del piloto…"
+          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+
+        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50">Cancelar</button>
+          <button onClick={submit} disabled={saving}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 ${danger ? 'bg-red-600 hover:bg-red-500' : 'bg-violet-600 hover:bg-violet-500'}`}>
+            {saving ? 'Procesando…' : confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
