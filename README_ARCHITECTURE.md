@@ -218,7 +218,7 @@ Todas van a la tabla `notifications` en PostgreSQL. El frontend las consume cada
 ```
 Cliente escribe por WhatsApp: "Quiero comprar 20 shampoo"
     ↓
-Meta envía POST a https://api.nexor.app/webhook/whatsapp
+Meta envía POST a https://api.nexor-one.com/webhook/whatsapp
     ↓
 Fastify verifica firma HMAC del request
     ↓

@@ -360,7 +360,7 @@ if (!crypto.timingSafeEqual(sha256(secret), sha256(providedToken))) return reply
 
 La verificación ocurre **antes** del `reply.code(200).send()`, garantizando rechazo en < 10ms para requests inválidos.
 
-**Variable de entorno requerida:** `GMAIL_WEBHOOK_SECRET` — debe configurarse en el tenant de Pub/Sub como parte de la URL de push: `https://api.nexor.co/webhook/gmail?token=<secret>`
+**Variable de entorno requerida:** `GMAIL_WEBHOOK_SECRET` — debe configurarse en el tenant de Pub/Sub como parte de la URL de push: `https://api.nexor-one.com/webhook/gmail?token=<secret>`
 
 **Respuesta para requests inválidos:**
 ```json

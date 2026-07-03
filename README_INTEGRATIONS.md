@@ -151,7 +151,7 @@ Frontend llama: GET /v1/integrations/gmail/oauth
 Backend genera URL de autorización de Google:
   https://accounts.google.com/o/oauth2/auth
     ?client_id={GMAIL_CLIENT_ID}
-    &redirect_uri=https://api.nexor.co/v1/integrations/gmail/callback
+    &redirect_uri=https://api.nexor-one.com/v1/integrations/gmail/callback
     &scope=https://www.googleapis.com/auth/gmail.readonly
     &response_type=code
     &state={tenantId}  ← para saber a qué tenant pertenece el callback
@@ -175,7 +175,7 @@ Google Pub/Sub no firma las notificaciones con HMAC como hace Meta. Para verific
 
 ```
 URL configurada en Pub/Sub:
-  https://api.nexor.co/webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>
+  https://api.nexor-one.com/webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>
 ```
 
 Al recibir cada notificación, el webhook verifica el token usando `crypto.timingSafeEqual(SHA-256(secret), SHA-256(token))` antes de procesar nada. Si el token no coincide o no existe, responde `401 INVALID_SIGNATURE`.

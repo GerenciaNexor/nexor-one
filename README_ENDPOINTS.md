@@ -1,7 +1,7 @@
 # README_ENDPOINTS — API de NEXOR V1
 
 > **Base URL local:** `http://localhost:3001`  
-> **Base URL producción:** `https://api.nexor.app` (o la URL de Railway)  
+> **Base URL producción:** `https://api.nexor-one.com` (o la URL de Railway)  
 > **Versionado:** Todos los endpoints de negocio están bajo `/v1/`  
 > **Autenticación:** JWT Bearer Token en el header `Authorization: Bearer <token>`  
 > **Multi-tenancy:** El `tenant_id` se extrae automáticamente del JWT — nunca se pasa como parámetro
