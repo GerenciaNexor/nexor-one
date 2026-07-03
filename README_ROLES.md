@@ -32,6 +32,11 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
 - Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
 - Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)
 
+**Auditoría (HU-136):** toda acción administrativa de plataforma (activar/cancelar cliente, módulos,
+impersonación, y —cuando existan— alta de cliente con monto y conexión de canales) queda en el registro
+**inmutable** `platform_audit_logs` (`logPlatformAction()`), visible en `GET /v1/admin/audit-logs`.
+Ningún cliente accede a ese historial.
+
 **Qué NO puede hacer:**
 - Acceder a rutas de tenant con su token de plataforma → **403 `PLATFORM_IDENTITY_FORBIDDEN`**. El
   único camino a datos de una empresa es la **impersonación** (explícita y auditada).

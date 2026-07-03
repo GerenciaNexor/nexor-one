@@ -165,6 +165,29 @@ plataforma. Un `platform_admin` **nunca** aparece como usuario de ninguna empres
 
 ---
 
+#### `platform_audit_logs` (HU-136)
+
+Registro **INMUTABLE (append-only)** de acciones administrativas de la plataforma — el equivalente de
+`agent_logs`/`stock_movements` a nivel de plataforma. Solo **INSERT**; jamás UPDATE/DELETE.
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | cuid |
+| `platform_admin_id` | VARCHAR(30) | quién actuó (sin FK: la historia sobrevive a borrados) |
+| `tenant_id` | VARCHAR(30) NULL | cliente afectado |
+| `action` | VARCHAR(60) | `tenant.create` · `tenant.activate` · `tenant.deactivate` · `subscription.update` · `module.enable/disable` · `tenant.impersonate` · `channel.connect/disconnect` |
+| `reason` | TEXT NULL | **obligatorio** en acciones sensibles (suscripción, canales) |
+| `metadata` | JSONB | valores relevantes (monto, módulo, canal, actor…) |
+| `ip` | VARCHAR(64) NULL | |
+| `created_at` | TIMESTAMPTZ | |
+
+**Escritura:** helper `logPlatformAction()` ([platform/audit.ts](apps/api/src/modules/platform/audit.ts))
+con `directPrisma`. **Lectura:** `GET /v1/admin/audit-logs` (solo SUPER_ADMIN).
+**RLS:** **deny-all** (igual que `platform_admins`) — ningún usuario de tenant lo lee.
+**Sin FKs** a propósito: la auditoría es independiente y no cascada.
+
+---
+
 #### `feature_flags`
 
 Controla qué módulos están activos para cada tenant. Permite activar/desactivar funcionalidades sin tocar código.

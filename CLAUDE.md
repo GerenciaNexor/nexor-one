@@ -53,9 +53,9 @@ aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo
 `setup-rls.ts` cubre **26 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
-desde HU-127). Además (HU-134) habilita RLS **deny-all** en `platform_admins` (sin política: `nexor_app`
-no puede leerla; solo `directPrisma`). `db:rls` es la **fuente única de verdad** del RLS: re-aplica
-todas las políticas tras un restore.
+desde HU-127). Además habilita RLS **deny-all** en las tablas de plataforma `platform_admins` (HU-134)
+y `platform_audit_logs` (HU-136) — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls`
+es la **fuente única de verdad** del RLS: re-aplica todas las políticas tras un restore.
 
 ### E2E (un proyecto/archivo concreto)
 

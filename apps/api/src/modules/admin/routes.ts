@@ -4,6 +4,7 @@ import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 import { isPlatformAdminActive } from '../platform/service'
+import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
 
 /**
  * Hook onRequest para el scope /v1/admin.
@@ -32,7 +33,7 @@ export async function superAdminHook(
   }
 }
 
-const ToggleSchema = z.object({ isActive: z.boolean() })
+const ToggleSchema = z.object({ isActive: z.boolean(), reason: z.string().max(500).optional() })
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -120,6 +121,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const tenant = await toggleTenant(id, parsed.data.isActive)
+      // HU-136 — auditoría de plataforma (cambio de suscripción activar/cancelar)
+      await logPlatformAction({
+        platformAdminId: request.user.platformAdminId as string,
+        tenantId:        id,
+        action:          parsed.data.isActive ? 'tenant.activate' : 'tenant.deactivate',
+        reason:          parsed.data.reason ?? null,
+        ip:              request.ip,
+      })
       return reply.code(200).send(tenant)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
@@ -184,6 +193,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     const requestIp = request.ip
     await logImpersonation(id, platformAdminId, requestIp)
+    // HU-136 — auditoría de plataforma (registro canónico append-only)
+    await logPlatformAction({ platformAdminId, tenantId: id, action: 'tenant.impersonate', ip: requestIp })
 
     return reply.code(200).send({ token, expiresIn: '1h' })
   })
@@ -226,7 +237,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const bodyParsed = z.object({ enabled: z.boolean() }).safeParse(request.body)
+    const bodyParsed = z.object({ enabled: z.boolean(), reason: z.string().max(500).optional() }).safeParse(request.body)
     if (!bodyParsed.success) {
       return reply.code(400).send({
         error: bodyParsed.error.errors[0]?.message ?? 'Datos de entrada invalidos',
@@ -235,6 +246,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const flag = await toggleFeatureFlag(id, paramsParsed.data.module, bodyParsed.data.enabled)
+      // HU-136 — auditoría de plataforma (módulo activado/desactivado)
+      await logPlatformAction({
+        platformAdminId: request.user.platformAdminId as string,
+        tenantId:        id,
+        action:          bodyParsed.data.enabled ? 'module.enable' : 'module.disable',
+        reason:          bodyParsed.data.reason ?? null,
+        metadata:        { module: paramsParsed.data.module },
+        ip:              request.ip,
+      })
       return reply.code(200).send({ success: true, data: flag })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
@@ -266,6 +286,39 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const page  = Math.max(1, Number(q.page  ?? 1))
     const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
     const result = await listImpersonations(page, limit, q.tenantId)
+    return reply.code(200).send(result)
+  })
+
+  /**
+   * GET /v1/admin/audit-logs  (HU-136)
+   * Historial INMUTABLE de acciones administrativas de la plataforma. Solo SUPER_ADMIN.
+   */
+  app.get('/audit-logs', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Auditoría de la plataforma',
+      description: 'Registro append-only de acciones del equipo NEXOR (crear/activar/cancelar cliente, módulos, canales, impersonación). Solo SUPER_ADMIN. Ningún cliente accede.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          action:   { type: 'string' },
+          page:     { type: 'string' },
+          limit:    { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const q     = request.query as { tenantId?: string; action?: string; page?: string; limit?: string }
+    const page  = Math.max(1, Number(q.page  ?? 1))
+    const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
+    const result = await listPlatformAuditLogs(
+      { tenantId: q.tenantId, action: q.action },
+      page,
+      limit,
+    )
     return reply.code(200).send(result)
   })
 

@@ -85,15 +85,18 @@ async function setupRLS(): Promise<void> {
     console.log(`  ✅ ${table}`)
   }
 
-  // HU-134 — platform_admins: identidad de plataforma, SIN tenant_id.
-  // Se habilita RLS SIN política (deny-all): nexor_app no puede leerla ni escribirla.
-  // Solo directPrisma (superuser) la accede, en el camino de auth de plataforma.
-  // Así un platform_admin nunca puede leerse ni filtrarse como usuario de un tenant.
-  await prisma.$executeRawUnsafe(`ALTER TABLE "platform_admins" ENABLE ROW LEVEL SECURITY`)
-  await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "platform_admins"`)
-  console.log('  🔒 platform_admins (RLS deny-all para nexor_app)')
+  // HU-134/HU-136 — tablas de PLATAFORMA (sin tenant_id de negocio): se habilita RLS SIN
+  // política (deny-all) → nexor_app no puede leerlas ni escribirlas; solo directPrisma
+  // (superuser) las accede. Así ningún usuario de tenant las ve ni las filtra.
+  //   platform_admins    (HU-134) — identidad del equipo NEXOR.
+  //   platform_audit_logs (HU-136) — auditoría append-only de acciones de plataforma.
+  for (const t of ['platform_admins', 'platform_audit_logs']) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`)
+    await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "${t}"`)
+    console.log(`  🔒 ${t} (RLS deny-all para nexor_app)`)
+  }
 
-  console.log(`\n✅ RLS configurado en ${BUSINESS_TABLES.length} tablas + platform_admins (deny-all)`)
+  console.log(`\n✅ RLS configurado en ${BUSINESS_TABLES.length} tablas + platform (deny-all)`)
   console.log(
     '   La variable app.current_tenant_id debe inyectarse en cada request desde el middleware de Fastify.'
   )
