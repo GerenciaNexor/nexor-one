@@ -230,6 +230,9 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-xs text-slate-500">
           ¿Necesitas acceso? Contacta al administrador de tu empresa.
         </p>
+        <p className="mt-2 text-center text-xs text-slate-600">
+          ¿Equipo NEXOR? <Link href="/platform-login" className="text-slate-400 underline hover:text-slate-200">Ingresa a la plataforma</Link>
+        </p>
       </div>
     </main>
   )

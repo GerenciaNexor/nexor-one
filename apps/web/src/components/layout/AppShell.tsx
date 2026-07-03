@@ -119,6 +119,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, refreshToken, clearAuth } = useAuthStore()
+  const impersonation     = useAuthStore((s) => s.impersonation)
+  const stopImpersonation = useAuthStore((s) => s.stopImpersonation)
+
+  function returnToPlatform(): void {
+    stopImpersonation()
+    router.replace('/platform')
+  }
 
   const chatUnread = useChatStore((s) => s.unreadCount)
   const { theme, toggle: toggleTheme } = useTheme()
@@ -451,6 +458,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Area principal ───────────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+        {/* HU-137 — banner de impersonación (soporte NEXOR viendo un cliente) */}
+        {impersonation?.active && (
+          <div className="flex shrink-0 items-center justify-between gap-3 bg-violet-600 px-4 py-2 text-sm text-white sm:px-6">
+            <span className="truncate">
+              👁️ Estás viendo <strong>{impersonation.tenantName}</strong> como soporte NEXOR (impersonación auditada).
+            </span>
+            <button
+              onClick={returnToPlatform}
+              className="shrink-0 rounded-md bg-white/20 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/30"
+            >
+              Volver a la plataforma
+            </button>
+          </div>
+        )}
 
         {/* Header */}
         <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 sm:px-6 dark:border-slate-700 dark:bg-slate-800">

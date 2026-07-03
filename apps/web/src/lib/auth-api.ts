@@ -58,6 +58,41 @@ export async function loginRequest(
   return res.json() as Promise<LoginResponse>
 }
 
+// ─── Plataforma (equipo NEXOR) — HU-137 ─────────────────────────────────────
+
+export interface PlatformAdminInfo {
+  id: string
+  email: string
+  name: string
+}
+export interface PlatformLoginResponse {
+  token: string
+  admin: PlatformAdminInfo
+}
+
+/** Login del equipo NEXOR. Emite un JWT de plataforma (sin tenantId). */
+export async function loginPlatformRequest(
+  email: string,
+  password: string,
+): Promise<PlatformLoginResponse> {
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/v1/platform/auth/login`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email, password }),
+    })
+  } catch {
+    throw new ApiRequestError('El servicio no esta disponible. Intenta nuevamente.', 0)
+  }
+  if (!res.ok) {
+    let body: { error?: string; code?: string } = {}
+    try { body = await res.json() } catch { /* sin cuerpo */ }
+    throw new ApiRequestError(body.error ?? 'Error desconocido', res.status, body.code)
+  }
+  return res.json() as Promise<PlatformLoginResponse>
+}
+
 export async function logoutRequest(refreshToken: string): Promise<void> {
   const stored = typeof window !== 'undefined' ? localStorage.getItem('nexor-auth') : null
   let token: string | null = null

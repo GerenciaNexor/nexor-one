@@ -91,10 +91,27 @@ No requieren token salvo donde se indique.
 
 ---
 
-## Super Admin — `/v1/admin`
-**Rol requerido:** `SUPER_ADMIN` únicamente. Toda acción queda en audit log.
+## Plataforma (equipo NEXOR) — `/v1/platform` · HU-134/HU-137
+
+### `POST /v1/platform/auth/login`
+**Propósito:** Login del equipo NEXOR (tabla `platform_admins`). **Público.**  
+**Request:** `{ "email", "password" }`  
+**Response 200:** `{ "token": "<JWT SIN tenantId>", "admin": { "id", "email", "name" } }`  
+El JWT lleva `{ platformAdminId, role: 'SUPER_ADMIN' }` — sin `tenantId`. Con ese token se accede a
+`/v1/admin/*`; en cualquier ruta de tenant (`/v1/ari`, `/v1/kira`…) responde **403 `PLATFORM_IDENTITY_FORBIDDEN`**.
 
 ---
+
+## Super Admin — `/v1/admin`
+**Identidad requerida (HU-134):** token de **plataforma** (`platformAdminId`). Un token de cliente
+—aunque manipulara su rol— no lo lleva → **403**. Toda acción queda en `platform_audit_logs` (HU-136).
+
+---
+
+### `GET /v1/admin/audit-logs` · HU-136
+**Propósito:** Historial **inmutable** de acciones de la plataforma (append-only).  
+**Query:** `?tenantId=&action=&page=&limit=`  
+**Response 200:** `{ "data": [{ "id", "action", "reason", "metadata", "ip", "createdAt", "platformAdmin": { "email", "name" }, "tenant": { "name" } | null }], "total", "page", "totalPages" }`
 
 ### `GET /v1/admin/tenants`
 **Propósito:** Listar todos los tenants de la plataforma.  
@@ -104,13 +121,13 @@ No requieren token salvo donde se indique.
 **Propósito:** Ver detalle completo de un tenant (usuarios, módulos activos, integraciones).
 
 ### `PUT /v1/admin/tenants/:id/toggle`
-**Propósito:** Activar o desactivar un tenant.  
-**Request:** `{ "isActive": false }`
+**Propósito:** Activar o cancelar la suscripción de un tenant.  
+**Request:** `{ "isActive": false, "reason": "…" }` — `reason` se audita (HU-136).
 
 ### `POST /v1/admin/tenants/:id/impersonate`
 **Propósito:** Obtener un token que actúa como TENANT_ADMIN de ese tenant (para soporte).  
 **Response 200:** `{ "token": "jwt-de-impersonacion", "expiresIn": "1h" }`  
-**Nota:** Queda registrado en audit log con el userId del Super Admin.
+**Nota:** El JWT lleva `{ platformAdminId, tenantId, imp:true }`. Queda auditado (`tenant.impersonate`).
 
 ---
 

@@ -8,14 +8,21 @@ import { AppShell } from '@/components/layout/AppShell'
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
-  const token       = useAuthStore((s) => s.token)
-  const hasHydrated = useAuthStore((s) => s._hasHydrated)
+  const token         = useAuthStore((s) => s.token)
+  const platformAdmin = useAuthStore((s) => s.platformAdmin)
+  const impersonation = useAuthStore((s) => s.impersonation)
+  const hasHydrated   = useAuthStore((s) => s._hasHydrated)
+
+  // HU-137 — el panel de cliente es solo para sesiones de tenant. Una identidad de
+  // plataforma NO ve aquí ningún dato de negocio: se le redirige a su consola, salvo
+  // cuando está impersonando (soporte), que es el único camino auditado a un tenant.
+  const isPlatformOutsideImpersonation = !!platformAdmin && !impersonation?.active
 
   useEffect(() => {
-    if (hasHydrated && !token) {
-      router.replace('/login')
-    }
-  }, [hasHydrated, token, router])
+    if (!hasHydrated) return
+    if (!token) { router.replace('/login'); return }
+    if (isPlatformOutsideImpersonation) { router.replace('/platform') }
+  }, [hasHydrated, token, isPlatformOutsideImpersonation, router])
 
   if (!hasHydrated) {
     return (
@@ -25,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
-  if (!token) return null
+  if (!token || isPlatformOutsideImpersonation) return null
 
   return (
     <AppShell>
