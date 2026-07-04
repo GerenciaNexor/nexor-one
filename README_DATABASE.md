@@ -137,7 +137,76 @@ Todos los usuarios del sistema, de todos los roles y tenants.
 **Índices:** `(email)` UNIQUE, `(tenant_id)`, `(tenant_id, role)`, `(branch_id)`  
 **Enum `Role`:** `SUPER_ADMIN | TENANT_ADMIN | BRANCH_ADMIN | AREA_MANAGER | OPERATIVE`  
 **Enum `Module`:** `ARI | NIRA | KIRA | AGENDA | VERA`  
-**RLS:** Solo usuarios del mismo `tenant_id`. SUPER_ADMIN ve todos.
+**RLS:** Solo usuarios del mismo `tenant_id`. `tenant_id` es **NOT NULL** para todos los roles.
+**HU-134:** el equipo NEXOR **ya no vive aquí** — está en `platform_admins`. Ningún registro de `users`
+tiene rol `SUPER_ADMIN` (se retiran con `db:migrate-superadmins`); el modelo de clientes no se debilita.
+
+---
+
+#### `platform_admins` (HU-134)
+
+Identidad del **equipo NEXOR** (operadores de la plataforma). Tabla **SEPARADA** de `users`, **sin
+`tenant_id`**: no pertenece a ninguna empresa.
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | cuid |
+| `email` | VARCHAR(255) UNIQUE | login |
+| `name` | VARCHAR(255) | |
+| `password_hash` | VARCHAR(255) | bcrypt |
+| `is_active` | BOOLEAN | default true |
+| `last_login_at` | TIMESTAMPTZ | |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Login:** `/v1/platform/auth/login` → JWT **sin `tenantId`** (`{ platformAdminId, role: 'SUPER_ADMIN' }`).
+**RLS:** **deny-all** — se habilita RLS **sin política**, así `nexor_app` no puede leerla ni filtrarla
+como si fuera un usuario de tenant; solo `directPrisma` (superuser) la accede en el camino de auth de
+plataforma. Un `platform_admin` **nunca** aparece como usuario de ninguna empresa.
+
+---
+
+#### `platform_audit_logs` (HU-136)
+
+Registro **INMUTABLE (append-only)** de acciones administrativas de la plataforma — el equivalente de
+`agent_logs`/`stock_movements` a nivel de plataforma. Solo **INSERT**; jamás UPDATE/DELETE.
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | cuid |
+| `platform_admin_id` | VARCHAR(30) | quién actuó (sin FK: la historia sobrevive a borrados) |
+| `tenant_id` | VARCHAR(30) NULL | cliente afectado |
+| `action` | VARCHAR(60) | `tenant.create` · `tenant.activate` · `tenant.deactivate` · `subscription.update` · `module.enable/disable` · `tenant.impersonate` · `channel.connect/disconnect` |
+| `reason` | TEXT NULL | **obligatorio** en acciones sensibles (suscripción, canales) |
+| `metadata` | JSONB | valores relevantes (monto, módulo, canal, actor…) |
+| `ip` | VARCHAR(64) NULL | |
+| `created_at` | TIMESTAMPTZ | |
+
+**Escritura:** helper `logPlatformAction()` ([platform/audit.ts](apps/api/src/modules/platform/audit.ts))
+con `directPrisma`. **Lectura:** `GET /v1/admin/audit-logs` (solo SUPER_ADMIN).
+**RLS:** **deny-all** (igual que `platform_admins`) — ningún usuario de tenant lo lee.
+**Sin FKs** a propósito: la auditoría es independiente y no cascada.
+
+---
+
+#### `subscriptions` (HU-138)
+
+Suscripción **manual** de cada cliente (tenant): monto + estado. **Sin pasarela de cobro** (fase
+posterior). Una por tenant (`tenant_id` UNIQUE).
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| `id` | VARCHAR(30) PK | |
+| `tenant_id` | VARCHAR(30) UNIQUE FK→tenants | 1:1 con el cliente |
+| `amount` | DECIMAL(15,2) | monto mensual (gestión manual) |
+| `currency` | VARCHAR(3) | default COP |
+| `status` | VARCHAR(20) | `active` \| `cancelled` |
+| `started_at` / `cancelled_at` / `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Coherencia con el acceso:** `status` se mantiene sincronizado con `tenants.is_active` —
+**cancelar** la suscripción pone `is_active=false` (el `tenantHook` **bloquea el acceso** del cliente,
+`403 TENANT_DISABLED`); **activar** lo revierte. La sincronización vive en `toggleTenant`.
+**RLS:** **deny-all** (mundo de la plataforma) — ningún usuario de tenant ve su suscripción; solo
+`directPrisma`. Alta y cambios de monto/estado quedan **auditados** (`platform_audit_logs`).
 
 ---
 
@@ -886,3 +955,23 @@ CREATE POLICY tenant_isolation ON clients
 ```
 
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
+
+En la práctica no se aplica a mano: **`setup-rls.ts` (`pnpm --filter @nexor/api db:rls`) es la fuente
+única de verdad** y debe correrse tras cada migración y tras cualquier restore de backup (RLS no se
+preserva en un `pg_restore`). Cubre **31 tablas de negocio** con la política `tenant_isolation`
+(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). Las 5 últimas se añadieron en **HU-135-fix**
+(cierre de cobertura 26→31): `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
+`cost_centers`, `monthly_budgets` — forzadas también por la migración
+`20260703120000_rls_remaining_tables`. Antes de forzarlas se verificó que ningún job ni ruta las
+leyera fuera de contexto de tenant: la **ruta pública de cancelación** (`/v1/agenda/cancel`) y el
+**job de recordatorios** (`appointment-reminders`) pasaron a `directPrisma` con filtro `tenantId`
+explícito (patrón webhook/worker).
+
+Además, las tablas de **plataforma** (`platform_admins`, `platform_audit_logs`, `subscriptions`)
+llevan RLS **deny-all** (RLS habilitado sin política): `nexor_app` no las lee ni las filtra; solo
+`directPrisma` (superuser) las accede.
+
+**Auditoría:** `pnpm --filter @nexor/api db:audit-rls` levanta una BD temporal (nunca prod), migra
+desde cero, aplica `db:rls`, siembra 2 tenants en las 31 tablas y verifica —**bajo el rol real
+`nexor_app` (NOSUPERUSER NOBYPASSRLS)**— que no hay fuga cross-tenant en lectura ni escritura, que el
+acceso sin contexto devuelve 0 filas y que el aislamiento se mantiene bajo concurrencia.

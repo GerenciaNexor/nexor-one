@@ -175,21 +175,22 @@ async function main(): Promise<void> {
   }
   console.log(`✅ Pipeline y categorías VERA creados para tenant B`)
 
-  // ── 3. SUPER_ADMIN para tests de seguridad (HU-086) ──────────────────────
+  // ── 3. PLATFORM_ADMIN para tests de seguridad (HU-086 · HU-134) ───────────
+  // HU-134 — el equipo NEXOR vive en `platform_admins` (tabla separada, SIN tenant),
+  // no en `users`. Login por /v1/platform/auth/login → JWT sin tenantId.
   const superHash = await bcrypt.hash('SuperAdmin123!', 12)
-  await prisma.user.upsert({
+  await prisma.platformAdmin.upsert({
     where:  { email: 'super@nexor.co' },
-    update: {},
+    update: { passwordHash: superHash, isActive: true },
     create: {
-      tenantId:     demo.id,
-      branchId:     null,
       email:        'super@nexor.co',
       name:         'Super Admin Nexor',
       passwordHash: superHash,
-      role:         'SUPER_ADMIN',
     },
   })
-  console.log(`\n✅ Super Admin: super@nexor.co / SuperAdmin123!`)
+  // Defensa: ningún usuario de tenant debe quedar con rol SUPER_ADMIN.
+  await prisma.user.deleteMany({ where: { role: 'SUPER_ADMIN' } })
+  console.log(`\n✅ Platform Admin: super@nexor.co / SuperAdmin123! (platform_admins, sin tenant)`)
 
   // ── 4. AGENDA seed para demo tenant — service type + disponibilidad ───────
   // La suite HU-086 crea citas en beforeAll; necesita un service type

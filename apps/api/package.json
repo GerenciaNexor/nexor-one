@@ -20,6 +20,8 @@
     "db:seed-nexor": "tsx prisma/seed-nexor.ts",
     "db:seed:staging": "tsx prisma/seed-staging.ts",
     "db:rls": "tsx prisma/setup-rls.ts",
+    "db:migrate-superadmins": "tsx prisma/migrate-superadmins.ts",
+    "db:audit-rls": "tsx prisma/audit-rls.ts",
     "db:studio": "prisma studio",
     "db:backup": "bash ../../scripts/db-backup.sh",
     "db:restore": "bash ../../scripts/db-restore.sh",

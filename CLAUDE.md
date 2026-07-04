@@ -50,11 +50,15 @@ pnpm --filter @nexor/api db:studio
 `prisma migrate` y los seeds **no** disparan RLS automáticamente: `setup-rls.ts` debe correrse
 aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo siempre.
 
-`setup-rls.ts` cubre **26 tablas de negocio** (incluye bandeja, carga masiva y chat —
+`setup-rls.ts` cubre **31 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
-desde HU-127). `db:rls` es la **fuente única de verdad** del RLS: re-aplica todas las políticas
-tras un restore.
+desde HU-127; y `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
+`cost_centers`, `monthly_budgets` desde HU-135-fix — cierre de cobertura 26→31). Además habilita RLS
+**deny-all** en las tablas de plataforma `platform_admins` (HU-134) y `platform_audit_logs` (HU-136)
+— sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
+del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
+cross-tenant de las 31 tablas bajo el rol real `nexor_app` en una BD temporal.
 
 ### E2E (un proyecto/archivo concreto)
 
@@ -68,6 +72,15 @@ pnpm --filter @nexor/e2e exec playwright test tests/kira.spec.ts
 
 Una sola base de datos compartida, aislada por `tenant_id` vía **Row-Level Security** de PostgreSQL.
 
+- **Dos identidades separadas por diseño (HU-134):**
+  - **Clientes** → tabla `users` (con `tenant_id` **NOT NULL**). Login en `/v1/auth/login`;
+    JWT `{ userId, tenantId, branchId, role, module }`.
+  - **Equipo NEXOR (plataforma)** → tabla `platform_admins` (**sin `tenant_id`**). Login propio en
+    `/v1/platform/auth/login`; JWT `{ platformAdminId, role: 'SUPER_ADMIN' }` **sin tenantId**. Nunca
+    pertenece a una empresa ni ve sus datos de negocio. Un token de plataforma en una ruta de tenant
+    → **403 `PLATFORM_IDENTITY_FORBIDDEN`**; el acceso a datos de un cliente es solo por
+    **impersonación** (`/v1/admin/tenants/:id/impersonate` → JWT `{ platformAdminId, tenantId, imp:true }`).
+    `platform_admins` tiene **RLS deny-all** para `nexor_app` (solo `directPrisma` la lee).
 - El `tenant_id` **siempre** sale del JWT (`{ userId, tenantId, branchId, role, module }`),
   nunca del body del request.
 - **Contexto por-request (HU-122):** cada handler protegido corre dentro de una **transacción

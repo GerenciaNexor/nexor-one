@@ -76,17 +76,23 @@ jobs:
       - name: Ejecutar migraciones
         run: pnpm --filter @nexor/api exec prisma migrate deploy
 
-      - name: Configurar rol RLS en base de datos de test
+      - name: Configurar rol RLS (nexor_app con LOGIN) en base de datos de test
         run: |
           psql postgresql://postgres:postgres@localhost:5432/nexor_test -c "
             DO \$\$ BEGIN
               IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nexor_app') THEN
-                CREATE ROLE nexor_app;
+                CREATE ROLE nexor_app LOGIN PASSWORD 'nexor_app_test' NOSUPERUSER NOBYPASSRLS;
+              ELSE
+                ALTER ROLE nexor_app LOGIN PASSWORD 'nexor_app_test' NOSUPERUSER NOBYPASSRLS;
               END IF;
             END \$\$;
+            GRANT USAGE ON SCHEMA public TO nexor_app;
             GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO nexor_app;
             GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO nexor_app;
           "
+
+      - name: Aplicar RLS (db:rls) — HU-134 incluye platform_admins deny-all
+        run: pnpm --filter @nexor/api exec tsx prisma/setup-rls.ts
 
       - name: Seed principal
         run: pnpm --filter @nexor/api db:seed
@@ -108,7 +114,9 @@ jobs:
       - name: Iniciar API en background
         run: node apps/api/dist/app.js > /tmp/api.log 2>&1 &
         env:
-          DATABASE_URL:               postgresql://postgres:postgres@localhost:5432/nexor_test
+          # HU-134 — la app corre como nexor_app (sujeto a RLS); directPrisma usa postgres
+          # (superuser) para auth/plataforma/webhooks. Así el E2E de seguridad ejerce RLS real.
+          DATABASE_URL:               postgresql://nexor_app:nexor_app_test@localhost:5432/nexor_test
           DIRECT_DATABASE_URL:        postgresql://postgres:postgres@localhost:5432/nexor_test
           REDIS_URL:                  redis://localhost:6379
           JWT_SECRET:                 e2e-test-secret-32-chars-minimum-here

@@ -87,7 +87,7 @@ pnpm --filter @nexor/api db:setup
 
 Este comando hace tres cosas en orden:
 1. `prisma migrate dev` — crea los ≈35 modelos del schema en la BD
-2. `tsx prisma/setup-rls.ts` — habilita Row-Level Security en las 23 tablas de negocio
+2. `tsx prisma/setup-rls.ts` — habilita Row-Level Security en las 31 tablas de negocio
 3. `prisma db seed` — carga los datos de prueba
 
 **Datos de prueba creados** (los crea `prisma/seed.ts` — tenant demo "Farmacia Demo" con usuario admin):
@@ -99,20 +99,30 @@ Este comando hace tres cosas en orden:
 | Tenant | `Farmacia Demo S.A.S.` |
 | Slug | `demo-farmacia` |
 
-**Las 23 tablas de negocio con RLS** (definidas en `prisma/setup-rls.ts` — RLS NO se aplica
+**Las 31 tablas de negocio con RLS** (definidas en `prisma/setup-rls.ts` — RLS NO se aplica
 automáticamente al migrar/seed, hay que correr el script aparte):
 
 ```
-agent_logs, appointments, availability, branches, clients, deals, feature_flags,
-integrations, interactions, notifications, pipeline_stages, products, purchase_orders,
-quotes, service_types, stock_movements, suppliers, transactions, users,
-bulk_upload_logs, conversations, conversation_messages, chat_messages
+agent_logs, appointments, availability, branches, clients, client_ratings, deals,
+feature_flags, integrations, interactions, notifications, pipeline_stages, products,
+purchase_orders, quotes, service_types, stock_movements, suppliers, supplier_ratings,
+transactions, users, bulk_upload_logs, conversations, conversation_messages, chat_messages,
+dashboard_daily_rollups, blocked_dates, appointment_cancel_tokens, transaction_categories,
+cost_centers, monthly_budgets
 ```
 
 > `bulk_upload_logs`, `conversations` y `conversation_messages` se añadieron en HU-114;
-> `chat_messages` en HU-117 (Sprint 12) — así `db:rls` es la **fuente única de verdad** del RLS
-> y re-aplica todas las políticas tras un restore (la migración de `chat_messages` la sigue
-> creando también, de forma idempotente).
+> `chat_messages` en HU-117; `supplier_ratings` (HU-125), `client_ratings` (HU-126),
+> `dashboard_daily_rollups` (HU-127); y las últimas 5 (`blocked_dates`,
+> `appointment_cancel_tokens`, `transaction_categories`, `cost_centers`, `monthly_budgets`)
+> en HU-135-fix — cierre de cobertura 26→31. Así `db:rls` es la **fuente única de verdad** del RLS
+> y re-aplica todas las políticas tras un restore (las migraciones de `chat_messages` y de las 5
+> últimas las siguen creando también, de forma idempotente).
+>
+> Además, las tablas de **plataforma** (`platform_admins`, `platform_audit_logs`, `subscriptions`)
+> llevan RLS **deny-all** (sin política): `nexor_app` no las lee; solo `directPrisma`.
+> `pnpm --filter @nexor/api db:audit-rls` valida el aislamiento de las 31 tablas bajo el rol real
+> `nexor_app` en una BD temporal (nunca prod).
 
 ### 2.6 Verificar la conexión
 
@@ -201,7 +211,8 @@ pnpm --filter @nexor/api exec prisma migrate dev --name nombre_de_la_migracion
 | `seed-full-demo.ts` | no | Seed de demo extendido |
 | `seed-kira-dev.ts` | no | Seed acotado al módulo KIRA para desarrollo |
 | `onboarding.ts` | sí (`onboarding`) | Alta de cliente desde Excel |
-| `setup-rls.ts` | sí (`db:rls`) | Habilita Row-Level Security en las 23 tablas |
+| `setup-rls.ts` | sí (`db:rls`) | Habilita Row-Level Security en las 31 tablas + deny-all de plataforma |
+| `audit-rls.ts` | sí (`db:audit-rls`) | Audita el aislamiento cross-tenant de las 31 tablas bajo `nexor_app` (BD temporal) |
 | `create-admin.ts` | no (one-shot) | Crea el tenant "Nexor" + su usuario y **desactiva el admin demo** |
 | `inspect-db.ts` | no | Inspección/diagnóstico de la BD |
 | `fix-nexor-flags.ts` | no | Corrige los feature flags del tenant Nexor |

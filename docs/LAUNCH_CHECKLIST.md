@@ -85,7 +85,7 @@ DATABASE_URL="postgresql://..." pnpm --filter @nexor/api db:rls
 ### 1.4 Health check de producción
 
 ```bash
-curl https://api.nexor.co/health
+curl https://api.nexor-one.com/health
 # Respuesta esperada: {"success":true,"data":{"version":"1.0.0","db":"connected"}}
 ```
 
@@ -128,7 +128,7 @@ Verificar en Railway (API) que todas las variables obligatorias están configura
 Con `GMAIL_WEBHOOK_SECRET` definido, actualizar la URL de push en Google Cloud Console:
 
 - [ ] Ir a Google Cloud Console → Pub/Sub → suscripción del tenant piloto → Editar
-- [ ] Actualizar la URL: `https://api.nexor.co/webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>`
+- [ ] Actualizar la URL: `https://api.nexor-one.com/webhook/gmail?token=<GMAIL_WEBHOOK_SECRET>`
 - [ ] Guardar y verificar que Pub/Sub acepta la nueva URL
 
 ---
@@ -230,12 +230,12 @@ Cargar el catálogo inicial usando la plantilla Excel de onboarding:
 
 ```bash
 # Login con el admin del tenant piloto
-curl -X POST https://api.nexor.co/v1/auth/login \
+curl -X POST https://api.nexor-one.com/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@<cliente>.nexor.co","password":"<password>"}'
 
 # Usar el token retornado para verificar que solo ve sus datos
-curl -H "Authorization: Bearer <token>" https://api.nexor.co/v1/kira/products
+curl -H "Authorization: Bearer <token>" https://api.nexor-one.com/v1/kira/products
 # Solo debe ver los productos del tenant piloto
 ```
 
@@ -329,10 +329,10 @@ Ejecutar los checks críticos contra producción con el tenant del cliente pilot
 
 ```bash
 # Health check
-curl https://api.nexor.co/health
+curl https://api.nexor-one.com/health
 
 # Login del admin del cliente piloto
-curl -X POST https://api.nexor.co/v1/auth/login \
+curl -X POST https://api.nexor-one.com/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@<cliente>.nexor.co","password":"<password>"}'
 ```
@@ -345,7 +345,7 @@ curl -X POST https://api.nexor.co/v1/auth/login \
 ### 7.2 Verificar headers de seguridad
 
 ```bash
-curl -I https://api.nexor.co/health
+curl -I https://api.nexor-one.com/health
 ```
 
 - [ ] `X-Content-Type-Options: nosniff` presente
@@ -357,7 +357,7 @@ curl -I https://api.nexor.co/health
 ```bash
 # Enviar 11 requests consecutivos al login con credenciales inválidas
 for i in {1..11}; do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.nexor.co/v1/auth/login \
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.nexor-one.com/v1/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"test@test.com","password":"wrong"}'
 done

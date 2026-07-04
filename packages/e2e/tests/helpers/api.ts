@@ -51,6 +51,21 @@ export async function login(email: string, password: string): Promise<LoginResul
   return res.json() as Promise<LoginResult>
 }
 
+/** HU-134 — login del equipo NEXOR (plataforma). Emite un JWT SIN tenantId. */
+export interface PlatformLoginResult {
+  token: string
+  admin: { id: string; email: string; name: string }
+}
+export async function loginPlatform(email: string, password: string): Promise<PlatformLoginResult> {
+  const res = await fetch(`${API_URL}/v1/platform/auth/login`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ email, password }),
+  })
+  if (!res.ok) throw new Error(`Platform login failed (${res.status}): ${await res.text()}`)
+  return res.json() as Promise<PlatformLoginResult>
+}
+
 // ── Request factory ─────────────────────────────────────────────────────────
 
 export function api(token: string) {

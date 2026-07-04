@@ -8,6 +8,75 @@
 
 ---
 
+## HU-135-fix — Cierre de cobertura RLS: 26 → 31 tablas (2026-07-03)
+
+**Veredicto: ✅ 31/31 tablas AISLADAS. Cerradas las 5 tablas que HU-135 dejó sin RLS de BD.**
+
+Da seguimiento a la recomendación de HU-135. Se fuerza RLS de base de datos en las 5 tablas que
+tenían `tenant_id` pero solo se aislaban por el filtrado en el servicio: **`blocked_dates`,
+`appointment_cancel_tokens`, `transaction_categories`, `cost_centers`, `monthly_budgets`**.
+
+- **Migración real** [`20260703120000_rls_remaining_tables`](apps/api/prisma/migrations/20260703120000_rls_remaining_tables/migration.sql):
+  `ENABLE` + `FORCE ROW LEVEL SECURITY`, política `tenant_isolation` (USING + WITH CHECK, fail-safe con
+  `NULLIF(current_setting(...), '')`) y `GRANT` a `nexor_app` — mismo patrón que HU-114/HU-117. Las 5
+  se añadieron también a `setup-rls.ts` (`db:rls`, fuente única de verdad tras un restore).
+- **Verificación previa de contexto (criterio bloqueante):** antes de forzar RLS se auditó que ningún
+  job ni consulta leyera esas tablas fuera de contexto de tenant. Dos flujos lo hacían y se ajustaron:
+  - **Ruta pública de cancelación** `/v1/agenda/cancel/:token` — sin JWT ni contexto de tenant (el
+    token es la credencial): pasó a `directPrisma` (bypass RLS, patrón webhook/auth).
+  - **Job de recordatorios** `appointment-reminders` — corre fuera de request y creaba
+    `appointment_cancel_tokens`: pasó a `directPrisma` con filtro `tenantId` explícito (patrón worker;
+    evita además la transacción larga de `withTenantContext` con envío de emails dentro).
+
+  El resto de consumos (VERA/`monthly_budgets` en `budget-alerts` y dashboard, AGENDA, agente) ya corría
+  en contexto (`withTenantContext` / `runInTenantTransaction` / request tx) — sin cambios.
+- **Auditoría bajo `nexor_app`:** `db:audit-rls` re-ejecutado ahora sobre las **31 tablas** → todas
+  ✅ AISLADA (catálogo ok, lectura/escritura cross-tenant = 0, fail-safe = 0, concurrencia ✅).
+
+---
+
+## HU-135 — Auditoría de aislamiento de las 26 tablas con RLS (2026-07-03)
+
+**Veredicto: ✅ 26/26 tablas AISLADAS. Sin fuga cross-tenant en lectura ni escritura.**
+
+**Metodología (reproducible):** `pnpm --filter @nexor/api db:audit-rls`
+([apps/api/prisma/audit-rls.ts](apps/api/prisma/audit-rls.ts)). Crea una **BD temporal** en el
+servidor (nunca toca `railway` prod), aplica **todas las migraciones + `db:rls`**, siembra **2
+tenants (A, B) con una fila en cada una de las 26 tablas**, y ejecuta las pruebas **bajo el rol REAL
+de producción `nexor_app`** (verificado `superuser=false`, `bypassrls=false`) vía `SET LOCAL ROLE` +
+`set_config('app.current_tenant_id', …)`. Por tabla comprueba:
+
+| Prueba | Criterio | Resultado (las 26) |
+|--------|----------|--------------------|
+| **Catálogo** | RLS `ENABLED` + `FORCED` + política `tenant_isolation` (USING + WITH CHECK) | ✅ |
+| **Lectura propia** | contexto A ve su fila | ✅ (1) |
+| **Lectura cross** | contexto A → filas de B, incluso `WHERE tenant_id=B` | ✅ (0) |
+| **Escritura cross (UPDATE)** | contexto A → `UPDATE … WHERE tenant_id=B` | ✅ (0 filas) |
+| **Escritura cross (INSERT)** | contexto A → `INSERT` con `tenant_id=B` (WITH CHECK) | ✅ bloqueado (clients, products, users) |
+| **Fail-safe** | rol sin `app.current_tenant_id` | ✅ (0 filas) |
+| **Concurrencia** | 30 tx en paralelo alternando contexto A/B (patrón HU-122) | ✅ sin cruce |
+
+**Tablas cubiertas (26):** branches, users, feature_flags, integrations, agent_logs, notifications,
+clients, client_ratings, pipeline_stages, deals, interactions, quotes, products, stock_movements,
+suppliers, purchase_orders, supplier_ratings, service_types, availability, appointments, transactions,
+conversations, conversation_messages, bulk_upload_logs, chat_messages, dashboard_daily_rollups.
+
+**Gestión de usuarios (criterio específico):** la tabla `users` pasó lectura + escritura cross-tenant
+(propio=1, leeB=0, updB=0, INSERT cross bloqueado) → el cliente A crea/edita/desactiva sus usuarios
+sin que B los vea ni se vea afectado.
+
+**Fuera de las 26 (reportadas, sin RLS directa):** `stock`, `quote_items`, `purchase_order_items`,
+`supplier_scores`, `service_professionals`, `refresh_tokens` se aíslan **vía la tabla padre** (que sí
+tiene RLS). `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`, `cost_centers`,
+`monthly_budgets` **tienen `tenant_id` pero no están en `db:rls`** — su aislamiento hoy depende del
+filtrado por `tenant_id` en el servicio (defensa en profundidad de app, no de BD). *Recomendación de
+seguimiento:* añadirlas a `db:rls`. `platform_admins` (HU-134) tiene **RLS deny-all** (no es de tenant).
+
+**Regla confirmada:** RLS es la capa de BD; **no reemplaza** el filtrado por `tenant_id` en los
+servicios (defensa en profundidad). El `tenant_id` siempre sale del JWT, nunca del body.
+
+---
+
 ## Metodología
 
 Se revisó el código fuente completo de la API con foco en los vectores de ataque listados en los criterios de aceptación de HU-091:
@@ -360,7 +429,7 @@ if (!crypto.timingSafeEqual(sha256(secret), sha256(providedToken))) return reply
 
 La verificación ocurre **antes** del `reply.code(200).send()`, garantizando rechazo en < 10ms para requests inválidos.
 
-**Variable de entorno requerida:** `GMAIL_WEBHOOK_SECRET` — debe configurarse en el tenant de Pub/Sub como parte de la URL de push: `https://api.nexor.co/webhook/gmail?token=<secret>`
+**Variable de entorno requerida:** `GMAIL_WEBHOOK_SECRET` — debe configurarse en el tenant de Pub/Sub como parte de la URL de push: `https://api.nexor-one.com/webhook/gmail?token=<secret>`
 
 **Respuesta para requests inválidos:**
 ```json

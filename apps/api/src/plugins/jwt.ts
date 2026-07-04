@@ -5,12 +5,20 @@ import type { Role } from '@nexor/shared'
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
+    // Dos identidades (HU-134):
+    //  · Token de CLIENTE  → { userId, tenantId, branchId, role, module? }
+    //  · Token de PLATAFORMA → { platformAdminId, role: 'SUPER_ADMIN' }  (SIN tenantId)
+    //  · Token de IMPERSONACIÓN → { platformAdminId, tenantId, role: 'TENANT_ADMIN', imp: true }
+    // userId/tenantId son opcionales a nivel de tipo porque el token de plataforma no
+    // los lleva; el tenantHook garantiza que existan en el camino de tenant.
     payload: {
-      userId: string
-      tenantId: string
-      branchId: string | null
+      userId?: string
+      tenantId?: string
+      branchId?: string | null
       role: Role
       module?: string
+      platformAdminId?: string
+      imp?: boolean
     }
     user: {
       userId: string
@@ -18,6 +26,8 @@ declare module '@fastify/jwt' {
       branchId: string | null
       role: Role
       module?: string
+      platformAdminId?: string
+      imp?: boolean
     }
   }
 }

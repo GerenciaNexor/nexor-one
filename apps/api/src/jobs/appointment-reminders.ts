@@ -10,7 +10,11 @@
  */
 
 import crypto from 'node:crypto'
-import { prisma } from '../lib/prisma'
+// Job de fondo (fuera de request, sin contexto de tenant). Usa directPrisma (bypass RLS)
+// con filtro tenantId explícito en cada query — patrón worker/jobs. Necesario porque
+// appointment_cancel_tokens pasa a tener RLS (HU-140-fix); además evita la tx larga que
+// implicaría withTenantContext con envío de emails dentro.
+import { directPrisma as prisma } from '../lib/prisma'
 import { sendAppointmentReminder } from '../lib/email'
 
 const ONE_DAY_MS     = 24 * 60 * 60 * 1000
