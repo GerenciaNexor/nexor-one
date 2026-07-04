@@ -25,8 +25,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
   if (!hasHydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-violet-500 dark:border-white/10 dark:border-t-violet-500" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-violet-500 dark:border-slate-700 dark:border-t-violet-500" />
       </div>
     )
   }
