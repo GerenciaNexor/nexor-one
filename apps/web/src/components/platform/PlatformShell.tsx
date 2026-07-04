@@ -103,22 +103,25 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          {/* Toggle de tema claro / oscuro (mismo mecanismo que el panel de cliente) */}
-          <button
-            onClick={toggleTheme}
-            className="ml-auto rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 lg:ml-0 dark:text-slate-400 dark:hover:bg-white/10"
-            aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
-            title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
-          >
-            {theme === 'light' ? <MoonIcon /> : <SunIcon />}
-          </button>
+          {/* Acciones ancladas a la esquina derecha: tema + cerrar sesión */}
+          <div className="ml-auto flex items-center gap-2">
+            {/* Toggle de tema claro / oscuro (mismo mecanismo que el panel de cliente) */}
+            <button
+              onClick={toggleTheme}
+              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+              aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+              title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+            >
+              {theme === 'light' ? <MoonIcon /> : <SunIcon />}
+            </button>
 
-          <button
-            onClick={handleLogout}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
-          >
-            Cerrar sesión
-          </button>
+            <button
+              onClick={handleLogout}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto">{children}</main>
