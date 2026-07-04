@@ -37,6 +37,7 @@ import { tenantHook } from './plugins/tenant'
 import webhooksModule from './modules/webhooks/index'
 import gmailCallbackRoute from './modules/integrations/callback'
 import authModule from './modules/auth/index'
+import platformModule from './modules/platform/index'
 import integrationsModule from './modules/integrations/index'
 import tenantsModule from './modules/tenants/index'
 import branchesModule from './modules/branches/index'
@@ -90,9 +91,18 @@ app.addHook('onClose', async () => {
 app.register(swaggerPlugin)
 
 // ─── Plugins globales ────────────────────────────────────────────────────────
+// CORS: orígenes permitidos desde la env var CORS_ORIGIN (lista separada por comas).
+// Se recorta cada valor y se descartan vacíos → tolera espacios tras la coma en la
+// config de Railway (evita un fallo silencioso de CORS por un espacio de más).
+const corsOrigins = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
 app.register(fastifyCors, {
-  origin: process.env['CORS_ORIGIN']?.split(',') ?? 'http://localhost:3000',
+  origin: corsOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 })
 app.register(jwtPlugin)
 app.register(rateLimitPlugin)
@@ -134,6 +144,10 @@ app.register(gmailCallbackRoute, { prefix: '/v1/integrations/gmail' })
 
 // ─── Rutas publicas — autenticacion (sin tenantHook) ─────────────────────────
 app.register(authModule, { prefix: '/v1/auth' })
+
+// ─── Autenticacion de PLATAFORMA (HU-134) — identidad separada del equipo NEXOR ─
+// Publica (sin tenantHook, sin transaccion por-request): emite un JWT SIN tenantId.
+app.register(platformModule, { prefix: '/v1/platform' })
 
 // ─── Panel de Super Admin — sin tenantHook, con superAdminHook propio ─────────
 // El SUPER_ADMIN opera a traves de todos los tenants — no puede estar en el

@@ -3,10 +3,16 @@ import { listAllTenants, getTenantDetail, toggleTenant, logImpersonation, toggle
 import { getAgentLogsAdmin } from '../agents/service'
 import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
+import { isPlatformAdminActive } from '../platform/service'
+import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
+import { createTenantWithAdmin, getSubscription, setSubscriptionAmount } from '../platform/tenants'
+import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
 
 /**
  * Hook onRequest para el scope /v1/admin.
- * Verifica el JWT y exige exactamente el rol SUPER_ADMIN.
+ * HU-134 — exige una identidad de PLATAFORMA (platform_admins), no un usuario de tenant.
+ * Solo un JWT de plataforma (con platformAdminId + rol SUPER_ADMIN) pasa; un token de
+ * cliente (aunque manipulara su rol) no lleva platformAdminId → 403.
  */
 export async function superAdminHook(
   request: FastifyRequest,
@@ -17,15 +23,52 @@ export async function superAdminHook(
   } catch {
     return reply.code(401).send({ error: 'Token invalido o expirado', code: 'UNAUTHORIZED' })
   }
-  if (request.user.role !== 'SUPER_ADMIN') {
+  const { platformAdminId, role } = request.user
+  if (!platformAdminId || role !== 'SUPER_ADMIN') {
     return reply.code(403).send({
-      error: 'Solo el Super Admin puede acceder a este panel',
+      error: 'Solo el equipo NEXOR (plataforma) puede acceder a este panel',
       code: 'FORBIDDEN',
     })
   }
+  if (!(await isPlatformAdminActive(platformAdminId))) {
+    return reply.code(403).send({ error: 'Cuenta de plataforma desactivada.', code: 'ACCOUNT_DISABLED' })
+  }
 }
 
-const ToggleSchema = z.object({ isActive: z.boolean() })
+const ToggleSchema = z.object({ isActive: z.boolean(), reason: z.string().max(500).optional() })
+
+// HU-138 — alta de cliente + gestión de suscripción
+const CreateTenantSchema = z.object({
+  name:          z.string().min(2, 'Nombre requerido').max(255),
+  slug:          z.string().max(80).optional(),
+  legalName:     z.string().max(255).optional(),
+  taxId:         z.string().max(50).optional(),
+  currency:      z.string().length(3).optional(),
+  adminName:     z.string().min(2, 'Nombre del admin requerido').max(255),
+  adminEmail:    z.string().email('Email inválido'),
+  adminPassword: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  modules:       z.array(z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'])).optional(),
+  amount:        z.number().min(0).optional(),
+  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const SubscriptionSchema = z.object({
+  amount:   z.number().min(0, 'El monto no puede ser negativo'),
+  currency: z.string().length(3).optional(),
+  reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+
+// HU-139 — gestión de canales por el equipo NEXOR (motivo obligatorio)
+const ConnectWhatsAppSchema = z.object({
+  phoneNumberId: z.string().min(1, 'Phone Number ID requerido'),
+  accessToken:   z.string().min(1, 'Access Token requerido'),
+  branchId:      z.string().optional(),
+  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const ConnectGmailSchema = z.object({
+  email:  z.string().email('Email inválido'),
+  reason: z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+const DisconnectSchema = z.object({ reason: z.string().min(1, 'El motivo es obligatorio').max(500) })
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -52,6 +95,126 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20)))
     const result = await listAllTenants(page, limit)
     return reply.code(200).send(result)
+  })
+
+  /**
+   * POST /v1/admin/tenants  (HU-138) — crear un cliente + su primer admin + suscripción.
+   */
+  app.post('/tenants', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Crear cliente (tenant)',
+      description: 'Da de alta una empresa con su primer TENANT_ADMIN, módulos y suscripción (monto). Auditado. Solo plataforma.',
+      security:    bearerAuth,
+      response:    { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const parsed = CreateTenantSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const created = await createTenantWithAdmin(parsed.data, request.user.platformAdminId as string, request.ip)
+      return reply.code(200).send({ success: true, data: created })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * GET /v1/admin/tenants/:id/subscription  (HU-138)
+   */
+  app.get('/tenants/:id/subscription', {
+    schema: { tags: ['Admin'], summary: 'Suscripción del cliente', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const sub = await getSubscription(id)
+    return reply.code(200).send({ success: true, data: sub })
+  })
+
+  /**
+   * PUT /v1/admin/tenants/:id/subscription  (HU-138) — definir/editar el monto.
+   */
+  app.put('/tenants/:id/subscription', {
+    schema: { tags: ['Admin'], summary: 'Definir/editar el monto de la suscripción', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = SubscriptionSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const sub = await setSubscriptionAmount(id, parsed.data.amount, parsed.data.currency, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: sub })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  // ─── HU-139 — Canales (WhatsApp/Gmail) de un cliente, gestionados por la plataforma ───
+  const chanErr = (reply: FastifyReply, err: unknown) => {
+    const e = err as { statusCode?: number; message?: string; code?: string }
+    return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+  }
+
+  /** GET /v1/admin/tenants/:id/integrations — estado de los canales (sin tokens). */
+  app.get('/tenants/:id/integrations', {
+    schema: { tags: ['Admin'], summary: 'Canales del cliente', security: bearerAuth, params: idParam, response: { 200: listRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    return reply.code(200).send({ success: true, data: await listTenantIntegrations(id) })
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/whatsapp — conectar WhatsApp por el cliente. */
+  app.post('/tenants/:id/integrations/whatsapp', {
+    schema: { tags: ['Admin'], summary: 'Conectar WhatsApp del cliente', description: 'El access_token se cifra y nunca aparece en respuestas. Auditado (channel.connect).', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ConnectWhatsAppSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await connectWhatsAppForTenant(id, parsed.data, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/gmail — preparar Gmail del cliente. */
+  app.post('/tenants/:id/integrations/gmail', {
+    schema: { tags: ['Admin'], summary: 'Preparar Gmail del cliente', description: 'Registra el buzón; el consumo entrante depende de permisos de Google. Auditado.', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ConnectGmailSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await connectGmailForTenant(id, parsed.data, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/:integrationId/test — verificar el token. */
+  app.post('/tenants/:id/integrations/:integrationId/test', {
+    schema: { tags: ['Admin'], summary: 'Verificar canal del cliente', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id, integrationId } = request.params as { id: string; integrationId: string }
+    try {
+      const r = await testTenantIntegration(id, integrationId)
+      return reply.code(200).send({ success: r.success, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/tenants/:id/integrations/:integrationId/disconnect — desconectar (motivo). */
+  app.post('/tenants/:id/integrations/:integrationId/disconnect', {
+    schema: { tags: ['Admin'], summary: 'Desconectar canal del cliente', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id, integrationId } = request.params as { id: string; integrationId: string }
+    const parsed = DisconnectSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      await disconnectTenantIntegration(id, integrationId, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true })
+    } catch (err) { return chanErr(reply, err) }
   })
 
   /**
@@ -113,6 +276,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const tenant = await toggleTenant(id, parsed.data.isActive)
+      // HU-136 — auditoría de plataforma (cambio de suscripción activar/cancelar)
+      await logPlatformAction({
+        platformAdminId: request.user.platformAdminId as string,
+        tenantId:        id,
+        action:          parsed.data.isActive ? 'tenant.activate' : 'tenant.deactivate',
+        reason:          parsed.data.reason ?? null,
+        ip:              request.ip,
+      })
       return reply.code(200).send(tenant)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
@@ -160,18 +331,25 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
+    // HU-134 — token de impersonación: identidad = el operador de plataforma
+    // (platformAdminId), con tenantId del objetivo y `imp: true`. El tenantHook lo
+    // reconoce (verifica platform_admins, no users) y le aplica contexto de tenant.
+    const platformAdminId = request.user.platformAdminId as string
     const token = app.jwt.sign(
       {
-        userId: request.user.userId,
+        platformAdminId,
         tenantId: id,
         branchId: null,
         role: 'TENANT_ADMIN' as const,
+        imp: true,
       },
       { expiresIn: '1h' },
     )
 
     const requestIp = request.ip
-    await logImpersonation(id, request.user.userId, requestIp)
+    await logImpersonation(id, platformAdminId, requestIp)
+    // HU-136 — auditoría de plataforma (registro canónico append-only)
+    await logPlatformAction({ platformAdminId, tenantId: id, action: 'tenant.impersonate', ip: requestIp })
 
     return reply.code(200).send({ token, expiresIn: '1h' })
   })
@@ -214,7 +392,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       })
     }
 
-    const bodyParsed = z.object({ enabled: z.boolean() }).safeParse(request.body)
+    const bodyParsed = z.object({ enabled: z.boolean(), reason: z.string().max(500).optional() }).safeParse(request.body)
     if (!bodyParsed.success) {
       return reply.code(400).send({
         error: bodyParsed.error.errors[0]?.message ?? 'Datos de entrada invalidos',
@@ -223,6 +401,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const flag = await toggleFeatureFlag(id, paramsParsed.data.module, bodyParsed.data.enabled)
+      // HU-136 — auditoría de plataforma (módulo activado/desactivado)
+      await logPlatformAction({
+        platformAdminId: request.user.platformAdminId as string,
+        tenantId:        id,
+        action:          bodyParsed.data.enabled ? 'module.enable' : 'module.disable',
+        reason:          bodyParsed.data.reason ?? null,
+        metadata:        { module: paramsParsed.data.module },
+        ip:              request.ip,
+      })
       return reply.code(200).send({ success: true, data: flag })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
@@ -254,6 +441,39 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const page  = Math.max(1, Number(q.page  ?? 1))
     const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
     const result = await listImpersonations(page, limit, q.tenantId)
+    return reply.code(200).send(result)
+  })
+
+  /**
+   * GET /v1/admin/audit-logs  (HU-136)
+   * Historial INMUTABLE de acciones administrativas de la plataforma. Solo SUPER_ADMIN.
+   */
+  app.get('/audit-logs', {
+    schema: {
+      tags:        ['Admin'],
+      summary:     'Auditoría de la plataforma',
+      description: 'Registro append-only de acciones del equipo NEXOR (crear/activar/cancelar cliente, módulos, canales, impersonación). Solo SUPER_ADMIN. Ningún cliente accede.',
+      security:    bearerAuth,
+      querystring: {
+        type: 'object',
+        properties: {
+          tenantId: { type: 'string' },
+          action:   { type: 'string' },
+          page:     { type: 'string' },
+          limit:    { type: 'string' },
+        },
+      },
+      response: { 200: listRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const q     = request.query as { tenantId?: string; action?: string; page?: string; limit?: string }
+    const page  = Math.max(1, Number(q.page  ?? 1))
+    const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20)))
+    const result = await listPlatformAuditLogs(
+      { tenantId: q.tenantId, action: q.action },
+      page,
+      limit,
+    )
     return reply.code(200).send(result)
   })
 

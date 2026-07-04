@@ -34,8 +34,13 @@ app/
 ├── error.tsx / global-error.tsx
 ├── (auth)/                 ← Rutas públicas
 │   ├── layout.tsx
-│   └── login/page.tsx      ← Inicio de sesión
-└── (dashboard)/            ← Rutas autenticadas (requieren token)
+│   ├── login/page.tsx           ← Login de CLIENTE (tenant)
+│   └── platform-login/page.tsx  ← Login de PLATAFORMA (equipo NEXOR) — HU-137
+├── platform/               ← Consola de PLATAFORMA (HU-137) — solo platform_admins
+│   ├── layout.tsx          ← Guarda (exige platformAdmin) + PlatformShell (nav propia)
+│   ├── page.tsx            ← Inicio · clients · subscriptions · integrations · supervision · audit
+│   └── clients/[id]/…      ← Detalle de cliente: módulos, suscripción, impersonar
+└── (dashboard)/            ← Rutas autenticadas de CLIENTE (requieren token de tenant)
     ├── layout.tsx          ← Monta AppShell + guarda de sesión
     ├── dashboard/page.tsx  ← Inicio: lo accionable del día por rol/módulo (HU-132)
     ├── ari/                ← Ventas: clients, pipeline, history, quotes, reports
@@ -110,7 +115,15 @@ navegación) refrescándolos al recuperar el foco de la pestaña.
 
 En [apps/web/src/store/](apps/web/src/store/):
 
-- **[auth.ts](apps/web/src/store/auth.ts)** — token, refreshToken y usuario.
+- **[auth.ts](apps/web/src/store/auth.ts)** — token + una de **dos identidades** (HU-137):
+  - `user` → sesión de **cliente** (tenant) → panel de empresa en `/dashboard`.
+  - `platformAdmin` → sesión de **plataforma** (equipo NEXOR) → consola en `/platform`.
+  - `impersonation` → cuando un platform_admin "actúa como" un tenant (soporte): guarda el token de
+    plataforma para poder **volver**. `startImpersonation()` / `stopImpersonation()`.
+  - **Guardas por identidad, no por menú:** `platform/layout.tsx` exige `platformAdmin` (si no, →
+    `/platform-login`); `(dashboard)/layout.tsx` redirige la identidad de plataforma a `/platform`
+    (salvo impersonación). El backend además responde **403** en `/v1/admin/*` a tokens que no sean
+    de plataforma. La separación es por **identidad**, no por ocultar elementos del menú de cliente.
   - **Persiste** en `localStorage` con la key `nexor-auth` (middleware `persist`).
   - Expone `_hasHydrated`: bandera que evita renderizar contenido protegido antes de que
     Zustand termine de leer `localStorage` (previene el *mismatch* de SSR en Next.js).
@@ -133,6 +146,12 @@ selección respetan el rol; ver [README_MODULES.md](./README_MODULES.md)).
 - Hook **[useTheme.ts](apps/web/src/hooks/useTheme.ts)**: lee la clase del DOM (no del estado React,
   para evitar *stale closures*) y la sincroniza con un `MutationObserver`.
 - Los overrides de contraste WCAG del modo oscuro están en [globals.css](apps/web/src/app/globals.css).
+- **Un único mecanismo para todo el frontend**: tanto el panel de cliente
+  ([AppShell](apps/web/src/components/layout/AppShell.tsx)) como la **consola de plataforma**
+  ([PlatformShell](apps/web/src/components/platform/PlatformShell.tsx)) exponen el mismo toggle
+  `useTheme()` y comparten la key `nexor-theme` + la clase `dark`. La consola de plataforma mantiene
+  su **identidad violeta** en ambos temas: cada superficie define su estado claro como base y una
+  variante `dark:` que restaura el look oscuro (no es un tema aparte).
 
 ---
 

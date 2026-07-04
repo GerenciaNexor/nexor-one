@@ -121,6 +121,23 @@ Login exitoso
 → RLS filtra automáticamente
 ```
 
+### Dos identidades (HU-134) — plataforma vs cliente
+
+El sistema tiene **dos tablas de identidad y dos logins**, separados por diseño:
+
+| | Clientes | Equipo NEXOR (plataforma) |
+|---|---|---|
+| Tabla | `users` (`tenant_id` **NOT NULL**) | `platform_admins` (**sin `tenant_id`**) |
+| Login | `/v1/auth/login` | `/v1/platform/auth/login` |
+| JWT | `{ userId, tenantId, branchId, role, module }` | `{ platformAdminId, role:'SUPER_ADMIN' }` **sin tenantId** |
+| Rutas | `/v1/*` (tenantHook + tx por-request) | `/v1/admin/*` (`superAdminHook`, sin contexto de tenant) |
+
+El **`tenantHook`** distingue las tres formas de token: **cliente** (tenantId → verifica user activo +
+tx de tenant), **plataforma** (`platformAdminId` sin tenantId → **403 `PLATFORM_IDENTITY_FORBIDDEN`** en
+rutas de tenant), e **impersonación** (`platformAdminId` **+** tenantId + `imp:true` → verifica el
+`platform_admin` activo, aplica contexto de tenant). Así el aislamiento plataforma/cliente lo garantiza
+la estructura, no reglas que haya que recordar.
+
 ---
 
 ## Arquitectura de capas del backend
@@ -218,7 +235,7 @@ Todas van a la tabla `notifications` en PostgreSQL. El frontend las consume cada
 ```
 Cliente escribe por WhatsApp: "Quiero comprar 20 shampoo"
     ↓
-Meta envía POST a https://api.nexor.app/webhook/whatsapp
+Meta envía POST a https://api.nexor-one.com/webhook/whatsapp
     ↓
 Fastify verifica firma HMAC del request
     ↓

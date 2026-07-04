@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify'
-import { prisma } from '../../../lib/prisma'
+// Ruta PÚBLICA sin contexto de tenant: busca por un token único (credencial). Usa
+// directPrisma (bypass RLS) — patrón de auth/webhooks — para no depender del contexto de
+// tenant que aquí no existe. HU-140-fix: appointment_cancel_tokens pasa a tener RLS.
+import { directPrisma as prisma } from '../../../lib/prisma'
 
 // ─── Páginas HTML de respuesta (el cliente abre el enlace en el navegador) ────
 

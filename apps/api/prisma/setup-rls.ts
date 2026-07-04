@@ -60,6 +60,14 @@ const BUSINESS_TABLES = [
   'chat_messages',
   // HU-127 — rollup diario del Dashboard (tenant_id propio).
   'dashboard_daily_rollups',
+  // HU-135-fix — cierre de cobertura: 5 tablas con tenant_id que faltaban en db:rls.
+  // Su migración (20260703120000_rls_remaining_tables) las fuerza; se listan aquí para que
+  // db:rls siga siendo la fuente única de verdad (re-aplica tras un restore).
+  'blocked_dates',
+  'appointment_cancel_tokens',
+  'transaction_categories',
+  'cost_centers',
+  'monthly_budgets',
 ] as const
 
 async function setupRLS(): Promise<void> {
@@ -85,7 +93,19 @@ async function setupRLS(): Promise<void> {
     console.log(`  ✅ ${table}`)
   }
 
-  console.log(`\n✅ RLS configurado en ${BUSINESS_TABLES.length} tablas`)
+  // HU-134/HU-136 — tablas de PLATAFORMA (sin tenant_id de negocio): se habilita RLS SIN
+  // política (deny-all) → nexor_app no puede leerlas ni escribirlas; solo directPrisma
+  // (superuser) las accede. Así ningún usuario de tenant las ve ni las filtra.
+  //   platform_admins    (HU-134) — identidad del equipo NEXOR.
+  //   platform_audit_logs (HU-136) — auditoría append-only de acciones de plataforma.
+  //   subscriptions      (HU-138) — suscripción/monto por cliente (gestión de plataforma).
+  for (const t of ['platform_admins', 'platform_audit_logs', 'subscriptions']) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`)
+    await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "${t}"`)
+    console.log(`  🔒 ${t} (RLS deny-all para nexor_app)`)
+  }
+
+  console.log(`\n✅ RLS configurado en ${BUSINESS_TABLES.length} tablas + platform (deny-all)`)
   console.log(
     '   La variable app.current_tenant_id debe inyectarse en cada request desde el middleware de Fastify.'
   )

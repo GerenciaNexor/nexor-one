@@ -1,7 +1,7 @@
 # README_ENDPOINTS — API de NEXOR V1
 
 > **Base URL local:** `http://localhost:3001`  
-> **Base URL producción:** `https://api.nexor.app` (o la URL de Railway)  
+> **Base URL producción:** `https://api.nexor-one.com` (o la URL de Railway)  
 > **Versionado:** Todos los endpoints de negocio están bajo `/v1/`  
 > **Autenticación:** JWT Bearer Token en el header `Authorization: Bearer <token>`  
 > **Multi-tenancy:** El `tenant_id` se extrae automáticamente del JWT — nunca se pasa como parámetro
@@ -91,26 +91,55 @@ No requieren token salvo donde se indique.
 
 ---
 
-## Super Admin — `/v1/admin`
-**Rol requerido:** `SUPER_ADMIN` únicamente. Toda acción queda en audit log.
+## Plataforma (equipo NEXOR) — `/v1/platform` · HU-134/HU-137
+
+### `POST /v1/platform/auth/login`
+**Propósito:** Login del equipo NEXOR (tabla `platform_admins`). **Público.**  
+**Request:** `{ "email", "password" }`  
+**Response 200:** `{ "token": "<JWT SIN tenantId>", "admin": { "id", "email", "name" } }`  
+El JWT lleva `{ platformAdminId, role: 'SUPER_ADMIN' }` — sin `tenantId`. Con ese token se accede a
+`/v1/admin/*`; en cualquier ruta de tenant (`/v1/ari`, `/v1/kira`…) responde **403 `PLATFORM_IDENTITY_FORBIDDEN`**.
 
 ---
 
+## Super Admin — `/v1/admin`
+**Identidad requerida (HU-134):** token de **plataforma** (`platformAdminId`). Un token de cliente
+—aunque manipulara su rol— no lo lleva → **403**. Toda acción queda en `platform_audit_logs` (HU-136).
+
+---
+
+### `GET /v1/admin/audit-logs` · HU-136
+**Propósito:** Historial **inmutable** de acciones de la plataforma (append-only).  
+**Query:** `?tenantId=&action=&page=&limit=`  
+**Response 200:** `{ "data": [{ "id", "action", "reason", "metadata", "ip", "createdAt", "platformAdmin": { "email", "name" }, "tenant": { "name" } | null }], "total", "page", "totalPages" }`
+
+### `POST /v1/admin/tenants` · HU-138
+**Propósito:** Crear un cliente (tenant) + su primer `TENANT_ADMIN` + módulos + suscripción. Auditado (`tenant.create`).  
+**Request:** `{ "name", "slug"?, "legalName"?, "taxId"?, "currency"?, "adminName", "adminEmail", "adminPassword", "modules"?: ["ARI",…], "amount"?, "reason" }`  
+**Response 200:** `{ "success": true, "data": { "id", "name", "slug", "isActive", "adminEmail", "amount", "currency", "status" } }` · Errores `409 SLUG_TAKEN | EMAIL_TAKEN`.
+
 ### `GET /v1/admin/tenants`
 **Propósito:** Listar todos los tenants de la plataforma.  
-**Response 200:** `{ "data": [{ "id", "name", "slug", "isActive", "createdAt" }], "total" }`
+**Response 200:** `{ "data": [{ "id", "name", "slug", "isActive", "createdAt", "subscription": { "amount", "currency", "status" } | null }], "total" }`
+
+### `GET /v1/admin/tenants/:id/subscription` · HU-138
+**Response 200:** `{ "success": true, "data": { "amount", "currency", "status", "startedAt", "cancelledAt" } | null }`
+
+### `PUT /v1/admin/tenants/:id/subscription` · HU-138
+**Propósito:** Definir/editar el monto que paga el cliente. Auditado (`subscription.update`, con monto + motivo).  
+**Request:** `{ "amount", "currency"?, "reason" }`
 
 ### `GET /v1/admin/tenants/:id`
 **Propósito:** Ver detalle completo de un tenant (usuarios, módulos activos, integraciones).
 
 ### `PUT /v1/admin/tenants/:id/toggle`
-**Propósito:** Activar o desactivar un tenant.  
-**Request:** `{ "isActive": false }`
+**Propósito:** Activar o cancelar la suscripción de un tenant.  
+**Request:** `{ "isActive": false, "reason": "…" }` — `reason` se audita (HU-136).
 
 ### `POST /v1/admin/tenants/:id/impersonate`
 **Propósito:** Obtener un token que actúa como TENANT_ADMIN de ese tenant (para soporte).  
 **Response 200:** `{ "token": "jwt-de-impersonacion", "expiresIn": "1h" }`  
-**Nota:** Queda registrado en audit log con el userId del Super Admin.
+**Nota:** El JWT lleva `{ platformAdminId, tenantId, imp:true }`. Queda auditado (`tenant.impersonate`).
 
 ---
 
@@ -189,28 +218,38 @@ No requieren token salvo donde se indique.
 
 ---
 
-## Integraciones — `/v1/integrations`
+## Integraciones — `/v1/integrations` (CLIENTE · solo lectura desde HU-139)
 
 ---
 
 ### `GET /v1/integrations`
-**Propósito:** Listar integraciones configuradas (WhatsApp, Gmail) del tenant.  
-**Nota:** `token_encrypted` NUNCA aparece en la response.
-
-### `POST /v1/integrations/whatsapp`
-**Rol requerido:** `TENANT_ADMIN` o `BRANCH_ADMIN`  
-**Propósito:** Conectar un número de WhatsApp Business.  
-**Request:** `{ "branchId": "clxbranch1", "phoneNumberId": "103910...", "accessToken": "EAAx..." }`
-
-### `POST /v1/integrations/gmail/oauth`
-**Propósito:** Iniciar flujo OAuth2 para conectar Gmail.  
-**Response 200:** `{ "authUrl": "https://accounts.google.com/o/oauth2/auth?..." }`
+**Propósito:** Estado de los canales del tenant (Conectado / No conectado / última verificación).  
+**Nota:** `token_encrypted` NUNCA aparece en la response. **Solo lectura:** desde HU-139 el cliente
+**ya no** conecta/desconecta ni ve credenciales; eso lo hace el equipo NEXOR desde la plataforma.
 
 ### `GET /v1/integrations/gmail/callback`
-**Propósito:** Callback de OAuth2 de Google. Guarda el token cifrado.
+**Propósito:** Callback OAuth2 de Google (público). Guarda el token cifrado.
 
-### `DELETE /v1/integrations/:id`
-**Propósito:** Desconectar una integración. Elimina el token cifrado.
+---
+
+## Canales por cliente (PLATAFORMA) — `/v1/admin/tenants/:id/integrations` · HU-139
+Solo **plataforma** (SUPER_ADMIN). Los tokens se cifran (AES-256) y **nunca** salen en respuestas.
+Conectar/desconectar queda **auditado** (`channel.connect` / `channel.disconnect`, con motivo).
+
+### `GET /v1/admin/tenants/:id/integrations`
+Estado de los canales del cliente (sin tokens).
+
+### `POST /v1/admin/tenants/:id/integrations/whatsapp`
+**Request:** `{ "phoneNumberId", "accessToken", "branchId"?, "reason" }` — conecta WhatsApp del cliente.
+
+### `POST /v1/admin/tenants/:id/integrations/gmail`
+**Request:** `{ "email", "reason" }` — prepara Gmail (consumo entrante pendiente de permisos de Google).
+
+### `POST /v1/admin/tenants/:id/integrations/:integrationId/test`
+Verifica el token contra el proveedor (WhatsApp → Graph API de Meta). Actualiza `is_active`.
+
+### `POST /v1/admin/tenants/:id/integrations/:integrationId/disconnect`
+**Request:** `{ "reason" }` — borra el token cifrado y marca `is_active:false`.
 
 ### `POST /v1/integrations/:id/test`
 **Propósito:** Verificar que la integración sigue activa (ping).  

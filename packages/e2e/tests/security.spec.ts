@@ -11,7 +11,7 @@
 
 import { test, expect } from '@playwright/test'
 import {
-  login, api,
+  login, loginPlatform, api,
   DEMO_EMAIL, DEMO_PASSWORD,
   B_EMAIL, B_PASSWORD,
   SUPER_EMAIL, SUPER_PASSWORD,
@@ -43,10 +43,11 @@ let transactionId: string
 // ── Setup: crear datos de prueba en Tenant A ──────────────────────────────────
 
 test.beforeAll(async () => {
-  // Login de los 3 actores
+  // Login de los 3 actores. HU-134 — el super admin es una identidad de PLATAFORMA
+  // (tabla platform_admins) y entra por un endpoint propio que emite un JWT sin tenantId.
   const authA     = await login(DEMO_EMAIL, DEMO_PASSWORD)
   const authB     = await login(B_EMAIL,    B_PASSWORD)
-  const authSuper = await login(SUPER_EMAIL, SUPER_PASSWORD)
+  const authSuper = await loginPlatform(SUPER_EMAIL, SUPER_PASSWORD)
 
   tokenA     = authA.token
   tokenB     = authB.token
@@ -427,6 +428,41 @@ test.describe('SUPER_ADMIN — visibilidad global', () => {
 
   test('Tenant B obtiene 403 al intentar acceder al panel admin', async () => {
     const status = await api(tokenB).getStatus('/v1/admin/tenants')
+    expect(status).toBe(403)
+  })
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HU-134 — Separación de identidades: PLATAFORMA vs TENANT
+// ═════════════════════════════════════════════════════════════════════════════
+
+test.describe('HU-134 — identidad de plataforma separada del tenant', () => {
+
+  test('el JWT de plataforma NO lleva tenantId', async () => {
+    const payloadB64 = tokenSuper.split('.')[1] ?? ''
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString()) as Record<string, unknown>
+    expect(payload['tenantId']).toBeUndefined()
+    expect(payload['platformAdminId']).toBeTruthy()
+    expect(payload['role']).toBe('SUPER_ADMIN')
+  })
+
+  test('el token de plataforma NO puede acceder a recursos de un tenant (403)', async () => {
+    const status = await api(tokenSuper).getStatus('/v1/kira/products')
+    expect(status).toBe(403)
+  })
+
+  test('el super admin NO existe como usuario de tenant: el login de tenant falla', async () => {
+    const res = await fetch(`${API_URL}/v1/auth/login`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email: SUPER_EMAIL, password: SUPER_PASSWORD }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  test('un token de tenant NO puede usar el login/endpoints de plataforma (403 en panel)', async () => {
+    // Un token de cliente carece de platformAdminId → el panel de plataforma lo rechaza.
+    const status = await api(tokenA).getStatus('/v1/admin/tenants')
     expect(status).toBe(403)
   })
 })

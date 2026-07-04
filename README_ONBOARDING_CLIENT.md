@@ -242,7 +242,7 @@ Canal directo de WhatsApp con el TENANT_ADMIN para reportar problemas o dudas en
 Al finalizar el onboarding, el equipo entrega al cliente:
 
 ```
-URL del sistema: https://app.nexor.app
+URL del sistema: https://www.nexor-one.com
 Usuario admin:   email@empresa.com
 Contraseña:      (definida por el usuario en el email de invitación)
 

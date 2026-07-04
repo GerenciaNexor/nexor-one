@@ -103,6 +103,7 @@ model Tenant {
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
+  subscription          Subscription?
 
   @@map("tenants")
 }
@@ -198,6 +199,77 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+/// Identidad del equipo NEXOR — operadores de la PLATAFORMA (HU-134).
+/// Tabla SEPARADA de `users`: NO tiene tenant_id ni pertenece a ninguna empresa.
+/// Su login es propio y su JWT no lleva tenantId. El aislamiento plataforma/cliente
+/// queda garantizado por diseño (tablas distintas), no por reglas de aplicación.
+/// Solo se accede vía directPrisma (superuser); RLS habilitada sin política =
+/// nexor_app no puede leerla ni filtrarla como si fuera un usuario de tenant.
+model PlatformAdmin {
+  id           String    @id @default(cuid()) @db.VarChar(30)
+  email        String    @unique @db.VarChar(255)
+  name         String    @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_admins")
+}
+
+/// Registro INMUTABLE (append-only) de acciones administrativas de la PLATAFORMA (HU-136).
+/// Equivalente de agent_logs/stock_movements a nivel de plataforma: QUIÉN (platform_admin),
+/// sobre QUÉ cliente (tenant), QUÉ acción, POR QUÉ (reason) y valores relevantes (metadata,
+/// p. ej. monto). Solo INSERT — jamás UPDATE/DELETE. Sin FKs a propósito: la historia
+/// sobrevive a borrados y no cascada. RLS deny-all (nexor_app no la lee; solo directPrisma):
+/// ningún usuario de tenant accede a ella.
+model PlatformAuditLog {
+  id              String   @id @default(cuid()) @db.VarChar(30)
+  platformAdminId String   @map("platform_admin_id") @db.VarChar(30)
+  /// Tenant afectado (null en acciones sin tenant asociado).
+  tenantId        String?  @map("tenant_id") @db.VarChar(30)
+  /// Acción canónica: tenant.create | tenant.activate | tenant.deactivate |
+  /// subscription.update | module.enable | module.disable | tenant.impersonate |
+  /// channel.connect | channel.disconnect.
+  action          String   @db.VarChar(60)
+  /// Motivo — OBLIGATORIO en acciones sensibles (suscripción, conexión de canales).
+  reason          String?  @db.Text
+  /// Valores relevantes (monto, módulo, canal, antes/después, email del actor, etc.).
+  metadata        Json     @default("{}") @db.JsonB
+  ip              String?  @db.VarChar(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([platformAdminId])
+  @@map("platform_audit_logs")
+}
+
+/// Suscripción de un cliente (tenant) — gestión MANUAL (HU-138). Sin pasarela de cobro.
+/// Pertenece al mundo de la PLATAFORMA: RLS deny-all (ningún user de tenant la ve).
+/// `status` se mantiene coherente con `tenants.is_active`: cancelar → is_active=false
+/// (bloquea el acceso vía tenantHook); activar → is_active=true.
+model Subscription {
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  tenantId    String    @unique @map("tenant_id") @db.VarChar(30)
+  /// Monto mensual que paga el cliente (gestión manual).
+  amount      Decimal   @default(0) @db.Decimal(15, 2)
+  currency    String    @default("COP") @db.VarChar(3)
+  /// active | cancelled
+  status      String    @default("active") @db.VarChar(20)
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
 }
 
 /// Modulos activos por tenant. Se crea un registro por modulo al crear el tenant.

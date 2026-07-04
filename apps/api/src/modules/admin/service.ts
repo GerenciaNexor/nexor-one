@@ -1,4 +1,5 @@
 import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
+import { getSubscription, getSubscriptionsMap } from '../platform/tenants'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -21,8 +22,11 @@ export async function listAllTenants(page: number, limit: number) {
     prisma.tenant.count(),
   ])
 
+  // HU-138 — adjuntar suscripción (monto/estado). directPrisma: subscriptions es deny-all.
+  const subs = await getSubscriptionsMap(data.map((t) => t.id))
+
   return {
-    data,
+    data: data.map((t) => ({ ...t, subscription: subs.get(t.id) ?? null })),
     total,
     page,
     limit,
@@ -85,6 +89,7 @@ export async function getTenantDetail(tenantId: string) {
     branches,
     users,
     featureFlags: Object.fromEntries(featureFlags.map((f) => [f.module, f.enabled])),
+    subscription: await getSubscription(tenantId), // HU-138 (deny-all → directPrisma)
   }
 }
 
@@ -169,11 +174,19 @@ export async function toggleTenant(tenantId: string, isActive: boolean) {
   if (!existing) {
     throw { statusCode: 404, message: 'Empresa no encontrada', code: 'NOT_FOUND' }
   }
-  return prisma.tenant.update({
+  const tenant = await prisma.tenant.update({
     where: { id: tenantId },
     data: { isActive },
     select: { id: true, name: true, slug: true, isActive: true, updatedAt: true },
   })
+  // HU-138 — la suscripción se mantiene coherente con is_active: cancelar la suscripción
+  // = desactivar el tenant (bloquea el acceso vía tenantHook). directPrisma: `subscriptions`
+  // es deny-all para nexor_app. updateMany = no falla si el tenant aún no tiene suscripción.
+  await directPrisma.subscription.updateMany({
+    where: { tenantId },
+    data:  { status: isActive ? 'active' : 'cancelled', cancelledAt: isActive ? null : new Date() },
+  })
+  return tenant
 }
 
 // ─── Audit log de impersonacion ───────────────────────────────────────────────

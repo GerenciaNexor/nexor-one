@@ -18,9 +18,6 @@ function resolveNotifLink(link: string): string {
   if (link.startsWith('/bulk-upload/logs/')) {
     return link.replace('/bulk-upload/logs/', '/settings/bulk-upload/')
   }
-  if (link.startsWith('/admin/bulk-upload/logs/')) {
-    return link.replace('/admin/bulk-upload/logs/', '/admin/bulk-uploads/')
-  }
   return link
 }
 
@@ -119,6 +116,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, refreshToken, clearAuth } = useAuthStore()
+  const impersonation     = useAuthStore((s) => s.impersonation)
+  const stopImpersonation = useAuthStore((s) => s.stopImpersonation)
+
+  function returnToPlatform(): void {
+    stopImpersonation()
+    router.replace('/platform')
+  }
 
   const chatUnread = useChatStore((s) => s.unreadCount)
   const { theme, toggle: toggleTheme } = useTheme()
@@ -376,7 +380,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
 
-            {(user?.role === 'BRANCH_ADMIN' || user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
+            {(user?.role === 'BRANCH_ADMIN' || user?.role === 'TENANT_ADMIN') && (
               <>
                 <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
                 <Link
@@ -390,7 +394,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   Integraciones
                 </Link>
-                {(user?.role === 'TENANT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                {user?.role === 'TENANT_ADMIN' && (
                   <Link
                     href="/settings/bulk-upload"
                     className={[
@@ -423,22 +427,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </>
             )}
 
-            {user?.role === 'SUPER_ADMIN' && (
-              <>
-                <div className="my-2 border-t border-slate-100 dark:border-slate-700" />
-                <Link
-                  href="/admin/bulk-uploads"
-                  className={[
-                    'flex items-center rounded-lg px-3 py-2 text-sm transition-colors',
-                    pathname.startsWith('/admin')
-                      ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100',
-                  ].join(' ')}
-                >
-                  Supervisión
-                </Link>
-              </>
-            )}
           </div>
         </nav>
 
@@ -451,6 +439,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Area principal ───────────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+        {/* HU-137 — banner de impersonación (soporte NEXOR viendo un cliente) */}
+        {impersonation?.active && (
+          <div className="flex shrink-0 items-center justify-between gap-3 bg-violet-600 px-4 py-2 text-sm text-white sm:px-6">
+            <span className="truncate">
+              👁️ Estás viendo <strong>{impersonation.tenantName}</strong> como soporte NEXOR (impersonación auditada).
+            </span>
+            <button
+              onClick={returnToPlatform}
+              className="shrink-0 rounded-md bg-white/20 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/30"
+            >
+              Volver a la plataforma
+            </button>
+          </div>
+        )}
 
         {/* Header */}
         <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 sm:px-6 dark:border-slate-700 dark:bg-slate-800">
