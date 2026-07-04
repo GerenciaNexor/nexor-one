@@ -39,15 +39,15 @@ const ACTION_OPTIONS: { value: string; label: string }[] = [
 ]
 
 const ACTION_BADGE: Record<string, string> = {
-  'tenant.create':       'bg-violet-500/15 text-violet-300',
-  'tenant.activate':     'bg-emerald-500/15 text-emerald-300',
-  'tenant.deactivate':   'bg-red-500/15 text-red-300',
-  'subscription.update': 'bg-violet-500/15 text-violet-300',
-  'module.enable':       'bg-emerald-500/15 text-emerald-300',
-  'module.disable':      'bg-amber-500/15 text-amber-300',
-  'tenant.impersonate':  'bg-amber-500/15 text-amber-300',
-  'channel.connect':     'bg-emerald-500/15 text-emerald-300',
-  'channel.disconnect':  'bg-red-500/15 text-red-300',
+  'tenant.create':       'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+  'tenant.activate':     'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'tenant.deactivate':   'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  'subscription.update': 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+  'module.enable':       'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'module.disable':      'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  'tenant.impersonate':  'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  'channel.connect':     'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'channel.disconnect':  'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
 }
 
 const ACTION_LABEL: Record<string, string> = Object.fromEntries(
@@ -69,10 +69,10 @@ function metaPills(metadata: Record<string, unknown>) {
   return entries.slice(0, 6).map(([k, v]) => (
     <span
       key={k}
-      className="inline-flex items-center rounded-md bg-white/5 px-1.5 py-0.5 text-[11px] text-slate-400"
+      className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 dark:bg-white/5 dark:text-slate-400"
     >
       <span className="text-slate-500">{k}:</span>
-      <span className="ml-1 text-slate-300">{String(v)}</span>
+      <span className="ml-1 text-slate-700 dark:text-slate-300">{String(v)}</span>
     </span>
   ))
 }
@@ -113,19 +113,19 @@ export default function AuditPage() {
   return (
     <div className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-100">Auditoría</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Auditoría</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Historial inmutable de las acciones del equipo NEXOR.
         </p>
       </header>
 
       {/* Filter */}
       <div className="mb-4 flex items-center gap-2">
-        <label className="text-xs font-medium text-slate-400">Acción</label>
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Acción</label>
         <select
           value={action}
           onChange={(e) => setAction(e.target.value)}
-          className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
         >
           {ACTION_OPTIONS.map((o) => (
             <option key={o.value || 'all'} value={o.value}>{o.label}</option>
@@ -134,15 +134,15 @@ export default function AuditPage() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/5">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-white/5 text-slate-400">
+                <tr className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-400">
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Fecha</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Acción</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Cliente</th>
@@ -155,10 +155,10 @@ export default function AuditPage() {
               <tbody>
                 {loading ? (
                   Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i} className="border-t border-white/5">
+                    <tr key={i} className="border-t border-slate-100 dark:border-white/5">
                       {Array.from({ length: 7 }).map((__, c) => (
                         <td key={c} className="px-5 py-3.5">
-                          <div className="h-4 w-3/4 animate-pulse rounded bg-white/10" />
+                          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
                         </td>
                       ))}
                     </tr>
@@ -171,23 +171,23 @@ export default function AuditPage() {
                   </tr>
                 ) : (
                   entries.map((e) => (
-                    <tr key={e.id} className="border-t border-white/5 hover:bg-white/5 align-top">
-                      <td className="whitespace-nowrap px-5 py-3.5 text-xs text-slate-400">
+                    <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50 align-top dark:border-white/5 dark:hover:bg-white/5">
+                      <td className="whitespace-nowrap px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">
                         {fmtDateTime(e.createdAt)}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={[
                           'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                          ACTION_BADGE[e.action] ?? 'bg-white/10 text-slate-400',
+                          ACTION_BADGE[e.action] ?? 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400',
                         ].join(' ')}>
                           {ACTION_LABEL[e.action] ?? e.action}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-300">{e.tenant?.name ?? '—'}</td>
-                      <td className="px-5 py-3.5 text-xs text-slate-400">
+                      <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">{e.tenant?.name ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">
                         {e.platformAdmin.email ?? e.platformAdmin.name ?? '—'}
                       </td>
-                      <td className="max-w-[220px] px-5 py-3.5 text-xs text-slate-400">
+                      <td className="max-w-[220px] px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">
                         {e.reason ?? '—'}
                       </td>
                       <td className="px-5 py-3.5">
@@ -207,20 +207,20 @@ export default function AuditPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-              <span className="text-xs text-slate-400">Página {page} de {totalPages}</span>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 dark:border-white/5">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Página {page} de {totalPages}</span>
               <div className="flex gap-2">
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="rounded-lg border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-40"
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                 >
                   ← Anterior
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="rounded-lg border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-40"
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                 >
                   Siguiente →
                 </button>

@@ -47,13 +47,13 @@ function channelStatus(i: ChannelIntegration | undefined): ChannelStatus {
 }
 
 function channelBadge(channel: 'WHATSAPP' | 'GMAIL', status: ChannelStatus): { label: string; cls: string } {
-  if (status === 'connected') return { label: 'Conectado', cls: 'bg-emerald-500/15 text-emerald-300' }
+  if (status === 'connected') return { label: 'Conectado', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' }
   if (status === 'pending') {
     return channel === 'WHATSAPP'
-      ? { label: 'Pendiente',  cls: 'bg-amber-500/15 text-amber-300' }
-      : { label: 'Preparado',  cls: 'bg-amber-500/15 text-amber-300' }
+      ? { label: 'Pendiente',  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' }
+      : { label: 'Preparado',  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' }
   }
-  return { label: 'No conectado', cls: 'bg-white/10 text-slate-400' }
+  return { label: 'No conectado', cls: 'bg-slate-200 text-slate-500 dark:bg-white/10 dark:text-slate-400' }
 }
 
 type ChannelModalState = {
@@ -70,14 +70,14 @@ function ReasonModal({ title, confirmLabel, onConfirm, onCancel, danger }: {
   const [reason, setReason] = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
-        <h3 className="text-base font-semibold text-slate-100">{title}</h3>
-        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo (obligatorio)</label>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
           placeholder="Ej.: solicitud del cliente, falta de pago, activación del piloto…"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5">Cancelar</button>
+          <button onClick={onCancel} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
           <button
             onClick={() => reason.trim() && onConfirm(reason.trim())}
             disabled={!reason.trim()}
@@ -228,23 +228,23 @@ export default function PlatformClientDetailPage() {
   if (loading) return <div className="p-6 text-sm text-slate-500">Cargando…</div>
   if (error || !t) return (
     <div className="p-6">
-      <Link href="/platform/clients" className="text-sm text-violet-300 hover:underline">← Clientes</Link>
-      <p className="mt-4 text-sm text-red-400">{error ?? 'No encontrado'}</p>
+      <Link href="/platform/clients" className="text-sm text-violet-700 hover:underline dark:text-violet-300">← Clientes</Link>
+      <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error ?? 'No encontrado'}</p>
     </div>
   )
 
   return (
     <div className="p-6">
-      <Link href="/platform/clients" className="text-sm text-violet-300 hover:underline">← Clientes</Link>
+      <Link href="/platform/clients" className="text-sm text-violet-700 hover:underline dark:text-violet-300">← Clientes</Link>
 
       {/* Encabezado + acciones */}
       <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-100">{t.name}</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t.name}</h1>
             {t.isActive
-              ? <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">Suscripción activa</span>
-              : <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-semibold text-red-300">Cancelada</span>}
+              ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Suscripción activa</span>
+              : <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>}
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">{t.slug}{t.taxId ? ` · NIT ${t.taxId}` : ''}</p>
         </div>
@@ -255,32 +255,32 @@ export default function PlatformClientDetailPage() {
           </button>
           {t.isActive
             ? <button onClick={() => setReasonModal('deactivate')} disabled={busy}
-                className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 disabled:opacity-50">Cancelar suscripción</button>
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20">Cancelar suscripción</button>
             : <button onClick={() => setReasonModal('activate')} disabled={busy}
-                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50">Activar suscripción</button>}
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20">Activar suscripción</button>}
         </div>
       </div>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
         {/* Info */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">Datos de la empresa</h2>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Datos de la empresa</h2>
           <dl className="space-y-2 text-sm">
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Razón social</dt><dd className="text-slate-300">{t.legalName ?? '—'}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">NIT</dt><dd className="text-slate-300">{t.taxId ?? '—'}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Moneda</dt><dd className="text-slate-300">{t.currency}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Zona horaria</dt><dd className="text-slate-300">{t.timezone}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Sucursales</dt><dd className="text-slate-300">{t.branches.length}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Usuarios</dt><dd className="text-slate-300">{t.users.length}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Razón social</dt><dd className="text-slate-700 dark:text-slate-300">{t.legalName ?? '—'}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">NIT</dt><dd className="text-slate-700 dark:text-slate-300">{t.taxId ?? '—'}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Moneda</dt><dd className="text-slate-700 dark:text-slate-300">{t.currency}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Zona horaria</dt><dd className="text-slate-700 dark:text-slate-300">{t.timezone}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Sucursales</dt><dd className="text-slate-700 dark:text-slate-300">{t.branches.length}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Usuarios</dt><dd className="text-slate-700 dark:text-slate-300">{t.users.length}</dd></div>
           </dl>
         </div>
 
         {/* Suscripción */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-200">Suscripción</h2>
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Suscripción</h2>
             <button onClick={() => setAmountModal(true)}
-              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-white/10">
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10">
               Editar monto
             </button>
           </div>
@@ -289,13 +289,13 @@ export default function PlatformClientDetailPage() {
               <dt className="text-slate-500">Estado</dt>
               <dd>
                 {(t.subscription ? t.subscription.status === 'active' : t.isActive)
-                  ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Activa</span>
-                  : <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-300">Cancelada</span>}
+                  ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Activa</span>
+                  : <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Monto mensual</dt>
-              <dd className="text-slate-300">
+              <dd className="text-slate-700 dark:text-slate-300">
                 {t.subscription && t.subscription.amount > 0
                   ? fmtMoney(t.subscription.amount, t.subscription.currency)
                   : 'Sin definir'}
@@ -303,18 +303,18 @@ export default function PlatformClientDetailPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Desde</dt>
-              <dd className="text-slate-300">{t.subscription?.startedAt ? fmtDate(t.subscription.startedAt) : '—'}</dd>
+              <dd className="text-slate-700 dark:text-slate-300">{t.subscription?.startedAt ? fmtDate(t.subscription.startedAt) : '—'}</dd>
             </div>
           </dl>
         </div>
 
         {/* Módulos */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">Módulos activos</h2>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Módulos activos</h2>
           <div className="space-y-2">
             {MODULES.map((m) => (
-              <label key={m} className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-white/5">
-                <span className="text-sm text-slate-300">{m}</span>
+              <label key={m} className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-white/5">
+                <span className="text-sm text-slate-700 dark:text-slate-300">{m}</span>
                 <input type="checkbox" checked={!!t.featureFlags[m]} onChange={() => toggleModule(m)}
                   className="h-4 w-4 accent-violet-500" />
               </label>
@@ -323,24 +323,24 @@ export default function PlatformClientDetailPage() {
         </div>
 
         {/* Usuarios */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">Usuarios del cliente</h2>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Usuarios del cliente</h2>
           <div className="max-h-64 space-y-2 overflow-y-auto">
             {t.users.length === 0 ? <p className="text-xs text-slate-500">Sin usuarios</p> : t.users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between gap-2 border-b border-white/5 pb-1.5">
+              <div key={u.id} className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 dark:border-white/5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-200">{u.name}</p>
+                  <p className="truncate text-sm text-slate-700 dark:text-slate-200">{u.name}</p>
                   <p className="truncate text-xs text-slate-500">{u.email}</p>
                 </div>
-                <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">{u.role}</span>
+                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-white/5 dark:text-slate-400">{u.role}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Canales (WhatsApp / Gmail) */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5 lg:col-span-3">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">Canales (WhatsApp / Gmail)</h2>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-3 dark:border-white/10 dark:bg-white/5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Canales (WhatsApp / Gmail)</h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {/* WhatsApp */}
@@ -349,14 +349,14 @@ export default function PlatformClientDetailPage() {
               const status = channelStatus(wa)
               const badge  = channelBadge('WHATSAPP', status)
               return (
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-slate-200">WhatsApp Business</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">WhatsApp Business</span>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                   </div>
                   {wa ? (
                     <div className="mt-2 space-y-1">
-                      <p className="text-xs text-slate-400">Phone Number ID: <span className="font-mono text-slate-300">{wa.identifier}</span></p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Phone Number ID: <span className="font-mono text-slate-700 dark:text-slate-300">{wa.identifier}</span></p>
                       {wa.lastVerifiedAt && (
                         <p className="text-xs text-slate-500">Última verificación: {fmtDate(wa.lastVerifiedAt)}</p>
                       )}
@@ -368,11 +368,11 @@ export default function PlatformClientDetailPage() {
                     {wa ? (
                       <>
                         <button onClick={() => testChannel(wa.id)} disabled={testing === wa.id}
-                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50">
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10">
                           {testing === wa.id ? 'Verificando…' : 'Verificar'}
                         </button>
                         <button onClick={() => setChannelModal({ kind: 'wa-disconnect', integrationId: wa.id })}
-                          className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20">
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20">
                           Desconectar
                         </button>
                       </>
@@ -393,14 +393,14 @@ export default function PlatformClientDetailPage() {
               const status = channelStatus(gm)
               const badge  = channelBadge('GMAIL', status)
               return (
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-slate-200">Gmail</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Gmail</span>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                   </div>
                   {gm ? (
                     <div className="mt-2 space-y-1">
-                      <p className="text-xs text-slate-400">Cuenta: <span className="font-mono text-slate-300">{gm.identifier}</span></p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Cuenta: <span className="font-mono text-slate-700 dark:text-slate-300">{gm.identifier}</span></p>
                       {gm.lastVerifiedAt && (
                         <p className="text-xs text-slate-500">Última verificación: {fmtDate(gm.lastVerifiedAt)}</p>
                       )}
@@ -411,7 +411,7 @@ export default function PlatformClientDetailPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {gm ? (
                       <button onClick={() => setChannelModal({ kind: 'gmail-disconnect', integrationId: gm.id })}
-                        className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20">
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20">
                         Desconectar
                       </button>
                     ) : (
@@ -512,32 +512,32 @@ function ChannelModal({ title, confirmLabel, danger, fields, onConfirm, onCancel
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
-        <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
 
         {fields.map((f) => (
           <div key={f.name}>
-            <label className="mt-4 block text-xs font-medium text-slate-400">{f.label}</label>
+            <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">{f.label}</label>
             <input
               type={f.type ?? 'text'}
               value={values[f.name] ?? ''}
               onChange={(e) => setValues((p) => ({ ...p, [f.name]: e.target.value }))}
               placeholder={f.placeholder}
               autoComplete={f.type === 'password' ? 'new-password' : 'off'}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
           </div>
         ))}
 
-        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo (obligatorio)</label>
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
           placeholder="Ej.: solicitud del cliente, activación del piloto…"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
 
-        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+        {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onCancel} disabled={saving}
-            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50">Cancelar</button>
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
           <button onClick={submit} disabled={saving}
             className={`rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 ${danger ? 'bg-red-600 hover:bg-red-500' : 'bg-violet-600 hover:bg-violet-500'}`}>
             {saving ? 'Procesando…' : confirmLabel}
@@ -581,23 +581,23 @@ function AmountModal({ tenantId, tenantName, initialAmount, onUpdated, onCancel 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12162a] p-6 text-slate-200 shadow-2xl">
-        <h3 className="text-base font-semibold text-slate-100">Editar monto mensual de {tenantName}</h3>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Editar monto mensual de {tenantName}</h3>
 
-        <label className="mt-4 block text-xs font-medium text-slate-400">Monto mensual</label>
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Monto mensual</label>
         <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
 
-        <label className="mt-4 block text-xs font-medium text-slate-400">Motivo (obligatorio)</label>
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
           placeholder="Ej.: ajuste de plan, renegociación…"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/60" />
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
 
-        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+        {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onCancel} disabled={saving}
-            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50">Cancelar</button>
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
           <button onClick={submit} disabled={saving}
             className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
             {saving ? 'Guardando…' : 'Guardar monto'}

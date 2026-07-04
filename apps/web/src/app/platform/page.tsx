@@ -60,29 +60,29 @@ export default function PlatformHomePage() {
   return (
     <div className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-100">Inicio</h1>
-        <p className="mt-1 text-sm text-slate-400">Resumen del negocio de NEXOR</p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Inicio</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Resumen del negocio de NEXOR</p>
       </header>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </div>
       ) : loading ? (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-5">
-                <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-                <div className="mt-3 h-8 w-16 animate-pulse rounded bg-white/10" />
+              <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
+                <div className="mt-3 h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-            <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
+          <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="h-4 w-40 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
             <div className="mt-4 space-y-3">
               {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-5 w-full animate-pulse rounded bg-white/10" />
+                <div key={i} className="h-5 w-full animate-pulse rounded bg-slate-200 dark:bg-white/10" />
               ))}
             </div>
           </div>
@@ -91,26 +91,26 @@ export default function PlatformHomePage() {
         <>
           {/* Stat cards */}
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Total clientes" value={total} accent="text-violet-300" />
-            <StatCard label="Activos"        value={activos} accent="text-emerald-300" />
-            <StatCard label="Inactivos"      value={inactivos} accent="text-red-300" />
+            <StatCard label="Total clientes" value={total} accent="text-violet-700 dark:text-violet-300" />
+            <StatCard label="Activos"        value={activos} accent="text-emerald-700 dark:text-emerald-300" />
+            <StatCard label="Inactivos"      value={inactivos} accent="text-red-700 dark:text-red-300" />
           </div>
 
           {/* Últimos clientes */}
-          <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-100">Últimos clientes</h2>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <h2 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Últimos clientes</h2>
             {recientes.length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-500">Aún no hay clientes.</p>
             ) : (
-              <ul className="divide-y divide-white/5">
+              <ul className="divide-y divide-slate-100 dark:divide-white/5">
                 {recientes.map((t) => (
                   <li key={t.id}>
                     <Link
                       href={`/platform/clients/${t.id}`}
-                      className="-mx-2 flex items-center justify-between rounded-lg px-2 py-3 transition-colors hover:bg-white/5"
+                      className="-mx-2 flex items-center justify-between rounded-lg px-2 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-100">{t.name}</p>
+                        <p className="truncate font-medium text-slate-900 dark:text-slate-100">{t.name}</p>
                         <p className="truncate text-xs text-slate-500">@{t.slug}</p>
                       </div>
                       <div className="flex items-center gap-3 pl-4">
@@ -118,8 +118,8 @@ export default function PlatformHomePage() {
                           className={[
                             'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
                             t.isActive
-                              ? 'bg-emerald-500/15 text-emerald-300'
-                              : 'bg-red-500/15 text-red-300',
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                              : 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
                           ].join(' ')}
                         >
                           {t.isActive ? 'Activo' : 'Inactivo'}
@@ -142,8 +142,8 @@ export default function PlatformHomePage() {
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-      <p className="text-xs font-medium text-slate-400">{label}</p>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
       <p className={`mt-2 text-3xl font-bold tabular-nums ${accent}`}>{value}</p>
     </div>
   )

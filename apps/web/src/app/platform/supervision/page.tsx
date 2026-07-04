@@ -59,11 +59,11 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  success:    'bg-emerald-500/15 text-emerald-300',
-  failed:     'bg-red-500/15 text-red-300',
-  partial:    'bg-amber-500/15 text-amber-300',
-  pending:    'bg-white/10 text-slate-400',
-  validating: 'bg-violet-500/15 text-violet-300',
+  success:    'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  failed:     'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  partial:    'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  pending:    'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
+  validating: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -200,29 +200,29 @@ export default function SupervisionPage() {
   const hasActiveFilters = !!(tenantId || type || status || dateFrom || dateTo)
 
   const selectCls =
-    'h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500'
+    'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-200'
 
   return (
     <div className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-100">Supervisión</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Supervisión</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Monitoreo de cargas masivas de todos los clientes.
         </p>
       </header>
 
       {/* Summary cards */}
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Cargas hoy"          value={stats ? String(stats.totalHoy) : '—'} accent="text-violet-300" />
-        <StatCard label="Exitosas hoy"        value={stats ? String(stats.exitosasHoy) : '—'} accent="text-emerald-300" />
-        <StatCard label="Fallidas hoy"        value={stats ? String(stats.fallidasHoy) : '—'} accent="text-red-300" highlight={!!(stats && stats.fallidasHoy > 0)} />
-        <StatCard label="Tenants activos 24h" value={stats ? String(stats.tenantsActivos) : '—'} accent="text-slate-100" />
+        <StatCard label="Cargas hoy"          value={stats ? String(stats.totalHoy) : '—'} accent="text-violet-700 dark:text-violet-300" />
+        <StatCard label="Exitosas hoy"        value={stats ? String(stats.exitosasHoy) : '—'} accent="text-emerald-700 dark:text-emerald-300" />
+        <StatCard label="Fallidas hoy"        value={stats ? String(stats.fallidasHoy) : '—'} accent="text-red-700 dark:text-red-300" highlight={!!(stats && stats.fallidasHoy > 0)} />
+        <StatCard label="Tenants activos 24h" value={stats ? String(stats.tenantsActivos) : '—'} accent="text-slate-900 dark:text-slate-100" />
       </div>
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-400">Empresa</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Empresa</label>
           <select value={tenantId} onChange={(e) => setTenantId(e.target.value)} className={selectCls}>
             <option value="">Todas</option>
             {tenants.map((t) => (
@@ -232,7 +232,7 @@ export default function SupervisionPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-400">Tipo</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Tipo</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className={selectCls}>
             <option value="">Todos</option>
             {Object.entries(TYPE_LABELS).map(([k, v]) => (
@@ -242,7 +242,7 @@ export default function SupervisionPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-400">Estado</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Estado</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className={selectCls}>
             <option value="">Todos</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -252,19 +252,19 @@ export default function SupervisionPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-400">Desde</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Desde</label>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={selectCls} />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-slate-400">Hasta</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Hasta</label>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={selectCls} />
         </div>
 
         {hasActiveFilters && (
           <button
             onClick={clearFilters}
-            className="h-9 self-end rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-slate-400 hover:bg-white/10"
+            className="h-9 self-end rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-500 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10"
           >
             Limpiar filtros
           </button>
@@ -273,16 +273,16 @@ export default function SupervisionPage() {
         <div className="ml-auto self-end text-xs text-slate-500">
           {total} resultado{total !== 1 ? 's' : ''}
           {' · '}
-          <span className="text-emerald-400">● en vivo</span>
+          <span className="text-emerald-600 dark:text-emerald-400">● en vivo</span>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/5">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-white/5 text-slate-400">
+              <tr className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-400">
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Empresa</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Tipo</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Archivo</th>
@@ -295,10 +295,10 @@ export default function SupervisionPage() {
             <tbody>
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-t border-white/5">
+                  <tr key={i} className="border-t border-slate-100 dark:border-white/5">
                     {Array.from({ length: 7 }).map((__, c) => (
                       <td key={c} className="px-5 py-3.5">
-                        <div className="h-4 w-3/4 animate-pulse rounded bg-white/10" />
+                        <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
                       </td>
                     ))}
                   </tr>
@@ -314,42 +314,42 @@ export default function SupervisionPage() {
                   <tr
                     key={log.id}
                     className={[
-                      'border-t border-white/5 transition-colors hover:bg-white/5',
-                      log.status === 'failed' ? 'bg-red-500/5' : '',
+                      'border-t border-slate-100 transition-colors hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5',
+                      log.status === 'failed' ? 'bg-red-50 dark:bg-red-500/5' : '',
                     ].join(' ')}
                   >
                     <td className="px-5 py-3.5">
-                      <span className="font-medium text-slate-100">
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
                         {log.tenant?.name ?? log.tenantId}
                       </span>
                       {log.tenant?.slug && (
                         <span className="ml-1.5 text-xs text-slate-500">@{log.tenant.slug}</span>
                       )}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-300">
+                    <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
                       {TYPE_LABELS[log.type] ?? log.type}
                     </td>
-                    <td className="max-w-[180px] truncate px-5 py-3.5 font-mono text-xs text-slate-400">
+                    <td className="max-w-[180px] truncate px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">
                       {log.fileName}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-300">
+                    <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
                       {log.status === 'success'
-                        ? <span className="font-semibold text-emerald-300">{log.recordCount}</span>
+                        ? <span className="font-semibold text-emerald-700 dark:text-emerald-300">{log.recordCount}</span>
                         : <span className="text-slate-500">{log.rowCount ?? '—'}</span>}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={[
                         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                        STATUS_BADGE[log.status] ?? 'bg-white/10 text-slate-400',
+                        STATUS_BADGE[log.status] ?? 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
                       ].join(' ')}>
                         {log.status === 'failed' && <span className="mr-1">⚠</span>}
                         {STATUS_LABELS[log.status] ?? log.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-slate-400">
+                    <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">
                       {fmtDuration(log.createdAt, log.finishedAt)}
                     </td>
-                    <td className="px-5 py-3.5 text-xs text-slate-400">
+                    <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">
                       {fmtDate(log.createdAt)}
                     </td>
                   </tr>
@@ -361,20 +361,20 @@ export default function SupervisionPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3">
-            <span className="text-xs text-slate-400">Página {page} de {totalPages}</span>
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 dark:border-white/5">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Página {page} de {totalPages}</span>
             <div className="flex gap-2">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-40"
+                className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
               >
                 ← Anterior
               </button>
               <button
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="rounded-lg border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-40"
+                className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
               >
                 Siguiente →
               </button>
@@ -398,10 +398,10 @@ function StatCard({
 }) {
   return (
     <div className={[
-      'rounded-xl border border-white/10 bg-white/5 p-5 transition-all',
+      'rounded-xl border border-slate-200 bg-white p-5 transition-all dark:border-white/10 dark:bg-white/5',
       highlight ? 'ring-2 ring-red-500/50' : '',
     ].join(' ')}>
-      <p className="text-xs font-medium text-slate-400">{label}</p>
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
       <p className={`mt-2 text-3xl font-bold tabular-nums ${accent}`}>{value}</p>
     </div>
   )

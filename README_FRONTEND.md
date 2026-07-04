@@ -146,6 +146,12 @@ selección respetan el rol; ver [README_MODULES.md](./README_MODULES.md)).
 - Hook **[useTheme.ts](apps/web/src/hooks/useTheme.ts)**: lee la clase del DOM (no del estado React,
   para evitar *stale closures*) y la sincroniza con un `MutationObserver`.
 - Los overrides de contraste WCAG del modo oscuro están en [globals.css](apps/web/src/app/globals.css).
+- **Un único mecanismo para todo el frontend**: tanto el panel de cliente
+  ([AppShell](apps/web/src/components/layout/AppShell.tsx)) como la **consola de plataforma**
+  ([PlatformShell](apps/web/src/components/platform/PlatformShell.tsx)) exponen el mismo toggle
+  `useTheme()` y comparten la key `nexor-theme` + la clase `dark`. La consola de plataforma mantiene
+  su **identidad violeta** en ambos temas: cada superficie define su estado claro como base y una
+  variante `dark:` que restaura el look oscuro (no es un tema aparte).
 
 ---
 
