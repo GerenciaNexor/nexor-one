@@ -193,6 +193,7 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
     if (!adminName.trim())     { setErr('El nombre del administrador es obligatorio.'); return }
     if (!adminEmail.trim())    { setErr('El email del administrador es obligatorio.'); return }
     if (adminPassword.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return }
+    if (isDemo && !taxId.trim()) { setErr('El NIT es obligatorio para crear una demo (control anti-duplicado).'); return }
     if (!reason.trim())        { setErr('El motivo es obligatorio.'); return }
 
     const body: {
@@ -313,6 +314,7 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <input type="number" min={1} max={30} value={demoDays} onChange={(e) => setDemoDays(e.target.value)} placeholder="15"
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100" />
               <p className="mt-1 text-xs text-slate-500">Por defecto 15 días, máximo 30. Editable después desde el detalle.</p>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">El <strong>NIT es obligatorio</strong>: se usa para bloquear demos repetidas (una empresa que ya tuvo demo o fue cliente no recibe otra).</p>
             </div>
           )}
 

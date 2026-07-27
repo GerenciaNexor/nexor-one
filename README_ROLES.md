@@ -30,9 +30,16 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
 **Qué puede hacer:**
 - **Crear clientes** (tenants) con su primer admin, módulos y **suscripción** (monto), y **editar el
   monto** o **activar/cancelar** la suscripción — gestión manual, sin cobro automático (HU-138).
-- **Crear clientes en modo demo** (HU-142): tenant real con expiración (default 15 días, tope 30),
-  duración editable (`PUT /v1/admin/tenants/:id/demo`). Al vencer se **suspende solo** (acceso
-  bloqueado) **sin borrar datos**; el estado (activa/expirada, días restantes) se ve en el detalle.
+- **Crear y gestionar demos** (HU-142/145): **solo el SUPER_ADMIN** crea demos (no autoservicio).
+  Tenant real con expiración (default 15 días, tope 30), duración editable
+  (`PUT /v1/admin/tenants/:id/demo`). Al vencer se **suspende solo** (acceso bloqueado) **sin borrar
+  datos**. En el detalle del cliente ve por demo: **días restantes, uso de IA (X/30, modelo),
+  límites de datos (X/N por entidad) y estado**; puede **extender** la duración y **conectar
+  WhatsApp/Gmail** (HU-139) si el cliente lo pide.
+  - **Anti-duplicado (HU-141/145):** al crear una demo el **NIT es obligatorio** y el sistema
+    **bloquea** (`409 DEMO_DUPLICATE`) si esa empresa **ya tuvo una demo** (aunque expirada o
+    convertida) o **ya fue cliente** — detectado por el identificador estable de HU-141: **NIT**
+    (`tax_id` normalizado) o, secundariamente, el **correo del admin**.
 - Ver todos los tenants de la plataforma · activar/desactivar tenants · modificar feature flags
 - Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
 - Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)

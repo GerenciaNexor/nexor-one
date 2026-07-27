@@ -12,7 +12,11 @@
  * Todas las consultas usan el proxy `prisma` (consciente del request): dentro de la transacción
  * por-request del tenant, `count`/`findUnique` comparten conexión y contexto RLS.
  */
+import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma } from './prisma'
+
+/** Cliente Prisma o transacción — para contar uso desde el request (RLS) o desde withTenantContext. */
+type DbClient = PrismaClient | Prisma.TransactionClient
 
 /** Topes de cantidad del plan demo. Configurable en un único punto. */
 export const DEMO_LIMITS = {
@@ -72,17 +76,31 @@ export const DEMO_LIMIT_LABEL: Record<DemoLimitedEntity, string> = {
   appointments:   'citas',
 }
 
-/** Cuenta el uso actual de una entidad dentro del tenant (RLS vía proxy por-request). */
-async function countEntity(tenantId: string, e: DemoLimitedEntity): Promise<number> {
+/** Cuenta el uso actual de una entidad dentro del tenant. `db` = proxy (RLS) o tx de contexto. */
+async function countEntity(db: DbClient, tenantId: string, e: DemoLimitedEntity): Promise<number> {
   switch (e) {
-    case 'products':       return prisma.product.count({ where: { tenantId } })
-    case 'clients':        return prisma.client.count({ where: { tenantId } })
-    case 'suppliers':      return prisma.supplier.count({ where: { tenantId } })
-    case 'quotes':         return prisma.quote.count({ where: { tenantId } })
-    case 'purchaseOrders': return prisma.purchaseOrder.count({ where: { tenantId } })
-    case 'users':          return prisma.user.count({ where: { tenantId } })
-    case 'appointments':   return prisma.appointment.count({ where: { tenantId } })
+    case 'products':       return db.product.count({ where: { tenantId } })
+    case 'clients':        return db.client.count({ where: { tenantId } })
+    case 'suppliers':      return db.supplier.count({ where: { tenantId } })
+    case 'quotes':         return db.quote.count({ where: { tenantId } })
+    case 'purchaseOrders': return db.purchaseOrder.count({ where: { tenantId } })
+    case 'users':          return db.user.count({ where: { tenantId } })
+    case 'appointments':   return db.appointment.count({ where: { tenantId } })
   }
+}
+
+/**
+ * Uso de datos vs. límites, contado con el cliente provisto (secuencial: una tx = una conexión).
+ * Reutilizable desde el request del cliente (proxy `prisma`) o desde la plataforma
+ * (`withTenantContext(tenantId, tx => ...)`). Devuelve el mapa entidad → {limit, used, remaining}.
+ */
+export async function countDemoDataUsage(db: DbClient, tenantId: string): Promise<Record<string, DemoUsageEntry>> {
+  const usage: Record<string, DemoUsageEntry> = {}
+  for (const e of Object.keys(DEMO_LIMITS) as DemoLimitedEntity[]) {
+    const used = await countEntity(db, tenantId, e)
+    usage[e] = { limit: DEMO_LIMITS[e], used, remaining: Math.max(0, DEMO_LIMITS[e] - used) }
+  }
+  return usage
 }
 
 /** ¿El tenant está en modo demo? (`tenants` es raíz sin RLS; lectura segura por id.) */
@@ -99,7 +117,7 @@ async function isDemoTenant(tenantId: string): Promise<boolean> {
 export async function assertDemoLimit(tenantId: string, entity: DemoLimitedEntity): Promise<void> {
   if (!(await isDemoTenant(tenantId))) return
   const limit = DEMO_LIMITS[entity]
-  const used = await countEntity(tenantId, entity)
+  const used = await countEntity(prisma, tenantId, entity)
   if (used >= limit) {
     throw {
       statusCode: 403,
@@ -136,11 +154,7 @@ export async function getDemoUsage(tenantId: string) {
   })
   if (!t?.isDemo) return { isDemo: false as const }
 
-  const usage: Record<string, DemoUsageEntry> = {}
-  for (const e of Object.keys(DEMO_LIMITS) as DemoLimitedEntity[]) {
-    const used = await countEntity(tenantId, e)
-    usage[e] = { limit: DEMO_LIMITS[e], used, remaining: Math.max(0, DEMO_LIMITS[e] - used) }
-  }
+  const usage = await countDemoDataUsage(prisma, tenantId)
 
   // HU-144 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad).
   const aiUsed = await prisma.agentLog.count({ where: demoAiWhere(tenantId) })

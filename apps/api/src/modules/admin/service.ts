@@ -1,6 +1,6 @@
 import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
 import { getSubscription, getSubscriptionsMap, getDemoState } from '../platform/tenants'
-import { demoAiWhere, DEMO_AI_MESSAGE_QUOTA, demoModel } from '../../lib/demo-limits'
+import { demoAiWhere, DEMO_AI_MESSAGE_QUOTA, demoModel, countDemoDataUsage, DEMO_LIMIT_LABEL } from '../../lib/demo-limits'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -107,6 +107,9 @@ export async function getTenantDetail(tenantId: string) {
           const used = await withTenantContext(tenantId, (tx) => tx.agentLog.count({ where: demoAiWhere(tenantId) }))
           return { limit: DEMO_AI_MESSAGE_QUOTA, used, remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - used), model: demoModel() }
         })(),
+        // HU-145 — el SUPER_ADMIN también ve los límites de DATOS de la demo (X de N por entidad).
+        limits: await withTenantContext(tenantId, (tx) => countDemoDataUsage(tx, tenantId)),
+        limitLabels: DEMO_LIMIT_LABEL,
       }
     : demo
 

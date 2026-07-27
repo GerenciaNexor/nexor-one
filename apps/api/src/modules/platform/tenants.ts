@@ -57,6 +57,55 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'cliente'
 }
 
+// ─── HU-145 — Anti-duplicado de demos (usa el identificador de HU-141) ─────────
+/** Normaliza el NIT/documento para comparar (sin puntos/guiones/espacios, mayúsculas). */
+function normalizeNit(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+/**
+ * HU-145 — Bloquea una NUEVA demo si la empresa ya conoció el producto: ya tuvo una demo
+ * (aunque expirada o convertida → `is_demo = true`, rastro permanente de HU-141) o ya fue
+ * cliente (tiene fila en `subscriptions`). Detecta por el identificador estable de HU-141:
+ * **NIT** (`tax_id` normalizado) y, secundariamente, el **correo del admin**. directPrisma:
+ * la creación corre sin contexto de tenant y `subscriptions` es deny-all.
+ */
+async function assertDemoNotDuplicate(taxId: string, adminEmail: string): Promise<void> {
+  const nit = normalizeNit(taxId)
+
+  // Coincidencia por NIT (normalizado en SQL para ignorar formato).
+  const byNit = await directPrisma.$queryRaw<{ name: string; is_demo: boolean; has_sub: boolean }[]>`
+    SELECT t.name, t.is_demo, (s.tenant_id IS NOT NULL) AS has_sub
+    FROM tenants t
+    LEFT JOIN subscriptions s ON s.tenant_id = t.id
+    WHERE t.tax_id IS NOT NULL
+      AND upper(regexp_replace(t.tax_id, '[^a-zA-Z0-9]', '', 'g')) = ${nit}
+  `
+
+  // Coincidencia por correo del admin (secundario).
+  const byEmail = await directPrisma.user.findFirst({
+    where:  { email: adminEmail },
+    select: { tenant: { select: { name: true, isDemo: true, subscription: { select: { tenantId: true } } } } },
+  })
+
+  const matches: { name: string; isDemo: boolean; hasSub: boolean; by: string }[] = [
+    ...byNit.map((r) => ({ name: r.name, isDemo: r.is_demo, hasSub: r.has_sub, by: 'NIT' })),
+    ...(byEmail?.tenant
+      ? [{ name: byEmail.tenant.name, isDemo: byEmail.tenant.isDemo, hasSub: !!byEmail.tenant.subscription, by: 'correo del admin' }]
+      : []),
+  ]
+
+  const blocker = matches.find((m) => m.isDemo || m.hasSub)
+  if (blocker) {
+    const cond = blocker.isDemo ? 'ya tuvo una demo (aunque haya expirado o se haya convertido)' : 'ya fue cliente'
+    throw {
+      statusCode: 409,
+      code:       'DEMO_DUPLICATE',
+      message:    `No se puede crear la demo: la empresa "${blocker.name}" ${cond} — coincidencia por ${blocker.by}. Una empresa que ya conoció el producto no recibe otra demo.`,
+    }
+  }
+}
+
 export interface CreateTenantInput {
   name: string; slug?: string; legalName?: string; taxId?: string; currency?: string
   adminName: string; adminEmail: string; adminPassword: string
@@ -69,6 +118,16 @@ export interface CreateTenantInput {
 
 /** Crea un cliente (tenant) + su primer TENANT_ADMIN + feature flags + suscripción. Auditado. */
 export async function createTenantWithAdmin(input: CreateTenantInput, actorId: string, ip?: string) {
+  // HU-145 — solo demos: exigir NIT (identificador estable) y aplicar el anti-duplicado ANTES
+  // de crear nada, para dar el mensaje más claro (una empresa que ya conoció el producto no
+  // recibe otra demo). Un cliente de pago normal no pasa por esta verificación.
+  if (input.isDemo) {
+    if (!input.taxId || !input.taxId.trim()) {
+      throw { statusCode: 400, code: 'DEMO_NIT_REQUIRED', message: 'El NIT es obligatorio para crear una demo (control anti-duplicado).' }
+    }
+    await assertDemoNotDuplicate(input.taxId.trim(), input.adminEmail)
+  }
+
   const slug = slugify(input.slug || input.name)
   if (await directPrisma.tenant.findUnique({ where: { slug }, select: { id: true } })) {
     throw { statusCode: 409, message: 'El identificador (slug) ya está en uso', code: 'SLUG_TAKEN' }

@@ -13,13 +13,16 @@ const MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 type ModuleName = (typeof MODULES)[number]
 
 // HU-142 — estado de demo derivado en el backend
+interface DemoUsageEntry { limit: number; used: number; remaining: number }
 interface DemoState {
   isDemo: boolean
   status: 'active' | 'expired' | null
   daysRemaining: number | null
   startedAt: string | null
   endedAt: string | null
-  ai?: { limit: number; used: number; remaining: number; model: string } // HU-144
+  ai?: { limit: number; used: number; remaining: number; model: string }       // HU-144
+  limits?: Record<string, DemoUsageEntry>                                       // HU-145 (límites de datos)
+  limitLabels?: Record<string, string>                                         // HU-145
 }
 interface TenantDetail {
   id: string; name: string; slug: string; legalName: string | null; taxId: string | null
@@ -339,6 +342,22 @@ export default function PlatformClientDetailPage() {
                 </div>
               )}
             </dl>
+
+            {/* HU-145 — límites de datos del plan demo (X de N por entidad) */}
+            {t.demo.limits && (
+              <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/10">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Límites de datos</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {Object.entries(t.demo.limits).map(([k, u]) => (
+                    <div key={k} className="flex justify-between gap-2 text-xs">
+                      <span className="truncate capitalize text-slate-500">{t.demo.limitLabels?.[k] ?? k}</span>
+                      <span className={`shrink-0 font-semibold tabular-nums ${u.used >= u.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>{u.used}/{u.limit}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <p className="mt-3 text-xs text-slate-500">Al vencer se suspende sola (sin borrar datos). Extender la duración reactiva el acceso.</p>
           </div>
         ) : (

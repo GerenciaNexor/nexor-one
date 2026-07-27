@@ -234,7 +234,7 @@ Migración real: `20260726120000_hu141_demo_and_subscription_end` (probada desde
 **RLS:** no aplica alta en `setup-rls.ts` — `tenants` es la raíz (sin `tenant_id`, sin política) y
 `subscriptions` ya es **deny-all** de plataforma; ambas se acceden solo por `directPrisma`/SUPER_ADMIN.
 
-**Regla anti-duplicado (documentada; la aplicará el HU del flujo de creación de demo):**
+**Regla anti-duplicado (aplicada en HU-145 al crear una demo — `409 DEMO_DUPLICATE`):**
 Una empresa **no** recibe una segunda demo si ya existe un tenant (que **nunca se borra**) con el
 **mismo NIT** (`tax_id` normalizado — trim, sin puntos/guiones, mayúsculas) **o** el mismo **correo del
 admin** (`users.email` del `TENANT_ADMIN`, case-insensitive), y ese tenant cumple alguna de:
@@ -246,6 +246,8 @@ admin** (`users.email` del `TENANT_ADMIN`, case-insensitive), y ese tenant cumpl
 El identificador primario es el **NIT** (estable y único por empresa); el correo del admin es
 secundario. Una demo vencida se marca **expirada/consumida** por `demo_ended_at` en el pasado y su
 rastro (`is_demo = true`) es **permanente** — nunca se borra, para que el anti-duplicado funcione.
+Al crear una demo el **NIT es obligatorio**; la verificación (`assertDemoNotDuplicate` en
+`platform/tenants.ts`) normaliza el NIT en SQL (`regexp_replace`) y bloquea con `409 DEMO_DUPLICATE`.
 
 **Ciclo de vida de la demo (HU-142):**
 
