@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { DealFormModal, type PipelineStage, type Deal } from '@/components/ari/DealFormModal'
 import { RateClientModal } from '@/components/ari/RateClientModal'
 import { Portal } from '@/components/ui/Portal'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
 
@@ -543,6 +544,24 @@ export default function PipelinePage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
           <p className="text-sm text-red-500">{fetchError}</p>
           <button onClick={fetchData} className="text-sm text-blue-600 hover:underline">Reintentar</button>
+        </div>
+      ) : (stages.length > 0 && deals.length === 0) ? (
+        /* ── Estado vacío educativo (sin negocios aún o filtro sin resultados) ── */
+        <div className="p-6">
+          {filterAssigned ? (
+            <EmptyState
+              variant="filtered"
+              title="Sin resultados"
+              description="Ningún negocio coincide con el vendedor seleccionado."
+              action={{ label: 'Limpiar filtro', onClick: () => setFilterAssigned('') }}
+            />
+          ) : (
+            <EmptyState
+              title="Aún no tienes negocios en curso"
+              description="Aquí gestionas tus oportunidades de venta por etapa y las mueves hasta cerrarlas. Empieza creando el primero."
+              action={{ label: 'Crear el primer negocio', onClick: () => setCreateModal({ stageId: stages[0]?.id ?? '' }) }}
+            />
+          )}
         </div>
       ) : (
         /* ── Kanban ─────────────────────────────────────────────────────────── */

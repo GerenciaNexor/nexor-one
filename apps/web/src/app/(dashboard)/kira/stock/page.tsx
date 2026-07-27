@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { MovementModal } from '@/components/kira/MovementModal'
 import type { StockRow } from '@/components/kira/MovementModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -81,6 +82,24 @@ export default function StockPage() {
   })
 
   const criticalCount = stocks.filter((s) => s.belowMin).length
+
+  // HU-152 — estado vacío educativo (reutilizado en tabla y tarjetas móviles).
+  const stockEmpty = stocks.length === 0 ? (
+    <EmptyState
+      bordered={false}
+      title="Aún no tienes existencias"
+      description="Aquí verás el stock de cada producto por sucursal, con alertas cuando baja del mínimo. Primero agrega productos en el Catálogo."
+      action={{ label: 'Ir al catálogo', href: '/kira/products' }}
+    />
+  ) : (
+    <EmptyState
+      bordered={false}
+      variant="filtered"
+      title={onlyCritical ? 'Todo en orden' : 'Sin resultados'}
+      description={onlyCritical ? 'Ningún producto está por debajo del stock mínimo.' : 'Ningún producto coincide con tu búsqueda o filtro.'}
+      action={{ label: 'Limpiar filtros', onClick: () => { setSearch(''); setBranch(''); setCrit(false) } }}
+    />
+  )
 
   function openModal(productId?: string, branchId?: string) {
     setModalProductId(productId)
@@ -175,9 +194,7 @@ export default function StockPage() {
                   <button onClick={() => load()} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center text-sm text-slate-400">
-                  {onlyCritical ? 'No hay productos con stock crítico' : 'No se encontraron productos'}
-                </td></tr>
+                <tr><td colSpan={isOperative ? 6 : 7} className="p-0">{stockEmpty}</td></tr>
               ) : (
                 filtered.map((s) => (
                   <tr
@@ -244,9 +261,7 @@ export default function StockPage() {
             <button onClick={() => load()} className="mt-2 text-sm text-blue-600 hover:underline">Reintentar</button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400">
-            {onlyCritical ? 'No hay productos con stock crítico' : 'No se encontraron productos'}
-          </div>
+          <div className="rounded-xl border border-slate-100 bg-white dark:border-slate-700 dark:bg-slate-800">{stockEmpty}</div>
         ) : (
           filtered.map((s) => (
             <div

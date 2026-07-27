@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { ProductFormModal } from '@/components/kira/ProductFormModal'
 import type { Product } from '@/components/kira/ProductFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -208,8 +209,23 @@ export default function ProductsPage() {
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 9 : 8} className="py-16 text-center text-sm text-slate-400">
-                    No se encontraron productos
+                  <td colSpan={canEdit ? 9 : 8} className="p-0">
+                    {(search || categoryFilter || abcFilter) ? (
+                      <EmptyState
+                        bordered={false}
+                        variant="filtered"
+                        title="Sin resultados"
+                        description="Ningún producto coincide con tu búsqueda o filtros."
+                        action={{ label: 'Limpiar filtros', onClick: () => { setSearch(''); setLiveSearch(''); setCategory(''); setAbc('') } }}
+                      />
+                    ) : (
+                      <EmptyState
+                        bordered={false}
+                        title="Aún no tienes productos"
+                        description="Aquí está tu catálogo: el nombre, precio y datos de cada producto. Empieza agregando el primero."
+                        action={canEdit ? { label: 'Agregar el primer producto', onClick: openCreate } : undefined}
+                      />
+                    )}
                   </td>
                 </tr>
               ) : (

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { ClientFormModal } from '@/components/ari/ClientFormModal'
 import type { Client } from '@/components/ari/ClientFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Portal } from '@/components/ui/Portal'
 import { getCache, setCache } from '@/lib/page-cache'
 
@@ -333,8 +334,23 @@ export default function ClientsPage() {
                 </tr>
               ) : clients.length === 0 ? (
                 <tr>
-                  <td colSpan={colCount} className="py-16 text-center text-sm text-slate-400">
-                    No se encontraron clientes
+                  <td colSpan={colCount} className="p-0">
+                    {(search || sourceFilter || vendorFilter || favoriteOnly) ? (
+                      <EmptyState
+                        bordered={false}
+                        variant="filtered"
+                        title="Sin resultados"
+                        description="Ningún cliente coincide con tu búsqueda o filtros."
+                        action={{ label: 'Limpiar filtros', onClick: () => { setSearch(''); setLiveSearch(''); setSource(''); setVendor(''); setFavoriteOnly(false) } }}
+                      />
+                    ) : (
+                      <EmptyState
+                        bordered={false}
+                        title="Aún no tienes clientes"
+                        description="Aquí verás tu directorio de clientes con sus datos, su historial y quién los atiende. Empieza agregando el primero."
+                        action={{ label: 'Crear el primer cliente', onClick: openCreate }}
+                      />
+                    )}
                   </td>
                 </tr>
               ) : (

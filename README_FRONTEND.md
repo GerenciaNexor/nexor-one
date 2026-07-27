@@ -201,7 +201,7 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 | `dashboard/` | **BarChart** (ranking horizontal para el Top 10 de productos — HU-130) |
 | `chat/` | FloatingChat, MarkdownMessage |
 | `landing/` | Reveal (animación al hacer scroll), ChatDemo (conversación animada) |
-| `ui/` | Portal, Toast, SkeletonRows, **HelpTip** (ayuda contextual "¿qué es esto?" — HU-151) |
+| `ui/` | Portal, Toast, SkeletonRows, **HelpTip** (ayuda contextual "¿qué es esto?" — HU-151), **EmptyState** (estado vacío educativo — HU-152) |
 | `ocr/` | OcrExtractButton |
 
 > **Etiquetas de subsecciones (HU-150).** Las pestañas de ARI/NIRA usan nombres en lenguaje del
@@ -211,6 +211,14 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 > `/nira/history` → **"Compras realizadas"**. Se aplican en el SubNav, el `<h1>` de cada página y el
 > acceso rápido del Inicio. Clientes, Cotizaciones, Reportes, Proveedores y Órdenes de compra no cambian.
 >
+> **Estados vacíos educativos (HU-152).** Componente reutilizable
+> [EmptyState](apps/web/src/components/ui/EmptyState.tsx): cuando un listado no tiene datos, explica
+> qué va en la sección y ofrece la acción para empezar. Distingue dos casos: `variant="new"` (sin datos
+> aún → texto educativo + botón "crear el primero") y `variant="filtered"` (una búsqueda/filtro sin
+> resultados → mensaje distinto + "limpiar filtros"). `bordered={false}` para usarlo dentro de una
+> tabla/tarjeta. Aplicado en Clientes, Negocios en curso, Cotizaciones, Proveedores, Órdenes de compra,
+> Catálogo, Stock y Citas.
+
 > **Ayuda contextual por subsección (HU-151).** Componente reutilizable
 > [HelpTip](apps/web/src/components/ui/HelpTip.tsx): un icono discreto "?" que muestra una frase breve
 > en lenguaje llano. En **escritorio** aparece al pasar el mouse; en **móvil** (sin hover), al **tocar**
