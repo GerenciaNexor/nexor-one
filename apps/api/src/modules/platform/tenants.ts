@@ -238,6 +238,56 @@ export async function expireOverdueDemos(): Promise<{ suspended: number; ids: st
   return { suspended: due.length, ids: due.map((t) => t.id) }
 }
 
+/**
+ * HU-146 — Promueve un tenant DEMO a cuenta real. Es un cambio de estado/plan del MISMO tenant,
+ * NO una migración: todos sus datos (productos, clientes, ventas…) se conservan intactos.
+ *   · quita `is_demo` y la expiración (`demo_ended_at = null`) → deja de aplicar los límites de
+ *     datos y el cupo de IA de la demo (ambos se activan por `is_demo`), y el job de expiración
+ *     ya no lo toca. Se conserva `demo_started_at` como rastro histórico de que fue demo.
+ *   · reactiva el acceso (`is_active = true`) — el cliente compró.
+ *   · crea/asigna la suscripción del plan contratado (monto). Desde aquí "ya es cliente":
+ *     el anti-duplicado (HU-145) lo bloquea para una nueva demo por tener `subscription`.
+ * Auditado `tenant.demo_convert`.
+ */
+export async function convertDemoToClient(
+  tenantId: string, amount: number, currency: string | undefined, actorId: string, reason: string, ip?: string,
+) {
+  const t = await directPrisma.tenant.findUnique({
+    where:  { id: tenantId },
+    select: { id: true, name: true, slug: true, isDemo: true, currency: true, demoStartedAt: true },
+  })
+  if (!t) throw { statusCode: 404, message: 'Empresa no encontrada', code: 'NOT_FOUND' }
+  if (!t.isDemo) throw { statusCode: 422, message: 'La empresa no está en modo demo', code: 'NOT_A_DEMO' }
+
+  const cur = (currency || t.currency || 'COP').toUpperCase()
+
+  // 1) Cambio de estado/plan del MISMO tenant (sin tocar sus datos de negocio).
+  const tenant = await directPrisma.tenant.update({
+    where: { id: tenantId },
+    data:  { isDemo: false, demoEndedAt: null, isActive: true }, // demo_started_at queda como rastro
+    select: { id: true, name: true, slug: true, isActive: true },
+  })
+
+  // 2) Suscripción del plan contratado (la demo no tenía). upsert por si acaso.
+  const sub = await directPrisma.subscription.upsert({
+    where:  { tenantId },
+    update: { amount: new Prisma.Decimal(amount), currency: cur, status: 'active', cancelledAt: null },
+    create: { tenantId, amount: new Prisma.Decimal(amount), currency: cur, status: 'active' },
+  })
+
+  // 3) Auditoría + rastro histórico (demo → cliente).
+  await logPlatformAction({
+    platformAdminId: actorId, tenantId, action: 'tenant.demo_convert', reason, ip,
+    metadata: { amount, currency: cur, wasDemoSince: t.demoStartedAt?.toISOString() ?? null },
+  })
+
+  return {
+    id: tenant.id, name: tenant.name, slug: tenant.slug, isActive: tenant.isActive,
+    isDemo: false,
+    subscription: { amount: Number(sub.amount), currency: sub.currency, status: sub.status },
+  }
+}
+
 export async function getSubscription(tenantId: string) {
   const s = await directPrisma.subscription.findUnique({ where: { tenantId } })
   return s ? { tenantId: s.tenantId, amount: Number(s.amount), currency: s.currency, status: s.status, startedAt: s.startedAt, cancelledAt: s.cancelledAt } : null

@@ -20,6 +20,7 @@ export type PlatformAction =
   | 'tenant.deactivate'
   | 'tenant.demo_extend'   // HU-142 — ajuste manual de la duración de la demo
   | 'tenant.demo_expire'   // HU-142 — suspensión automática de la demo al vencer
+  | 'tenant.demo_convert'  // HU-146 — promoción de demo a cuenta real (mismo tenant)
   | 'subscription.update'
   | 'module.enable'
   | 'module.disable'

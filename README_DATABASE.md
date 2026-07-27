@@ -263,7 +263,12 @@ Al crear una demo el **NIT es obligatorio**; la verificación (`assertDemoNotDup
   → el `tenantHook` bloquea el acceso (`403 TENANT_DISABLED`). **Nunca borra**: los datos se conservan
   para la conversión (HU-146). Cada suspensión se audita `tenant.demo_expire` con actor **`system`**.
 - **Estado consultable** por el SUPER_ADMIN: el listado y el detalle de clientes devuelven un objeto
-  `demo` derivado `{ isDemo, status: 'active'|'expired', daysRemaining, startedAt, endedAt }`.
+  `demo` derivado `{ isDemo, status: 'active'|'expired', daysRemaining, startedAt, endedAt, ai, limits }`.
+- **Conversión a cliente real (HU-146):** `POST /v1/admin/tenants/:id/convert` es un cambio de
+  estado/plan del **mismo tenant** (no migración): `is_demo=false`, `demo_ended_at=null` (quita la
+  expiración), `is_active=true`, y se crea la fila en `subscriptions` (plan contratado). **Los datos
+  se conservan intactos.** Se mantiene `demo_started_at` como rastro; la conversión queda auditada
+  (`tenant.demo_convert`). Al tener ya `subscription`, el anti-duplicado lo trata como "ya fue cliente".
 
 ---
 

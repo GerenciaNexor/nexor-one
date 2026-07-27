@@ -40,6 +40,12 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
     **bloquea** (`409 DEMO_DUPLICATE`) si esa empresa **ya tuvo una demo** (aunque expirada o
     convertida) o **ya fue cliente** — detectado por el identificador estable de HU-141: **NIT**
     (`tax_id` normalizado) o, secundariamente, el **correo del admin**.
+  - **Convertir demo → cliente real (HU-146):** `POST /v1/admin/tenants/:id/convert` promueve el
+    **mismo tenant** (no es migración): quita `is_demo` y la expiración, reactiva el acceso y asigna
+    la **suscripción del plan** (monto). **Todos los datos cargados en demo se conservan intactos**;
+    los límites de datos y el cupo de IA de demo dejan de aplicar (pasan al plan). Queda auditado
+    `tenant.demo_convert`. Desde entonces el tenant **ya es cliente** → el anti-duplicado le impide
+    otra demo.
 - Ver todos los tenants de la plataforma · activar/desactivar tenants · modificar feature flags
 - Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
 - Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)
