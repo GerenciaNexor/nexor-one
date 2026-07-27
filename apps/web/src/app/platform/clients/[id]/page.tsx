@@ -12,6 +12,18 @@ import type { LoginUser } from '@/lib/auth-api'
 const MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 type ModuleName = (typeof MODULES)[number]
 
+// HU-142 — estado de demo derivado en el backend
+interface DemoUsageEntry { limit: number; used: number; remaining: number }
+interface DemoState {
+  isDemo: boolean
+  status: 'active' | 'expired' | null
+  daysRemaining: number | null
+  startedAt: string | null
+  endedAt: string | null
+  ai?: { limit: number; used: number; remaining: number; model: string }       // HU-144
+  limits?: Record<string, DemoUsageEntry>                                       // HU-145 (límites de datos)
+  limitLabels?: Record<string, string>                                         // HU-145
+}
 interface TenantDetail {
   id: string; name: string; slug: string; legalName: string | null; taxId: string | null
   isActive: boolean; timezone: string; currency: string; createdAt: string
@@ -19,6 +31,7 @@ interface TenantDetail {
   users:    { id: string; name: string; email: string; role: string; module: string | null; isActive: boolean; lastLoginAt: string | null }[]
   featureFlags: Record<string, boolean>
   subscription: { amount: number; currency: string; status: string; startedAt: string | null; cancelledAt: string | null } | null
+  demo: DemoState
 }
 
 function fmtDate(iso: string): string {
@@ -107,6 +120,8 @@ export default function PlatformClientDetailPage() {
   const [busy, setBusy]     = useState(false)
   const [reasonModal, setReasonModal] = useState<null | 'activate' | 'deactivate'>(null)
   const [amountModal, setAmountModal] = useState(false)
+  const [demoModal, setDemoModal]       = useState(false) // HU-142
+  const [convertModal, setConvertModal] = useState(false) // HU-146
 
   const [integrations, setIntegrations] = useState<ChannelIntegration[]>([])
   const [channelModal, setChannelModal] = useState<ChannelModalState | null>(null)
@@ -202,6 +217,19 @@ export default function PlatformClientDetailPage() {
     setAmountModal(false)
   }
 
+  // HU-142 — tras ajustar la duración de la demo, refrescar estado (puede reactivar el acceso)
+  function onDemoUpdated(r: { isActive: boolean; demo: DemoState }): void {
+    if (!t) return
+    setT({ ...t, isActive: r.isActive, demo: r.demo })
+    setDemoModal(false)
+  }
+
+  // HU-146 — tras convertir la demo en cliente real: recargar (deja de ser demo, ya con suscripción)
+  function onConverted(): void {
+    setConvertModal(false)
+    load()
+  }
+
   async function impersonate(): Promise<void> {
     if (!t) return
     setBusy(true)
@@ -242,9 +270,13 @@ export default function PlatformClientDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t.name}</h1>
-            {t.isActive
-              ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Suscripción activa</span>
-              : <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>}
+            {t.demo.isDemo
+              ? (t.demo.status === 'active'
+                  ? <span className="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Demo · {t.demo.daysRemaining}d restantes</span>
+                  : <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Demo vencida — suspendida</span>)
+              : (t.isActive
+                  ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Suscripción activa</span>
+                  : <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>)}
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">{t.slug}{t.taxId ? ` · NIT ${t.taxId}` : ''}</p>
         </div>
@@ -275,7 +307,73 @@ export default function PlatformClientDetailPage() {
           </dl>
         </div>
 
-        {/* Suscripción */}
+        {/* Demo (HU-142) o Suscripción, según el estado del tenant */}
+        {t.demo.isDemo ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Demo</h2>
+              <div className="flex gap-2">
+                <button onClick={() => setDemoModal(true)}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10">
+                  Editar duración
+                </button>
+                <button onClick={() => setConvertModal(true)}
+                  className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500">
+                  Convertir a cliente
+                </button>
+              </div>
+            </div>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Estado</dt>
+                <dd>
+                  {t.demo.status === 'active'
+                    ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Activa · {t.demo.daysRemaining}d restantes</span>
+                    : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Expirada — suspendida</span>}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Inicio</dt>
+                <dd className="text-slate-700 dark:text-slate-300">{t.demo.startedAt ? fmtDate(t.demo.startedAt) : '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Vence</dt>
+                <dd className="text-slate-700 dark:text-slate-300">{t.demo.endedAt ? fmtDate(t.demo.endedAt) : '—'}</dd>
+              </div>
+              {t.demo.ai && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Mensajes de IA</dt>
+                  <dd className={`font-semibold tabular-nums ${t.demo.ai.used >= t.demo.ai.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {t.demo.ai.used} de {t.demo.ai.limit}
+                  </dd>
+                </div>
+              )}
+              {t.demo.ai && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Modelo IA</dt>
+                  <dd className="font-mono text-xs text-slate-600 dark:text-slate-400">{t.demo.ai.model}</dd>
+                </div>
+              )}
+            </dl>
+
+            {/* HU-145 — límites de datos del plan demo (X de N por entidad) */}
+            {t.demo.limits && (
+              <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/10">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Límites de datos</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {Object.entries(t.demo.limits).map(([k, u]) => (
+                    <div key={k} className="flex justify-between gap-2 text-xs">
+                      <span className="truncate capitalize text-slate-500">{t.demo.limitLabels?.[k] ?? k}</span>
+                      <span className={`shrink-0 font-semibold tabular-nums ${u.used >= u.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>{u.used}/{u.limit}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="mt-3 text-xs text-slate-500">Al vencer se suspende sola (sin borrar datos). Extender la duración reactiva el acceso.</p>
+          </div>
+        ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Suscripción</h2>
@@ -307,6 +405,7 @@ export default function PlatformClientDetailPage() {
             </div>
           </dl>
         </div>
+        )}
 
         {/* Módulos */}
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
@@ -446,6 +545,25 @@ export default function PlatformClientDetailPage() {
           initialAmount={t.subscription?.amount ?? 0}
           onUpdated={onAmountUpdated}
           onCancel={() => setAmountModal(false)}
+        />
+      )}
+
+      {demoModal && (
+        <DemoModal
+          tenantId={t.id}
+          tenantName={t.name}
+          currentEndsAt={t.demo.endedAt}
+          onUpdated={onDemoUpdated}
+          onCancel={() => setDemoModal(false)}
+        />
+      )}
+
+      {convertModal && (
+        <ConvertModal
+          tenantId={t.id}
+          tenantName={t.name}
+          onConverted={onConverted}
+          onCancel={() => setConvertModal(false)}
         />
       )}
 
@@ -601,6 +719,131 @@ function AmountModal({ tenantId, tenantName, initialAmount, onUpdated, onCancel 
           <button onClick={submit} disabled={saving}
             className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
             {saving ? 'Guardando…' : 'Guardar monto'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal editar duración de la demo (HU-142) ─────────────────────────────────
+
+function DemoModal({ tenantId, tenantName, currentEndsAt, onUpdated, onCancel }: {
+  tenantId: string; tenantName: string; currentEndsAt: string | null
+  onUpdated: (r: { isActive: boolean; demo: DemoState }) => void
+  onCancel: () => void
+}) {
+  const [days, setDays]     = useState('15')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    setErr(null)
+    const num = Math.floor(Number(days))
+    if (!Number.isFinite(num) || num < 1 || num > 30) { setErr('La duración debe estar entre 1 y 30 días.'); return }
+    if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
+    setSaving(true)
+    try {
+      const res = await apiClient.put<{ success: true; data: { isActive: boolean; demo: DemoState } }>(
+        `/v1/admin/tenants/${tenantId}/demo`,
+        { durationDays: num, reason: reason.trim() },
+      )
+      onUpdated(res.data)
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo actualizar la duración.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Ajustar duración de la demo de {tenantName}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Se recalcula desde el inicio de la demo (máximo 30 días).
+          {currentEndsAt ? ` Vence actualmente el ${fmtDate(currentEndsAt)}.` : ''} Extenderla al futuro reactiva el acceso.
+        </p>
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Duración (días)</label>
+        <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(e.target.value)} placeholder="15"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Ej.: extensión del piloto, ajuste acordado con el cliente…"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
+          <button onClick={submit} disabled={saving}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
+            {saving ? 'Guardando…' : 'Guardar duración'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal convertir demo → cliente real (HU-146) ──────────────────────────────
+
+function ConvertModal({ tenantId, tenantName, onConverted, onCancel }: {
+  tenantId: string; tenantName: string
+  onConverted: () => void
+  onCancel: () => void
+}) {
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    setErr(null)
+    const num = Number(amount)
+    if (amount.trim() === '' || Number.isNaN(num) || num < 0) { setErr('Ingresa el monto mensual del plan contratado.'); return }
+    if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
+    setSaving(true)
+    try {
+      await apiClient.post(`/v1/admin/tenants/${tenantId}/convert`, { amount: num, reason: reason.trim() })
+      onConverted()
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo convertir la demo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Convertir «{tenantName}» en cliente real</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Se quitan los límites y la expiración de la demo, y se asigna la suscripción del plan.
+          <strong> Todos los datos que cargó se conservan intactos.</strong> Es un cambio de plan, no una migración.
+        </p>
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Monto mensual del plan</label>
+        <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Ej.: el cliente compró el plan tras la demo…"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
+          <button onClick={submit} disabled={saving}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+            {saving ? 'Convirtiendo…' : 'Convertir a cliente'}
           </button>
         </div>
       </div>

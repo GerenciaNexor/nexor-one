@@ -106,6 +106,23 @@ function CheckIcon() {
   )
 }
 
+function MailIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75h19.5v10.5H2.25z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7l9 6 9-6" />
+    </svg>
+  )
+}
+
+function PhoneIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106a1.125 1.125 0 00-1.173.417l-.97 1.293a.75.75 0 01-.982.218 12.05 12.05 0 01-5.03-5.03.75.75 0 01.218-.982l1.293-.97a1.125 1.125 0 00.417-1.173L8.212 4.02a1.125 1.125 0 00-1.091-.852H5.25A2.25 2.25 0 003 5.25v1.5z" />
+    </svg>
+  )
+}
+
 // ─── Mockup del producto (ilustración del dashboard) ──────────────────────────
 
 function ProductMockup() {
@@ -195,12 +212,20 @@ export default function LandingPage() {
               nexor one
             </span>
           </div>
-          <Link
-            href="/login"
-            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 backdrop-blur transition-colors hover:bg-white/10"
-          >
-            Iniciar sesión
-          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <a
+              href="#demo"
+              className="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:text-white sm:inline-block"
+            >
+              Solicita una demo
+            </a>
+            <Link
+              href="/login"
+              className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 backdrop-blur transition-colors hover:bg-white/10"
+            >
+              Iniciar sesión
+            </Link>
+          </div>
         </header>
 
         {/* ── Hero ───────────────────────────────────────────────────────────── */}
@@ -397,6 +422,74 @@ export default function LandingPage() {
               </Reveal>
             ))}
           </div>
+        </section>
+
+        {/* ── Solicita tu demo (HU-147) ──────────────────────────────────────── */}
+        <section id="demo" className="mx-auto max-w-6xl px-6 py-16">
+          <Reveal className="mb-12 text-center">
+            <span className="inline-block rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium tracking-wide text-cyan-300">
+              Prueba NEXOR
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-white sm:text-4xl">
+              ¿Te interesa nuestro producto?{' '}
+              <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Solicita tu demo
+              </span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-slate-400">
+              Pruébalo con tus propios datos durante <strong className="text-slate-300">15 días</strong>. Es una
+              prueba <strong className="text-slate-300">limitada en tiempo y en cantidad de datos</strong>, pensada
+              para que conozcas el producto sin montar toda tu operación.
+            </p>
+          </Reveal>
+
+          <Reveal>
+            <div className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-purple-600/15 via-[#0b1020] to-cyan-600/15 p-8 backdrop-blur sm:p-12">
+              <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+                {/* Qué incluye */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Qué incluye la demo</h3>
+                  <ul className="mt-5 space-y-3">
+                    {[
+                      'Acceso a los cinco módulos — ARI (ventas), NIRA (compras), KIRA (inventario), AGENDA (citas) y VERA (finanzas) — más el Dashboard.',
+                      'Carga tus propios datos de muestra (con los límites del plan demo).',
+                      'Prueba el agente de IA que responde y ejecuta tareas por ti.',
+                      'Opción de conectar un WhatsApp o Gmail (lo activamos nosotros si lo pides).',
+                      '15 días de duración; al terminar, tus datos se conservan por si decides continuar.',
+                    ].map((item) => (
+                      <li key={item} className="flex gap-3">
+                        <CheckIcon />
+                        <span className="text-sm leading-relaxed text-slate-300">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Contacto (la demo NO es autoservicio) */}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+                  <h3 className="text-lg font-semibold text-white">Solicítala por contacto</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                    La demo la activamos nosotros — no es autoservicio. Escríbenos o llámanos y te la preparamos.
+                  </p>
+                  <div className="mt-6 space-y-3">
+                    <a
+                      href="mailto:gerencia@nexor-one.com"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.02]"
+                    >
+                      <MailIcon /> gerencia@nexor-one.com
+                    </a>
+                    <a
+                      href="tel:+573134969078"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-3.5 text-sm font-semibold text-slate-100 backdrop-blur transition-colors hover:bg-white/10"
+                    >
+                      <PhoneIcon /> +57 313 496 9078
+                    </a>
+                  </div>
+                  <p className="mt-4 text-center text-xs text-slate-500">Te respondemos y coordinamos el acceso a tu demo.</p>
+                </div>
+              </div>
+            </div>
+          </Reveal>
         </section>
 
         {/* ── CTA final ──────────────────────────────────────────────────────── */}

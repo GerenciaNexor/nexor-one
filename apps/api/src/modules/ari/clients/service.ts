@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import type { Role } from '@nexor/shared'
 import { prisma } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import { hasMinRole } from '../../../lib/guards'
 import type { CreateClientInput, UpdateClientInput, ClientQuery, CreateInteractionInput } from './schema'
 
@@ -128,6 +129,7 @@ export async function createClient(
   userId:    string,
   input:     CreateClientInput,
 ) {
+  await assertDemoLimit(tenantId, 'clients') // HU-143 — tope del plan demo
   const client = await prisma.client.create({
     data: {
       tenantId,

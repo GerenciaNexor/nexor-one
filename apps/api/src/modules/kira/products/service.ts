@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import type { CreateProductInput, UpdateProductInput, ProductQuery } from './schema'
 
 const PRODUCT_SELECT = {
@@ -68,6 +69,7 @@ export async function getProduct(tenantId: string, productId: string) {
 }
 
 export async function createProduct(tenantId: string, input: CreateProductInput) {
+  await assertDemoLimit(tenantId, 'products') // HU-143 — tope del plan demo
   try {
     const product = await prisma.product.create({
       data: {

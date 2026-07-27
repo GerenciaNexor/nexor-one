@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
-import { createTenantWithAdmin, getSubscription, setSubscriptionAmount } from '../platform/tenants'
+import { createTenantWithAdmin, getSubscription, setSubscriptionAmount, setDemoDuration, convertDemoToClient, DEMO_MAX_DAYS } from '../platform/tenants'
 import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
 
 /**
@@ -50,8 +50,22 @@ const CreateTenantSchema = z.object({
   modules:       z.array(z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'])).optional(),
   amount:        z.number().min(0).optional(),
   reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+  // HU-142 — alta en modo demo (tenant real con expiración)
+  isDemo:           z.boolean().optional(),
+  demoDurationDays: z.number().int().min(1).max(DEMO_MAX_DAYS).optional(),
 })
 const SubscriptionSchema = z.object({
+  amount:   z.number().min(0, 'El monto no puede ser negativo'),
+  currency: z.string().length(3).optional(),
+  reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+// HU-142 — ajustar la duración de la demo (al crear o después), acotada al tope
+const DemoSchema = z.object({
+  durationDays: z.number().int().min(1).max(DEMO_MAX_DAYS),
+  reason:       z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+// HU-146 — promover una demo a cuenta real (monto del plan contratado)
+const ConvertSchema = z.object({
   amount:   z.number().min(0, 'El monto no puede ser negativo'),
   currency: z.string().length(3).optional(),
   reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
@@ -147,6 +161,50 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     try {
       const sub = await setSubscriptionAmount(id, parsed.data.amount, parsed.data.currency, request.user.platformAdminId as string, parsed.data.reason, request.ip)
       return reply.code(200).send({ success: true, data: sub })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * PUT /v1/admin/tenants/:id/demo  (HU-142) — ajustar la duración de la demo.
+   * Recomputa la fecha de fin desde el inicio (tope DEMO_MAX_DAYS). Si queda en el futuro,
+   * reactiva el acceso de una demo ya suspendida. Auditado (tenant.demo_extend).
+   */
+  app.put('/tenants/:id/demo', {
+    schema: { tags: ['Admin'], summary: 'Ajustar duración de la demo', description: `Cambia la duración de la demo (1..${DEMO_MAX_DAYS} días desde su inicio). Extender una demo vencida reactiva su acceso. Auditado.`, security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = DemoSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const r = await setDemoDuration(id, parsed.data.durationDays, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * POST /v1/admin/tenants/:id/convert  (HU-146) — promover una demo a cuenta real.
+   * Cambio de estado/plan del MISMO tenant: quita is_demo + expiración, asigna la suscripción
+   * del plan contratado y conserva TODOS los datos. Auditado (tenant.demo_convert).
+   */
+  app.post('/tenants/:id/convert', {
+    schema: { tags: ['Admin'], summary: 'Convertir demo en cliente real', description: 'Promueve un tenant demo a cuenta real: quita is_demo y la expiración, asigna la suscripción (monto) y conserva todos los datos. Solo demos. Auditado.', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ConvertSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const r = await convertDemoToClient(id, parsed.data.amount, parsed.data.currency, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

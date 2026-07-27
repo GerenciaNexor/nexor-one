@@ -428,6 +428,49 @@ Toda acción del Super Admin — especialmente la impersonación — queda regis
 
 ---
 
+## Plan DEMO — límites de cantidad (HU-143)
+
+Un tenant en **modo demo** (HU-142) tiene topes bajos de datos: prueba con datos propios sin operar
+su negocio completo gratis. **Los límites se validan en el BACKEND** (lección de HU-128: ocultar
+botones no basta), en un único punto configurable — [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
+
+| Entidad | Tope demo |
+|---|---|
+| Productos (KIRA) | **40** |
+| Clientes (ARI) | **25** |
+| Proveedores (NIRA) | **10** |
+| Ventas/cotizaciones (ARI · quotes) | **25** |
+| Órdenes de compra (NIRA) | **15** |
+| Usuarios del tenant | **3** |
+| Citas (AGENDA) | **25** |
+
+- Al alcanzar un tope, la creación se rechaza con **`403 DEMO_LIMIT_REACHED`** y un mensaje claro
+  (`assertDemoLimit` se llama en cada `create` del service, justo antes del INSERT). Un tenant normal
+  (plan completo) **no** tiene estos topes.
+- **Carga masiva deshabilitada en demo** (`403 DEMO_BULK_UPLOAD_DISABLED`): es la puerta trasera de
+  los topes, así que se cierra explícitamente en `validateRows` y `processRows`.
+- **Se afloja en datos** (no cuestan); la **IA se aprieta** (ver abajo).
+- El frontend refleja **uso vs. límite** ("12 de 40 productos") con `GET /v1/tenants/demo-usage`
+  (panel en el Inicio del cliente). Los límites viven en un solo lugar, no dispersos ni hardcodeados.
+
+### Cupo de IA y modelo más barato (HU-144)
+
+El **costo real** de la demo es la IA, así que ahí se aprieta:
+
+- **Modelo más barato**: en demo el agente usa el Claude más económico (hoy **Haiku**), configurable
+  por `CLAUDE_MODEL_DEMO` (no hardcodeado — el "más barato" cambia con el tiempo). Fuera de demo se
+  usa `CLAUDE_MODEL`. Se mantienen `AGENT_MAX_TURNS`=10 y el prompt caching para minimizar el costo.
+- **Cupo total de 30 mensajes de agente por demo** (no diario), configurable por `DEMO_AI_MESSAGE_QUOTA`.
+  Se cuenta **en el backend** desde `agent_logs` (fuente append-only): mensajes de canales de agente
+  (`whatsapp`/`gmail`/`internal`) que realmente invocaron a Claude (`turnCount > 0`) — la impersonación
+  y las respuestas cortocircuitadas no consumen cupo.
+- **Al agotarse**, el agente **deja de responder** y devuelve un mensaje que invita a contactar a NEXOR
+  (`DEMO_AI_CONTACT_MESSAGE`) — genera un lead calificado. No se vuelve a llamar a Claude.
+- **Visible** para el cliente (panel del Inicio: "18 de 30 mensajes de IA") y para el SUPER_ADMIN
+  (detalle del cliente en la plataforma: uso + modelo).
+
+---
+
 ## INBOX — Bandeja unificada
 **No es un módulo de negocio independiente — es la bandeja de conversaciones del equipo**  
 **Roles que lo usan:** AREA_MANAGER y superiores
