@@ -131,6 +131,7 @@ interface DemoUsageResponse {
   bulkUploadEnabled?: boolean
   labels?: Record<string, string>
   usage?: Record<string, DemoUsageEntry>
+  ai?: { limit: number; used: number; remaining: number; model: string } // HU-144
 }
 
 // Orden estable de las entidades en el panel.
@@ -164,6 +165,33 @@ function DemoUsageBanner() {
       <p className="mb-3 text-xs text-violet-800/80 dark:text-violet-200/80">
         Prueba con tus propios datos hasta estos topes. Al alcanzar un límite, la creación se bloquea.
       </p>
+
+      {/* Cupo de IA (HU-144) — el candado de costo de la demo */}
+      {data.ai && (() => {
+        const { used, limit } = data.ai
+        const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
+        const full = used >= limit
+        const near = !full && pct >= 80
+        const barCls = full ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-violet-500'
+        const numCls = full ? 'text-red-700 dark:text-red-300' : near ? 'text-amber-700 dark:text-amber-300' : 'text-violet-800 dark:text-violet-200'
+        return (
+          <div className="mb-4 rounded-lg border border-violet-200/70 bg-white/60 p-3 dark:border-violet-500/20 dark:bg-white/5">
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <span className="text-xs font-semibold text-violet-900 dark:text-violet-100">Mensajes del asistente de IA</span>
+              <span className={`text-xs font-bold tabular-nums ${numCls}`}>{used} de {limit}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-violet-200/70 dark:bg-white/10">
+              <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
+            </div>
+            {full && (
+              <p className="mt-1.5 text-xs font-medium text-red-700 dark:text-red-300">
+                Cupo agotado. Escríbenos a ventas@nexor-one.com para activar tu cuenta completa.
+              </p>
+            )}
+          </div>
+        )
+      })()}
+
       <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
         {keys.map((k) => {
           const u = usage[k]!

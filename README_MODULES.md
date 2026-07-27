@@ -449,9 +449,25 @@ botones no basta), en un único punto configurable — [apps/api/src/lib/demo-li
   (plan completo) **no** tiene estos topes.
 - **Carga masiva deshabilitada en demo** (`403 DEMO_BULK_UPLOAD_DISABLED`): es la puerta trasera de
   los topes, así que se cierra explícitamente en `validateRows` y `processRows`.
-- **Se afloja en datos** (no cuestan); la **IA se aprieta aparte** (HU-144).
+- **Se afloja en datos** (no cuestan); la **IA se aprieta** (ver abajo).
 - El frontend refleja **uso vs. límite** ("12 de 40 productos") con `GET /v1/tenants/demo-usage`
   (panel en el Inicio del cliente). Los límites viven en un solo lugar, no dispersos ni hardcodeados.
+
+### Cupo de IA y modelo más barato (HU-144)
+
+El **costo real** de la demo es la IA, así que ahí se aprieta:
+
+- **Modelo más barato**: en demo el agente usa el Claude más económico (hoy **Haiku**), configurable
+  por `CLAUDE_MODEL_DEMO` (no hardcodeado — el "más barato" cambia con el tiempo). Fuera de demo se
+  usa `CLAUDE_MODEL`. Se mantienen `AGENT_MAX_TURNS`=10 y el prompt caching para minimizar el costo.
+- **Cupo total de 30 mensajes de agente por demo** (no diario), configurable por `DEMO_AI_MESSAGE_QUOTA`.
+  Se cuenta **en el backend** desde `agent_logs` (fuente append-only): mensajes de canales de agente
+  (`whatsapp`/`gmail`/`internal`) que realmente invocaron a Claude (`turnCount > 0`) — la impersonación
+  y las respuestas cortocircuitadas no consumen cupo.
+- **Al agotarse**, el agente **deja de responder** y devuelve un mensaje que invita a contactar a NEXOR
+  (`DEMO_AI_CONTACT_MESSAGE`) — genera un lead calificado. No se vuelve a llamar a Claude.
+- **Visible** para el cliente (panel del Inicio: "18 de 30 mensajes de IA") y para el SUPER_ADMIN
+  (detalle del cliente en la plataforma: uso + modelo).
 
 ---
 

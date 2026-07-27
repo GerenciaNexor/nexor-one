@@ -27,6 +27,40 @@ export const DEMO_LIMITS = {
 
 export type DemoLimitedEntity = keyof typeof DEMO_LIMITS
 
+// ─── HU-144 — Cupo de IA y modelo más barato en la demo ────────────────────────
+/** Cupo TOTAL de mensajes de agente por demo (no diario). Configurable por variable. */
+export const DEMO_AI_MESSAGE_QUOTA = Number(process.env['DEMO_AI_MESSAGE_QUOTA'] ?? 30)
+
+/** Modelo Claude por defecto para la demo: el más barato disponible (hoy Haiku). Configurable
+ *  por `CLAUDE_MODEL_DEMO` — el "más barato" cambia con el tiempo, no se hardcodea disperso. */
+const DEFAULT_DEMO_MODEL = 'claude-haiku-4-5-20251001'
+export function demoModel(): string {
+  return process.env['CLAUDE_MODEL_DEMO'] ?? DEFAULT_DEMO_MODEL
+}
+
+/** Mensaje cuando se agota el cupo de IA: invita a contactar a NEXOR (genera lead). Configurable. */
+export function demoAiExhaustedMessage(): string {
+  return (
+    process.env['DEMO_AI_CONTACT_MESSAGE'] ??
+    'Alcanzaste el límite de mensajes del asistente de IA del plan demo. Para seguir usando el ' +
+    'agente y activar tu cuenta completa, escríbenos a ventas@nexor-one.com y con gusto te ayudamos. 🚀'
+  )
+}
+
+/** Canales que cuentan como "mensaje de agente" (excluye 'admin' = impersonación auditada). */
+export const DEMO_AI_CHANNELS = ['whatsapp', 'gmail', 'internal'] as const
+
+/**
+ * Filtro canónico del cupo de IA: un agent_log cuenta como mensaje consumido si es de un canal
+ * de agente y realmente invocó a Claude (`turnCount > 0`). Así NO cuentan ni la impersonación
+ * (channel 'admin') ni las respuestas cortocircuitadas (módulo deshabilitado, cupo agotado →
+ * turnCount 0). Fuente de verdad append-only ⇒ conteo confiable en el backend. */
+export const demoAiWhere = (tenantId: string) => ({
+  tenantId,
+  channel:   { in: [...DEMO_AI_CHANNELS] },
+  turnCount: { gt: 0 },
+})
+
 /** Etiqueta legible (español) por entidad, para los mensajes de la API y el frontend. */
 export const DEMO_LIMIT_LABEL: Record<DemoLimitedEntity, string> = {
   products:       'productos',
@@ -108,6 +142,9 @@ export async function getDemoUsage(tenantId: string) {
     usage[e] = { limit: DEMO_LIMITS[e], used, remaining: Math.max(0, DEMO_LIMITS[e] - used) }
   }
 
+  // HU-144 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad).
+  const aiUsed = await prisma.agentLog.count({ where: demoAiWhere(tenantId) })
+
   const now = Date.now()
   const end = t.demoEndedAt ? t.demoEndedAt.getTime() : null
   return {
@@ -119,5 +156,11 @@ export async function getDemoUsage(tenantId: string) {
     bulkUploadEnabled: false,
     labels:            DEMO_LIMIT_LABEL,
     usage,
+    ai: {
+      limit:     DEMO_AI_MESSAGE_QUOTA,
+      used:      aiUsed,
+      remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - aiUsed),
+      model:     demoModel(),
+    },
   }
 }

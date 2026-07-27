@@ -19,6 +19,7 @@ interface DemoState {
   daysRemaining: number | null
   startedAt: string | null
   endedAt: string | null
+  ai?: { limit: number; used: number; remaining: number; model: string } // HU-144
 }
 interface TenantDetail {
   id: string; name: string; slug: string; legalName: string | null; taxId: string | null
@@ -323,6 +324,20 @@ export default function PlatformClientDetailPage() {
                 <dt className="text-slate-500">Vence</dt>
                 <dd className="text-slate-700 dark:text-slate-300">{t.demo.endedAt ? fmtDate(t.demo.endedAt) : '—'}</dd>
               </div>
+              {t.demo.ai && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Mensajes de IA</dt>
+                  <dd className={`font-semibold tabular-nums ${t.demo.ai.used >= t.demo.ai.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {t.demo.ai.used} de {t.demo.ai.limit}
+                  </dd>
+                </div>
+              )}
+              {t.demo.ai && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Modelo IA</dt>
+                  <dd className="font-mono text-xs text-slate-600 dark:text-slate-400">{t.demo.ai.model}</dd>
+                </div>
+              )}
             </dl>
             <p className="mt-3 text-xs text-slate-500">Al vencer se suspende sola (sin borrar datos). Extender la duración reactiva el acceso.</p>
           </div>

@@ -1,5 +1,6 @@
 import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
 import { getSubscription, getSubscriptionsMap, getDemoState } from '../platform/tenants'
+import { demoAiWhere, DEMO_AI_MESSAGE_QUOTA, demoModel } from '../../lib/demo-limits'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -97,13 +98,25 @@ export async function getTenantDetail(tenantId: string) {
   ])
 
   const { isDemo, demoStartedAt, demoEndedAt, ...tenantBase } = tenant
+  const demo = getDemoState({ isDemo, demoStartedAt, demoEndedAt }) // HU-142
+  // HU-144 — el SUPER_ADMIN también ve el uso de IA de la demo (mensajes de agente / cupo).
+  const demoWithAi = isDemo
+    ? {
+        ...demo,
+        ai: await (async () => {
+          const used = await withTenantContext(tenantId, (tx) => tx.agentLog.count({ where: demoAiWhere(tenantId) }))
+          return { limit: DEMO_AI_MESSAGE_QUOTA, used, remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - used), model: demoModel() }
+        })(),
+      }
+    : demo
+
   return {
     ...tenantBase,
     branches,
     users,
     featureFlags: Object.fromEntries(featureFlags.map((f) => [f.module, f.enabled])),
     subscription: await getSubscription(tenantId), // HU-138 (deny-all → directPrisma)
-    demo: getDemoState({ isDemo, demoStartedAt, demoEndedAt }), // HU-142
+    demo: demoWithAi,
   }
 }
 
