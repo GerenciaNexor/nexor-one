@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { QuoteFormModal, type Quote, type QuoteItem } from '@/components/ari/QuoteFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Portal } from '@/components/ui/Portal'
 import type { QuoteExtraction } from '@/components/ocr/OcrExtractButton'
 
@@ -644,8 +645,23 @@ export default function QuotesPage() {
                 </tr>
               ) : quotes.length === 0 ? (
                 <tr>
-                  <td colSpan={colCount} className="py-16 text-center text-sm text-slate-400">
-                    No se encontraron cotizaciones
+                  <td colSpan={colCount} className="p-0">
+                    {statusFilter ? (
+                      <EmptyState
+                        bordered={false}
+                        variant="filtered"
+                        title="Sin resultados"
+                        description="Ninguna cotización coincide con el filtro de estado."
+                        action={{ label: 'Limpiar filtro', onClick: () => setStatusFilter('') }}
+                      />
+                    ) : (
+                      <EmptyState
+                        bordered={false}
+                        title="Aún no tienes cotizaciones"
+                        description="Crea cotizaciones para tus clientes y haz seguimiento de si las aceptan. Empieza por la primera."
+                        action={{ label: 'Crear la primera cotización', onClick: () => setShowCreate(true) }}
+                      />
+                    )}
                   </td>
                 </tr>
               ) : (

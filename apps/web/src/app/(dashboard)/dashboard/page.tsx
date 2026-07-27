@@ -297,7 +297,7 @@ export default function InicioPage() {
   const quickLinks: { href: string; label: string; color: string }[] = []
   if (seeKIRA)        quickLinks.push({ href: '/kira/stock',           label: 'Control de stock',      color: 'text-blue-600 dark:text-blue-400' }, { href: '/kira/products', label: 'Catálogo de productos', color: 'text-blue-600 dark:text-blue-400' })
   if (seeNIRA)        quickLinks.push({ href: '/nira/purchase-orders', label: 'Órdenes de compra',     color: 'text-violet-600 dark:text-violet-400' }, { href: '/nira/suppliers', label: 'Proveedores', color: 'text-violet-600 dark:text-violet-400' })
-  if (canSee('ARI'))  quickLinks.push({ href: '/ari/pipeline',         label: 'Pipeline de ventas',    color: 'text-emerald-600 dark:text-emerald-400' }, { href: '/ari/clients', label: 'Clientes', color: 'text-emerald-600 dark:text-emerald-400' })
+  if (canSee('ARI'))  quickLinks.push({ href: '/ari/pipeline',         label: 'Negocios en curso',     color: 'text-emerald-600 dark:text-emerald-400' }, { href: '/ari/clients', label: 'Clientes', color: 'text-emerald-600 dark:text-emerald-400' })
   if (seeAGENDA)      quickLinks.push({ href: '/agenda/appointments',  label: 'Citas',                 color: 'text-orange-600 dark:text-orange-400' })
   if (canSee('VERA')) quickLinks.push({ href: '/vera/transactions',    label: 'Transacciones',         color: 'text-rose-600 dark:text-rose-400' })
 

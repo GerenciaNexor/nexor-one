@@ -46,10 +46,10 @@ El equipo de ventas puede marcar a un cliente como **favorito** (estrella en la 
 **Calificación interna del cliente al cerrar la venta (HU-126)**  
 Cuando se cierra una venta, el equipo de ventas puede calificar **internamente** al cliente (escala 1-5) para registrar la experiencia de forma consistente. **Disparador (decisión del PO): el deal entra en una etapa GANADA (`isFinalWon`)** — el mismo evento que cuenta como "venta realizada" en el Dashboard (HU-127). Al ganar un deal se ofrece calificar; es **opcional** y no bloquea el cierre. La calificación queda asociada al cliente (tabla `client_ratings`, una por deal), visible en su ficha como promedio + nº de calificaciones, y **disponible para un futuro promedio**. **No** es el CSAT (satisfacción del cliente hacia la empresa) — eso requiere encuestar al cliente por su canal y se trata en una HU aparte.
 
-**Pipeline de ventas visual (Kanban)**  
+**Pipeline de ventas visual (Kanban)** — etiqueta visible **"Negocios en curso"** (HU-150; ruta `/ari/pipeline` sin cambio)  
 Las oportunidades de venta avanzan por etapas configurables: Lead → Contactado → Negociación → Ganado → Facturado → Perdido. El equipo ve el estado de todas las ventas de un vistazo.
 
-**Historial de ventas (HU-133)** — subsección `/ari/history`: lista los deals (ventas finalizadas y
+**Historial de ventas (HU-133)** — etiqueta visible **"Ventas realizadas"** (HU-150) — subsección `/ari/history`: lista los deals (ventas finalizadas y
 en proceso) con su **etapa** y un estado derivado **Ganada/Perdida/En proceso** (venta finalizada =
 etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa** y **fecha/rango**
 (`from`/`to` sobre `createdAt`). Cada fila enlaza al pipeline. Respeta rol/sucursal (`getBranchFilter`
@@ -101,7 +101,7 @@ Las empresas compran a múltiples proveedores sin saber cuál tiene mejor precio
 
 ### Qué hace NIRA
 
-**Ranking de proveedores con score Precio / Entrega / Calidad (HU-125)**  
+**Ranking de proveedores con score Precio / Entrega / Calidad (HU-125)** — etiqueta visible **"Mejores proveedores"** (HU-150; ruta `/nira/ranking` sin cambio)  
 Cada proveedor tiene un score en escala **0-10** con tres ejes y una fuente explícita por eje:
 
 | Eje | De dónde sale | Fórmula |
@@ -116,13 +116,13 @@ Cuando una OC pasa a `received`, el equipo de compras **califica al proveedor** 
 **Órdenes de compra con flujo de aprobación**  
 Las OC pasan por estados: Borrador (`draft`) → Pendiente de aprobación (`submitted`) → Aprobada (`approved`) → Enviada al proveedor (`sent`) → Recibida (`received`). Solo el Jefe de Compras puede aprobar. Esto elimina compras no autorizadas. (Vocabulario canónico unificado en HU-116.)
 
-**Historial de compras (HU-133)** — subsección `/nira/history`: lista las OC realizadas y en proceso
+**Historial de compras (HU-133)** — etiqueta visible **"Compras realizadas"** (HU-150) — subsección `/nira/history`: lista las OC realizadas y en proceso
 con su **estado canónico**, con filtros por **estado** y **fecha/rango** (`from`/`to` sobre `createdAt`).
 Cada fila enlaza al detalle de la OC. Respeta rol/sucursal (`getBranchFilter` + RLS). Reutiliza el
 endpoint `GET /v1/nira/purchase-orders` (filtros añadidos en HU-133), sin endpoint nuevo. La contraparte
 (proveedor), monto, etc. quedan como mejora futura de filtros.
 
-**Comparador de cotizaciones**  
+**Comparador de cotizaciones** — etiqueta visible **"Comparar precios"** (HU-150; ruta `/nira/compare` sin cambio)  
 Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo producto con distintos proveedores, recomendando el más conveniente.
 
 **Proveedor preferido (HU-123)**  

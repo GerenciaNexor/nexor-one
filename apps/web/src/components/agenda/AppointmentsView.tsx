@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { AppointmentDetailModal } from './AppointmentDetailModal'
 import { AppointmentFormModal } from './AppointmentFormModal'
 import type { Appointment } from './CalendarView'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 const STATUS_LABELS: Record<string, string> = {
   confirmed: 'Confirmada',
@@ -204,9 +205,22 @@ export function AppointmentsView() {
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-400">
-            {hasFilters ? 'Ninguna cita coincide con los filtros.' : 'No hay citas registradas.'}
-          </div>
+          hasFilters ? (
+            <EmptyState
+              bordered={false}
+              variant="filtered"
+              title="Sin resultados"
+              description="Ninguna cita coincide con tu búsqueda o filtros."
+              action={{ label: 'Limpiar filtros', onClick: clearFilters }}
+            />
+          ) : (
+            <EmptyState
+              bordered={false}
+              title="Aún no tienes citas"
+              description="Aquí agendas y das seguimiento a las citas de tus clientes. Empieza creando la primera."
+              action={{ label: 'Crear la primera cita', onClick: () => setCreating(true) }}
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

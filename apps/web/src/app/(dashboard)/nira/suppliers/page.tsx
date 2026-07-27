@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { SupplierFormModal } from '@/components/nira/SupplierFormModal'
 import type { Supplier } from '@/components/nira/SupplierFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Portal } from '@/components/ui/Portal'
 import { getCache, setCache } from '@/lib/page-cache'
 
@@ -292,8 +293,23 @@ export default function SuppliersPage() {
                 </tr>
               ) : suppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={colCount} className="py-16 text-center text-sm text-slate-400">
-                    No se encontraron proveedores
+                  <td colSpan={colCount} className="p-0">
+                    {(search || activeFilter) ? (
+                      <EmptyState
+                        bordered={false}
+                        variant="filtered"
+                        title="Sin resultados"
+                        description="Ningún proveedor coincide con tu búsqueda o filtro."
+                        action={{ label: 'Limpiar filtros', onClick: () => { setSearch(''); setLiveSearch(''); setActive('') } }}
+                      />
+                    ) : (
+                      <EmptyState
+                        bordered={false}
+                        title="Aún no tienes proveedores"
+                        description="Aquí registras a tus proveedores con sus datos, condiciones y calificación. Empieza agregando el primero."
+                        action={{ label: 'Agregar el primer proveedor', onClick: openCreate }}
+                      />
+                    )}
                   </td>
                 </tr>
               ) : (

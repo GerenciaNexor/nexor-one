@@ -51,3 +51,6 @@ apps/web/.env
 # Reportes de load testing (generados por k6 — no commitear resultados)
 packages/load-tests/results/*.html
 packages/load-tests/results/*.json
+
+# Caché de compilación incremental de TypeScript (generado por tsc --build/--incremental)
+*.tsbuildinfo

@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { PurchaseOrderFormModal } from '@/components/nira/PurchaseOrderFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { EmptyState } from '@/components/ui/EmptyState'
 import type { OrderExtraction } from '@/components/ocr/OcrExtractButton'
 import { getCache, setCache } from '@/lib/page-cache'
 
@@ -372,8 +373,23 @@ export default function PurchaseOrdersPage() {
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-sm text-slate-400">
-                    No se encontraron órdenes de compra
+                  <td colSpan={8} className="p-0">
+                    {(statusFilter || supplierFilter || search) ? (
+                      <EmptyState
+                        bordered={false}
+                        variant="filtered"
+                        title="Sin resultados"
+                        description="Ninguna orden de compra coincide con tu búsqueda o filtros."
+                        action={{ label: 'Limpiar filtros', onClick: () => { setStatusFilter(''); setSupplierFilter(''); setSearch(''); setLiveSearch('') } }}
+                      />
+                    ) : (
+                      <EmptyState
+                        bordered={false}
+                        title="Aún no tienes órdenes de compra"
+                        description="Aquí creas y gestionas tus pedidos a proveedores, desde el borrador hasta la recepción. Empieza por la primera."
+                        action={{ label: 'Crear la primera orden', onClick: () => setShowCreateModal(true) }}
+                      />
+                    )}
                   </td>
                 </tr>
               ) : (

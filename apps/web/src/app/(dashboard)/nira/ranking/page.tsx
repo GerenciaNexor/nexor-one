@@ -83,7 +83,7 @@ export default function RankingPage() {
 
       {/* ── Encabezado ────────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Ranking de proveedores</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Mejores proveedores</h1>
         <p className="mt-0.5 text-sm text-slate-500">
           Proveedores ordenados por score general (0-10). Se recalcula al calificar una OC recibida y a diario.
         </p>

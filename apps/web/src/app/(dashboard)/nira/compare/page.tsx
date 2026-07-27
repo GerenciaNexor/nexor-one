@@ -111,7 +111,7 @@ export default function ComparePage() {
 
       {/* ── Encabezado ──────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Comparador de precios</h1>
+        <h1 className="text-xl font-semibold text-slate-900">Comparar precios</h1>
         <p className="mt-0.5 text-sm text-slate-500">
           Compara el historial de precios de un producto entre todos los proveedores que lo han suministrado.
         </p>

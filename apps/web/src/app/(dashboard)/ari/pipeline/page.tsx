@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { DealFormModal, type PipelineStage, type Deal } from '@/components/ari/DealFormModal'
 import { RateClientModal } from '@/components/ari/RateClientModal'
 import { Portal } from '@/components/ui/Portal'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
 
@@ -453,7 +454,7 @@ export default function PipelinePage() {
       {/* ── Encabezado ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Pipeline</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Negocios en curso</h1>
           {!loading && (
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
               {deals.length} {deals.length === 1 ? 'deal' : 'deals'} ·{' '}
@@ -543,6 +544,24 @@ export default function PipelinePage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
           <p className="text-sm text-red-500">{fetchError}</p>
           <button onClick={fetchData} className="text-sm text-blue-600 hover:underline">Reintentar</button>
+        </div>
+      ) : (stages.length > 0 && deals.length === 0) ? (
+        /* ── Estado vacío educativo (sin negocios aún o filtro sin resultados) ── */
+        <div className="p-6">
+          {filterAssigned ? (
+            <EmptyState
+              variant="filtered"
+              title="Sin resultados"
+              description="Ningún negocio coincide con el vendedor seleccionado."
+              action={{ label: 'Limpiar filtro', onClick: () => setFilterAssigned('') }}
+            />
+          ) : (
+            <EmptyState
+              title="Aún no tienes negocios en curso"
+              description="Aquí gestionas tus oportunidades de venta por etapa y las mueves hasta cerrarlas. Empieza creando el primero."
+              action={{ label: 'Crear el primer negocio', onClick: () => setCreateModal({ stageId: stages[0]?.id ?? '' }) }}
+            />
+          )}
         </div>
       ) : (
         /* ── Kanban ─────────────────────────────────────────────────────────── */

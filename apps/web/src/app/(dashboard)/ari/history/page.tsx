@@ -94,7 +94,7 @@ export default function VentasHistoryPage() {
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Historial de ventas</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Ventas realizadas</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             {loading ? 'Cargando…' : `${total} ${total === 1 ? 'venta' : 'ventas'}${hasFilters ? ' (filtradas)' : ''}`}
           </p>

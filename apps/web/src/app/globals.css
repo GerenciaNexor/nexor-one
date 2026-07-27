@@ -98,6 +98,13 @@ html.dark .bg-red-50\/40 {
   border-left: 2px solid rgba(248, 113, 113, 0.50); /* línea izquierda para refuerzo visual */
 }
 
+/* Recuadros de ayuda/resumen con opacidad (bg-slate-50/60, /50) — NO los cubre .bg-slate-50 porque
+   el modificador de opacidad genera otra clase. En claro son un tinte claro; en oscuro deben ser una
+   superficie oscura para que el texto (ya aclarado por los overrides de arriba) sea legible.
+   Afecta: NIRA "Mejores proveedores" y los recuadros de resumen de Reportes (ARI/NIRA). */
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50\/50 { background-color: rgba(30, 41, 59, 0.55); } /* slate-800 translúcido */
+
 /* ── Bordes ───────────────────────────────────────────────────────────────── */
 html.dark .border-slate-200 { border-color: #2e3f55; } /* sutil, no distrae */
 html.dark .border-slate-100 { border-color: #253347; }
