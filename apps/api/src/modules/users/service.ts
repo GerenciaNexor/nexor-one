@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma'
+import { assertDemoLimit } from '../../lib/demo-limits'
 import bcrypt from 'bcryptjs'
 import type { CreateUserInput, UpdateUserInput } from './schema'
 
@@ -49,6 +50,7 @@ export async function listUsers(
 }
 
 export async function createUser(tenantId: string, input: CreateUserInput) {
+  await assertDemoLimit(tenantId, 'users') // HU-143 — tope del plan demo
   const existing = await prisma.user.findUnique({ where: { email: input.email } })
   if (existing) {
     throw { statusCode: 409, message: 'El email ya esta registrado', code: 'EMAIL_CONFLICT' }

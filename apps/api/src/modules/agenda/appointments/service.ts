@@ -1,6 +1,7 @@
 import type { Role } from '@nexor/shared'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import { sendAppointmentConfirmation } from '../../../lib/email'
 import { canAccessBranch } from '../../../lib/guards'
 import type { CreateAppointment, ListAppointmentsQuery } from './schema'
@@ -84,6 +85,7 @@ export async function listAppointments(
 }
 
 export async function createAppointment(tenantId: string, data: CreateAppointment) {
+  await assertDemoLimit(tenantId, 'appointments') // HU-143 — tope del plan demo
   // ── 1. Cargar tenant, servicio y sucursal en paralelo ──────────────────────
   const [tenant, service, branch] = await Promise.all([
     prisma.tenant.findFirst({

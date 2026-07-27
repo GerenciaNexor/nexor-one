@@ -3,6 +3,7 @@ import { UpdateTenantSchema, UpdateFeatureFlagSchema } from './schema'
 import { getTenant, updateTenant, getFeatureFlags, updateFeatureFlag } from './service'
 import { requireTenantAdmin } from '../../lib/guards'
 import { z2j, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
+import { getDemoUsage } from '../../lib/demo-limits'
 
 export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
   /** GET /v1/tenants/me */
@@ -49,6 +50,24 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
     }
+  })
+
+  /**
+   * GET /v1/tenants/demo-usage  (HU-143)
+   * Uso actual vs. límites del plan demo (para reflejar "12 de 40 productos" en el frontend).
+   * Para tenants normales devuelve { isDemo: false }.
+   */
+  app.get('/demo-usage', {
+    schema: {
+      tags:     ['Tenants'],
+      summary:  'Uso vs. límites del plan demo',
+      description: 'Devuelve el uso actual y los topes del plan demo (productos, clientes, etc.) del tenant. Los límites se validan en el backend (HU-143).',
+      security: bearerAuth,
+      response: { 200: { type: 'object', additionalProperties: true }, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const usage = await getDemoUsage(request.user.tenantId)
+    return reply.code(200).send(usage)
   })
 
   /** GET /v1/tenants/feature-flags */

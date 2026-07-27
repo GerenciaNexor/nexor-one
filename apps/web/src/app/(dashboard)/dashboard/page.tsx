@@ -119,6 +119,76 @@ const APPT_STATUS: Record<string, { label: string; cls: string }> = {
   confirmed: { label: 'Confirmada', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
 }
 
+// ─── Panel de uso del plan DEMO (HU-143) ───────────────────────────────────────
+// Refleja el uso actual vs. los topes validados en el backend ("12 de 40 productos").
+// Solo aparece para tenants en modo demo; para el resto el endpoint devuelve isDemo:false.
+
+interface DemoUsageEntry { limit: number; used: number; remaining: number }
+interface DemoUsageResponse {
+  isDemo: boolean
+  status?: 'active' | 'expired'
+  daysRemaining?: number
+  bulkUploadEnabled?: boolean
+  labels?: Record<string, string>
+  usage?: Record<string, DemoUsageEntry>
+}
+
+// Orden estable de las entidades en el panel.
+const DEMO_ENTITY_ORDER = ['products', 'clients', 'suppliers', 'quotes', 'purchaseOrders', 'users', 'appointments']
+
+function DemoUsageBanner() {
+  const [data, setData] = useState<DemoUsageResponse | null>(null)
+
+  useEffect(() => {
+    apiClient.get<DemoUsageResponse>('/v1/tenants/demo-usage')
+      .then(setData)
+      .catch(() => { /* silencioso: si falla, no se muestra el panel */ })
+  }, [])
+
+  if (!data || !data.isDemo || !data.usage) return null
+  const usage = data.usage
+  const labels = data.labels ?? {}
+  const keys = DEMO_ENTITY_ORDER.filter((k) => usage[k])
+
+  return (
+    <div className="mb-6 rounded-xl border border-violet-200 bg-violet-50 p-5 dark:border-violet-500/30 dark:bg-violet-500/10">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-200">Plan demo</span>
+          {data.status === 'active'
+            ? <span className="text-xs font-medium text-violet-700 dark:text-violet-300">{data.daysRemaining} día{data.daysRemaining === 1 ? '' : 's'} restante{data.daysRemaining === 1 ? '' : 's'}</span>
+            : <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Demo vencida</span>}
+        </div>
+        <span className="text-xs text-violet-700/80 dark:text-violet-300/80">Carga masiva deshabilitada en demo</span>
+      </div>
+      <p className="mb-3 text-xs text-violet-800/80 dark:text-violet-200/80">
+        Prueba con tus propios datos hasta estos topes. Al alcanzar un límite, la creación se bloquea.
+      </p>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        {keys.map((k) => {
+          const u = usage[k]!
+          const pct = u.limit > 0 ? Math.min(100, Math.round((u.used / u.limit) * 100)) : 0
+          const full = u.used >= u.limit
+          const near = !full && pct >= 80
+          const barCls = full ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-violet-500'
+          const numCls = full ? 'text-red-700 dark:text-red-300' : near ? 'text-amber-700 dark:text-amber-300' : 'text-violet-800 dark:text-violet-200'
+          return (
+            <div key={k}>
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium capitalize text-violet-900 dark:text-violet-100">{labels[k] ?? k}</span>
+                <span className={`text-xs font-semibold tabular-nums ${numCls}`}>{u.used} de {u.limit}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-violet-200/70 dark:bg-white/10">
+                <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Página: Inicio (lo accionable del día) ─────────────────────────────────────
 // HU-132 — el Inicio muestra lo que requiere atención HOY; las métricas y tendencias
 // viven en el Dashboard (/analitica). Cada bloque se construye solo sobre endpoints
@@ -224,6 +294,9 @@ export default function InicioPage() {
           {roleLabel}
         </span>
       </div>
+
+      {/* Panel de uso del plan demo (HU-143) — solo visible para tenants demo */}
+      <DemoUsageBanner />
 
       {/* ── Contenido principal ───────────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-3">

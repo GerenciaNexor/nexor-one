@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import type { CreateSupplierInput, UpdateSupplierInput, SupplierQuery } from './schema'
 
 // ─── Select ────────────────────────────────────────────────────────────────────
@@ -118,6 +119,7 @@ export async function getSupplier(tenantId: string, supplierId: string) {
 }
 
 export async function createSupplier(tenantId: string, input: CreateSupplierInput) {
+  await assertDemoLimit(tenantId, 'suppliers') // HU-143 — tope del plan demo
   if (input.taxId) await assertTaxIdUnique(tenantId, input.taxId)
 
   return prisma.supplier.create({
