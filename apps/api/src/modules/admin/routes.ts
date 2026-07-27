@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
-import { createTenantWithAdmin, getSubscription, setSubscriptionAmount, setDemoDuration, convertDemoToClient, DEMO_MAX_DAYS } from '../platform/tenants'
+import { createTenantWithAdmin, getSubscription, setSubscriptionAmount, setDemoDuration, convertDemoToClient, extendDemoAiQuota, DEMO_MAX_DAYS } from '../platform/tenants'
 import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
 
 /**
@@ -69,6 +69,11 @@ const ConvertSchema = z.object({
   amount:   z.number().min(0, 'El monto no puede ser negativo'),
   currency: z.string().length(3).optional(),
   reason:   z.string().min(1, 'El motivo es obligatorio').max(500),
+})
+// HU-148 — ampliar el cupo de IA de una demo (+N mensajes, excepcional)
+const AiQuotaSchema = z.object({
+  addMessages: z.number().int().min(1, 'Debe ampliar al menos 1 mensaje').max(1000),
+  reason:      z.string().min(1, 'El motivo es obligatorio').max(500),
 })
 
 // HU-139 — gestión de canales por el equipo NEXOR (motivo obligatorio)
@@ -204,6 +209,27 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const r = await convertDemoToClient(id, parsed.data.amount, parsed.data.currency, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * POST /v1/admin/tenants/:id/ai-quota  (HU-148) — ampliar el cupo de IA de una demo.
+   * Suma +N mensajes al bonus (base 30 intacto). Solo demos. Auditado (tenant.demo_ai_extend).
+   */
+  app.post('/tenants/:id/ai-quota', {
+    schema: { tags: ['Admin'], summary: 'Ampliar cupo de IA de la demo', description: 'Amplía el cupo de mensajes de IA de una demo (+N sobre el base de 30). Caso excepcional. Solo demos. Auditado.', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = AiQuotaSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const r = await extendDemoAiQuota(id, parsed.data.addMessages, request.user.platformAdminId as string, parsed.data.reason, request.ip)
       return reply.code(200).send({ success: true, data: r })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }

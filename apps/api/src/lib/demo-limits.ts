@@ -42,13 +42,20 @@ export function demoModel(): string {
   return process.env['CLAUDE_MODEL_DEMO'] ?? DEFAULT_DEMO_MODEL
 }
 
-/** Mensaje cuando se agota el cupo de IA: invita a contactar a NEXOR (genera lead). Configurable. */
+/** Mensaje de DESPEDIDA al agotar el cupo de IA: invita a contactar a NEXOR (convierte el límite
+ *  en un lead). Configurable por `DEMO_AI_CONTACT_MESSAGE`. */
 export function demoAiExhaustedMessage(): string {
   return (
     process.env['DEMO_AI_CONTACT_MESSAGE'] ??
-    'Alcanzaste el límite de mensajes del asistente de IA del plan demo. Para seguir usando el ' +
-    'agente y activar tu cuenta completa, escríbenos a ventas@nexor-one.com y con gusto te ayudamos. 🚀'
+    'Gracias por probar el asistente de IA de NEXOR 🙌. Alcanzaste el límite de mensajes del plan demo, ' +
+    'así que por aquí me despido. Para ampliar tu prueba o activar tu cuenta completa, escríbenos a ' +
+    'gerencia@nexor-one.com y con gusto continuamos. 🚀'
   )
+}
+
+/** HU-148 — Cupo de IA EFECTIVO del tenant = base (30) + su ampliación (`demoAiQuotaBonus`). */
+export function effectiveAiQuota(demoAiQuotaBonus: number | null | undefined): number {
+  return DEMO_AI_MESSAGE_QUOTA + Math.max(0, demoAiQuotaBonus ?? 0)
 }
 
 /** Canales que cuentan como "mensaje de agente" (excluye 'admin' = impersonación auditada). */
@@ -150,14 +157,16 @@ export interface DemoUsageEntry { limit: number; used: number; remaining: number
 export async function getDemoUsage(tenantId: string) {
   const t = await prisma.tenant.findUnique({
     where:  { id: tenantId },
-    select: { isDemo: true, demoStartedAt: true, demoEndedAt: true },
+    select: { isDemo: true, demoStartedAt: true, demoEndedAt: true, demoAiQuotaBonus: true },
   })
   if (!t?.isDemo) return { isDemo: false as const }
 
   const usage = await countDemoDataUsage(prisma, tenantId)
 
-  // HU-144 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad).
+  // HU-144/148 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad,
+  // persistente y sin reseteo). El tope efectivo = base + ampliación del SUPER_ADMIN.
   const aiUsed = await prisma.agentLog.count({ where: demoAiWhere(tenantId) })
+  const aiLimit = effectiveAiQuota(t.demoAiQuotaBonus)
 
   const now = Date.now()
   const end = t.demoEndedAt ? t.demoEndedAt.getTime() : null
@@ -171,10 +180,12 @@ export async function getDemoUsage(tenantId: string) {
     labels:            DEMO_LIMIT_LABEL,
     usage,
     ai: {
-      limit:     DEMO_AI_MESSAGE_QUOTA,
+      limit:     aiLimit,
       used:      aiUsed,
-      remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - aiUsed),
+      remaining: Math.max(0, aiLimit - aiUsed),
       model:     demoModel(),
+      baseLimit: DEMO_AI_MESSAGE_QUOTA,
+      bonus:     Math.max(0, t.demoAiQuotaBonus ?? 0),
     },
   }
 }

@@ -76,6 +76,9 @@ model Tenant {
   isDemo        Boolean   @default(false) @map("is_demo")
   demoStartedAt DateTime? @map("demo_started_at") @db.Timestamptz(6)
   demoEndedAt   DateTime? @map("demo_ended_at") @db.Timestamptz(6)
+  /// HU-148 — ampliación del cupo de IA de la demo, en mensajes, sobre el base (30). Solo el
+  /// SUPER_ADMIN lo aumenta (casos excepcionales, auditado). Cupo efectivo = base + este bonus.
+  demoAiQuotaBonus Int    @default(0) @map("demo_ai_quota_bonus")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

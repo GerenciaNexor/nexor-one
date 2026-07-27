@@ -460,14 +460,17 @@ El **costo real** de la demo es la IA, así que ahí se aprieta:
 - **Modelo más barato**: en demo el agente usa el Claude más económico (hoy **Haiku**), configurable
   por `CLAUDE_MODEL_DEMO` (no hardcodeado — el "más barato" cambia con el tiempo). Fuera de demo se
   usa `CLAUDE_MODEL`. Se mantienen `AGENT_MAX_TURNS`=10 y el prompt caching para minimizar el costo.
-- **Cupo total de 30 mensajes de agente por demo** (no diario), configurable por `DEMO_AI_MESSAGE_QUOTA`.
-  Se cuenta **en el backend** desde `agent_logs` (fuente append-only): mensajes de canales de agente
-  (`whatsapp`/`gmail`/`internal`) que realmente invocaron a Claude (`turnCount > 0`) — la impersonación
-  y las respuestas cortocircuitadas no consumen cupo.
-- **Al agotarse**, el agente **deja de responder** y devuelve un mensaje que invita a contactar a NEXOR
-  (`DEMO_AI_CONTACT_MESSAGE`) — genera un lead calificado. No se vuelve a llamar a Claude.
+- **Cupo de mensajes de agente por demo** (total, no diario). El contador es **persistente y a prueba
+  de reseteo** (HU-148): se cuenta **en el backend** desde `agent_logs` (append-only) para el tenant —
+  canales `whatsapp`/`gmail`/`internal` con `turnCount > 0`; la impersonación y las respuestas
+  cortocircuitadas no consumen cupo. Cerrar sesión, borrar caché o reconectar el canal **no** lo reinician.
+- **Cupo efectivo = base 30 (`DEMO_AI_MESSAGE_QUOTA`) + ampliación** (`tenants.demo_ai_quota_bonus`).
+  **Solo el SUPER_ADMIN** puede ampliarlo (`POST /v1/admin/tenants/:id/ai-quota`, +N, caso excepcional),
+  **auditado** (`tenant.demo_ai_extend`, con quién y por qué). El cliente nunca lo controla.
+- **Al agotarse**, el agente da una **despedida** que invita a `gerencia@nexor-one.com`
+  (`DEMO_AI_CONTACT_MESSAGE`) — genera un lead — y **deja de responder** (no se vuelve a llamar a Claude).
 - **Visible** para el cliente (panel del Inicio: "18 de 30 mensajes de IA") y para el SUPER_ADMIN
-  (detalle del cliente en la plataforma: uso + modelo).
+  (detalle del cliente: uso + modelo, con botón para ampliar).
 
 ---
 

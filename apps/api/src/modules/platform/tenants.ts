@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs'
 import { Prisma } from '@prisma/client'
 import { directPrisma } from '../../lib/prisma'
 import { logPlatformAction, SYSTEM_ACTOR } from './audit'
+import { demoAiWhere, effectiveAiQuota } from '../../lib/demo-limits'
 
 const MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 
@@ -286,6 +287,36 @@ export async function convertDemoToClient(
     isDemo: false,
     subscription: { amount: Number(sub.amount), currency: sub.currency, status: sub.status },
   }
+}
+
+/**
+ * HU-148 — Amplía el cupo de IA de una demo concreta (+N mensajes, caso excepcional). Solo el
+ * SUPER_ADMIN. Suma a `demo_ai_quota_bonus` (el base 30 no se toca); el cupo efectivo pasa a
+ * base + bonus. Auditado `tenant.demo_ai_extend` (quién, por qué, cuánto). Devuelve el uso y el
+ * nuevo tope efectivo.
+ */
+export async function extendDemoAiQuota(tenantId: string, addMessages: number, actorId: string, reason: string, ip?: string) {
+  const add = Math.floor(addMessages)
+  if (!Number.isFinite(add) || add < 1) throw { statusCode: 400, message: 'La ampliación debe ser un número de mensajes ≥ 1', code: 'VALIDATION_ERROR' }
+
+  const t = await directPrisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, isDemo: true, demoAiQuotaBonus: true } })
+  if (!t) throw { statusCode: 404, message: 'Empresa no encontrada', code: 'NOT_FOUND' }
+  if (!t.isDemo) throw { statusCode: 422, message: 'La empresa no está en modo demo', code: 'NOT_A_DEMO' }
+
+  const updated = await directPrisma.tenant.update({
+    where:  { id: tenantId },
+    data:   { demoAiQuotaBonus: { increment: add } },
+    select: { demoAiQuotaBonus: true },
+  })
+  const used  = await directPrisma.agentLog.count({ where: demoAiWhere(tenantId) })
+  const limit = effectiveAiQuota(updated.demoAiQuotaBonus)
+
+  await logPlatformAction({
+    platformAdminId: actorId, tenantId, action: 'tenant.demo_ai_extend', reason, ip,
+    metadata: { addMessages: add, newBonus: updated.demoAiQuotaBonus, newLimit: limit },
+  })
+
+  return { ai: { limit, used, remaining: Math.max(0, limit - used), bonus: updated.demoAiQuotaBonus } }
 }
 
 export async function getSubscription(tenantId: string) {
