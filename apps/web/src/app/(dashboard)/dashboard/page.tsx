@@ -160,7 +160,7 @@ function DemoUsageBanner() {
             ? <span className="text-xs font-medium text-violet-700 dark:text-violet-300">{data.daysRemaining} día{data.daysRemaining === 1 ? '' : 's'} restante{data.daysRemaining === 1 ? '' : 's'}</span>
             : <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Demo vencida</span>}
         </div>
-        <span className="text-xs text-violet-700/80 dark:text-violet-300/80">Carga masiva deshabilitada en demo</span>
+        <span className="text-xs text-violet-700/80 dark:text-violet-300/80">La carga masiva también respeta estos topes</span>
       </div>
       <p className="mb-3 text-xs text-violet-800/80 dark:text-violet-200/80">
         Prueba con tus propios datos hasta estos topes. Al alcanzar un límite, la creación se bloquea.

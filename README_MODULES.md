@@ -447,8 +447,13 @@ botones no basta), en un único punto configurable — [apps/api/src/lib/demo-li
 - Al alcanzar un tope, la creación se rechaza con **`403 DEMO_LIMIT_REACHED`** y un mensaje claro
   (`assertDemoLimit` se llama en cada `create` del service, justo antes del INSERT). Un tenant normal
   (plan completo) **no** tiene estos topes.
-- **Carga masiva deshabilitada en demo** (`403 DEMO_BULK_UPLOAD_DISABLED`): es la puerta trasera de
-  los topes, así que se cierra explícitamente en `validateRows` y `processRows`.
+- **Carga masiva sujeta a los mismos topes en demo** (cierre S16): la carga masiva es la puerta
+  trasera de los topes, así que respeta los MISMOS límites que la creación uno-a-uno. Antes de
+  importar (`validateRows` y `processRows`, en el backend) valida el **total resultante**
+  (existente + filas del archivo) contra el tope del tipo; si lo supera, rechaza con
+  `403 DEMO_LIMIT_REACHED` indicando el límite y cuántos se pueden cargar aún. Cubre todos los tipos
+  con tope (productos, clientes, proveedores, usuarios, citas); `stock` y `transactions` no crean
+  entidades limitadas. **Fuera de demo, la carga masiva no cambia.**
 - **Se afloja en datos** (no cuestan); la **IA se aprieta** (ver abajo).
 - El frontend refleja **uso vs. límite** ("12 de 40 productos") con `GET /v1/tenants/demo-usage`
   (panel en el Inicio del cliente). Los límites viven en un solo lugar, no dispersos ni hardcodeados.
@@ -515,6 +520,12 @@ Incluye plantillas por tipo de dato e historial de cargas realizadas.
 
 ### Acceso
 Disponible para el rol TENANT_ADMIN (el cliente sube sus propios archivos en `/settings/bulk-upload`).
+
+### Límites del plan demo (cierre S16)
+En un tenant **demo**, cada carga masiva respeta los mismos topes que la creación uno-a-uno: antes de
+importar valida en el backend que **existente + filas del archivo ≤ tope** del tipo (productos 40,
+clientes 25, proveedores 10, usuarios 3, citas 25) y rechaza (`403 DEMO_LIMIT_REACHED`) indicando
+cuántos se pueden cargar aún. `stock` y `transactions` no tienen tope de demo. Fuera de demo, sin cambios.
 
 ### Supervisión de plataforma (HU-140)
 El equipo NEXOR ve las cargas de **todos los clientes** (tenant, tipo, estado, fecha) desde la
