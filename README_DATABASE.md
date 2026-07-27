@@ -86,10 +86,13 @@ Representa a cada empresa cliente que usa NEXOR. Es el nodo raíz de toda la jer
 | `currency` | `VARCHAR(3)` | NOT NULL, DEFAULT 'COP' | Moneda local (ISO 4217) |
 | `logo_url` | `VARCHAR(500)` | NULL | URL del logo para cotizaciones |
 | `default_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor preferido **global** del tenant — respaldo cuando un producto no tiene preferido propio (HU-123) |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
+| `is_demo` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-141** — la empresa fue/es una demo. **Permanente**: no se borra aunque la demo expire o se convierta en cliente. Marca "ya conoció el producto" para el anti-duplicado |
+| `demo_started_at` | `TIMESTAMPTZ` | NULL | **HU-141** — inicio de la ventana de demo |
+| `demo_ended_at` | `TIMESTAMPTZ` | NULL | **HU-141** — fin de la ventana de demo. Si `<= NOW()` → demo expirada/consumida (estado derivado, sin borrar el rastro) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación en NEXOR |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `slug` (UNIQUE)  
+**Índices:** `slug` (UNIQUE), `tax_id` (para el anti-duplicado por NIT — HU-141)  
 **Notas:** Esta tabla NO tiene `tenant_id` — es la raíz. RLS no aplica aquí. Solo el Super Admin puede leer todos los registros.
 
 ---
@@ -200,13 +203,49 @@ posterior). Una por tenant (`tenant_id` UNIQUE).
 | `amount` | DECIMAL(15,2) | monto mensual (gestión manual) |
 | `currency` | VARCHAR(3) | default COP |
 | `status` | VARCHAR(20) | `active` \| `cancelled` |
-| `started_at` / `cancelled_at` / `created_at` / `updated_at` | TIMESTAMPTZ | |
+| `started_at` | TIMESTAMPTZ | inicio de la suscripción |
+| `cancelled_at` | TIMESTAMPTZ NULL | momento de la **cancelación** (evento) |
+| `ends_at` | TIMESTAMPTZ NULL | **HU-141** — **fin previsto** del periodo contratado. Distinto de `cancelled_at`: `ends_at` es el término planificado; NULL = suscripción abierta. Soporta el estado "ya fue cliente" del anti-duplicado |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
 
 **Coherencia con el acceso:** `status` se mantiene sincronizado con `tenants.is_active` —
 **cancelar** la suscripción pone `is_active=false` (el `tenantHook` **bloquea el acceso** del cliente,
 `403 TENANT_DISABLED`); **activar** lo revierte. La sincronización vive en `toggleTenant`.
 **RLS:** **deny-all** (mundo de la plataforma) — ningún usuario de tenant ve su suscripción; solo
 `directPrisma`. Alta y cambios de monto/estado quedan **auditados** (`platform_audit_logs`).
+
+---
+
+#### Demo y regla anti-duplicado (HU-141)
+
+**Auditoría previa (qué existía vs. qué se creó, sin duplicar columnas):**
+
+| Dato requerido | Dónde | Estado |
+|---|---|---|
+| Fecha de creación en NEXOR | `tenants.created_at` | ✅ ya existía |
+| Estado activo/inactivo | `tenants.is_active` (+ `subscriptions.status`) | ✅ ya existía |
+| Identificador estable de empresa | `tenants.tax_id` (NIT/documento) | ✅ ya existía (se le añadió índice) |
+| Inicio de suscripción | `subscriptions.started_at` | ✅ ya existía (HU-138) |
+| **Fin de suscripción** | `subscriptions.ends_at` | 🆕 creado en HU-141 |
+| **Flag de demo** | `tenants.is_demo` | 🆕 creado en HU-141 |
+| **Inicio / fin de demo** | `tenants.demo_started_at` / `demo_ended_at` | 🆕 creado en HU-141 |
+
+Migración real: `20260726120000_hu141_demo_and_subscription_end` (probada desde cero en BD temporal).
+**RLS:** no aplica alta en `setup-rls.ts` — `tenants` es la raíz (sin `tenant_id`, sin política) y
+`subscriptions` ya es **deny-all** de plataforma; ambas se acceden solo por `directPrisma`/SUPER_ADMIN.
+
+**Regla anti-duplicado (documentada; la aplicará el HU del flujo de creación de demo):**
+Una empresa **no** recibe una segunda demo si ya existe un tenant (que **nunca se borra**) con el
+**mismo NIT** (`tax_id` normalizado — trim, sin puntos/guiones, mayúsculas) **o** el mismo **correo del
+admin** (`users.email` del `TENANT_ADMIN`, case-insensitive), y ese tenant cumple alguna de:
+
+- `is_demo = true` → **ya tuvo demo**, aunque esté **expirada** (`demo_ended_at <= NOW()`) o **convertida**
+  en cliente; o
+- tiene fila en `subscriptions` → **ya fue/es cliente**.
+
+El identificador primario es el **NIT** (estable y único por empresa); el correo del admin es
+secundario. Una demo vencida se marca **expirada/consumida** por `demo_ended_at` en el pasado y su
+rastro (`is_demo = true`) es **permanente** — nunca se borra, para que el anti-duplicado funcione.
 
 ---
 

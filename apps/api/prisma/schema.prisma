@@ -68,6 +68,15 @@ model Tenant {
   /// HU-123 — proveedor preferido global del tenant (respaldo cuando el producto no tiene uno).
   defaultSupplierId String? @map("default_supplier_id") @db.VarChar(30)
 
+  /// HU-141 — control de demo y anti-duplicado. `isDemo` es PERMANENTE (no se borra): marca que
+  /// la empresa ya conoció el producto en modo demo, aunque la demo expire (`demoEndedAt` en el
+  /// pasado) o se convierta en cliente (tenga `subscription`). Junto con `taxId` (NIT) y el correo
+  /// del admin sostiene el bloqueo de una segunda demo. La ventana de demo va de `demoStartedAt`
+  /// a `demoEndedAt`; una demo vencida se considera expirada/consumida SIN borrar el rastro.
+  isDemo        Boolean   @default(false) @map("is_demo")
+  demoStartedAt DateTime? @map("demo_started_at") @db.Timestamptz(6)
+  demoEndedAt   DateTime? @map("demo_ended_at") @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -105,6 +114,8 @@ model Tenant {
   dashboardRollups      DashboardDailyRollup[]
   subscription          Subscription?
 
+  /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
+  @@index([taxId])
   @@map("tenants")
 }
 
@@ -263,6 +274,10 @@ model Subscription {
   status      String    @default("active") @db.VarChar(20)
   startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
   cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  /// HU-141 — fecha de FIN de suscripción (fin del periodo pagado/contratado). Distinta de
+  /// `cancelledAt` (momento de la cancelación): `endsAt` es el término previsto. NULL = sin fin
+  /// definido (suscripción abierta). Soporta el estado "ya fue cliente" del anti-duplicado.
+  endsAt      DateTime? @map("ends_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
