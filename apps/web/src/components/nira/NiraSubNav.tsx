@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+// HU-150 — etiquetas visibles en lenguaje del dueño de negocio. Las rutas (href) NO se tocan:
+// solo cambia el texto que ve el usuario (la ruta sigue siendo /nira/compare, /nira/ranking…).
 const TABS = [
   { href: '/nira/suppliers',       label: 'Proveedores' },
   { href: '/nira/purchase-orders', label: 'Órdenes de compra' },
-  { href: '/nira/history',         label: 'Historial' },
-  { href: '/nira/compare',         label: 'Comparador' },
-  { href: '/nira/ranking',         label: 'Ranking' },
+  { href: '/nira/history',         label: 'Compras realizadas' },
+  { href: '/nira/compare',         label: 'Comparar precios' },
+  { href: '/nira/ranking',         label: 'Mejores proveedores' },
   { href: '/nira/reports',         label: 'Reportes' },
 ] as const
 

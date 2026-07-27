@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+// HU-150 — etiquetas visibles en lenguaje del dueño de negocio. Las rutas (href) NO se tocan:
+// solo cambia el texto que ve el usuario (la ruta sigue siendo /ari/pipeline, /ari/history…).
 const TABS = [
-  { href: '/ari/clients',      label: 'Clientes'      },
-  { href: '/ari/pipeline',     label: 'Pipeline'      },
-  { href: '/ari/history',      label: 'Historial'     },
-  { href: '/ari/quotes',       label: 'Cotizaciones'  },
-  { href: '/ari/reports',      label: 'Reportes'      },
+  { href: '/ari/clients',      label: 'Clientes'          },
+  { href: '/ari/pipeline',     label: 'Negocios en curso' },
+  { href: '/ari/history',      label: 'Ventas realizadas' },
+  { href: '/ari/quotes',       label: 'Cotizaciones'      },
+  { href: '/ari/reports',      label: 'Reportes'          },
 ] as const
 
 export function AriSubNav() {

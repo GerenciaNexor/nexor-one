@@ -453,7 +453,7 @@ export default function PipelinePage() {
       {/* ── Encabezado ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Pipeline</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Negocios en curso</h1>
           {!loading && (
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
               {deals.length} {deals.length === 1 ? 'deal' : 'deals'} ·{' '}

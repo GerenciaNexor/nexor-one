@@ -204,6 +204,13 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 | `ui/` | Portal, Toast, SkeletonRows |
 | `ocr/` | OcrExtractButton |
 
+> **Etiquetas de subsecciones (HU-150).** Las pestañas de ARI/NIRA usan nombres en lenguaje del
+> dueño de negocio, **solo a nivel visual** (las rutas `href` y el vocabulario del código no cambian):
+> ARI `/ari/pipeline` → **"Negocios en curso"**, `/ari/history` → **"Ventas realizadas"**; NIRA
+> `/nira/compare` → **"Comparar precios"**, `/nira/ranking` → **"Mejores proveedores"**,
+> `/nira/history` → **"Compras realizadas"**. Se aplican en el SubNav, el `<h1>` de cada página y el
+> acceso rápido del Inicio. Clientes, Cotizaciones, Reportes, Proveedores y Órdenes de compra no cambian.
+
 Hooks en [apps/web/src/hooks/](apps/web/src/hooks/): `useTheme`.
 
 ---
