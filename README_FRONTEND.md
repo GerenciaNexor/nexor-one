@@ -58,6 +58,14 @@ app/
 > El grupo `(auth)` y `(dashboard)` no afectan la URL (Next.js los usa solo para compartir layout).
 > La landing en `/` es pública; las CTAs llevan a `/login`.
 
+**Landing pública** ([page.tsx](apps/web/src/app/page.tsx)) — una sola página con **tema oscuro fijo**
+(`bg-[#0b1020]`, gradientes cyan/púrpura/rosa; **no** usa el toggle claro/oscuro del panel), responsive
+con `sm:`/`lg:`, secciones `max-w-6xl` y animaciones `Reveal`. Secciones: navbar · hero · banda de datos ·
+propuesta de valor · cómo funciona · **módulos** (`#modulos`) · agentes · beneficios · **Solicita tu demo**
+(`#demo`, HU-147) · CTA final · footer. La sección de demo describe qué incluye (módulos, datos con
+límites, agente IA, WhatsApp/Gmail, 15 días) y su **CTA es de contacto** (correo `gerencia@nexor-one.com`
+y teléfono `+57 313 496 9078`) — la demo **no es autoservicio**, la activa el SUPER_ADMIN.
+
 ---
 
 ## Capa de datos del cliente

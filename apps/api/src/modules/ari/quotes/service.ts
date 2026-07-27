@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import type { Role } from '@nexor/shared'
 import { prisma } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import { hasMinRole } from '../../../lib/guards'
 import type { CreateQuoteInput, UpdateQuoteStatusInput, QuoteQuery } from './schema'
 
@@ -166,6 +167,7 @@ export async function createQuote(
   createdBy: string,
   input:     CreateQuoteInput,
 ) {
+  await assertDemoLimit(tenantId, 'quotes') // HU-143 — tope del plan demo (ventas/cotizaciones)
   // Verificar cliente
   const client = await prisma.client.findFirst({
     where:  { id: input.clientId, tenantId },

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import { prisma, withTenantContext } from '../../../lib/prisma'
+import { assertDemoLimit } from '../../../lib/demo-limits'
 import { computeSupplierScore } from '../../../jobs/supplier-scores'
 import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, PurchaseOrderQuery, ReceivePurchaseOrderInput, FromAlertInput, RatePurchaseOrderInput } from './schema'
 
@@ -153,6 +154,7 @@ export async function createPurchaseOrder(
   userId: string,
   input: CreatePurchaseOrderInput,
 ) {
+  await assertDemoLimit(tenantId, 'purchaseOrders') // HU-143 — tope del plan demo
   const orderNumber           = await generateOrderNumber(tenantId)
   const { subtotal, tax, total } = calculateTotals(input.items, input.taxRate)
 
@@ -566,6 +568,7 @@ export async function createPurchaseOrderFromAlert(
   userId:   string,
   input:    FromAlertInput,
 ) {
+  await assertDemoLimit(tenantId, 'purchaseOrders') // HU-143 — tope del plan demo (también desde alerta)
   const { productId, branchId } = input
 
   // 1. Cargar producto (debe pertenecer al tenant y estar activo)

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../../lib/prisma'
+import { assertBulkUploadAllowed } from '../../lib/demo-limits'
 import {
   REQUIRED_COLUMNS,
   UserRowSchema,
@@ -110,6 +111,7 @@ export async function validateRows(
   type: BulkUploadType,
   rows: Record<string, unknown>[],
 ): Promise<RowError[]> {
+  await assertBulkUploadAllowed(tenantId) // HU-143 — carga masiva deshabilitada en demo
   const resolved = await resolveSucursalIds(tenantId, rows)
   if (type === 'users')        return validateUsers(tenantId, resolved)
   if (type === 'products')     return validateProducts(tenantId, resolved)
@@ -486,6 +488,7 @@ export async function processRows(
   rows: Record<string, unknown>[],
   meta: UploadMeta,
 ): Promise<{ processed: number; logId: string }> {
+  await assertBulkUploadAllowed(tenantId) // HU-143 — carga masiva deshabilitada en demo
   const startedAt = new Date()
   const resolved  = await resolveSucursalIds(tenantId, rows)
 

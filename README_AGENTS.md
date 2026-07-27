@@ -37,6 +37,15 @@ El modelo por defecto es **configurable por env** (`CLAUDE_MODEL`). El default e
 `claude-opus-4-6` (ver `apps/api/src/modules/agents/agent.runner.ts`), aunque el `.env.example`
 sugiere `claude-opus-4-5`. PENDIENTE: confirmar/alinear el default exacto entre código y `.env.example`.
 
+**Modo demo (HU-144):** si el tenant es demo (`tenants.is_demo`), el agente usa el modelo Claude
+**más barato**, configurable por `CLAUDE_MODEL_DEMO` (default en código `claude-haiku-4-5-20251001`),
+tanto para clasificación como para respuesta. Además hay un **cupo total de 30 mensajes de agente
+por demo** (`DEMO_AI_MESSAGE_QUOTA`), contado en el backend desde `agent_logs`
+(`channel ∈ {whatsapp,gmail,internal}` y `turnCount > 0`). Al agotarse, `runAgent` **no llama a
+Claude**: responde con un mensaje que invita a contactar a NEXOR (`DEMO_AI_CONTACT_MESSAGE`) y lo
+registra con `turnCount 0` (no consume cupo). Se mantienen `AGENT_MAX_TURNS` y el prompt caching.
+La configuración vive en [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
+
 ---
 
 ## El AgentRunner

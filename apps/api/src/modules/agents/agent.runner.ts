@@ -19,6 +19,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma, withTenantContext, runInTenantTransaction } from '../../lib/prisma'
+import { demoModel, demoAiWhere, demoAiExhaustedMessage, DEMO_AI_MESSAGE_QUOTA } from '../../lib/demo-limits'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
@@ -185,7 +186,6 @@ export async function notifyFallback(
 
 export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResult> {
   const startTime  = Date.now()
-  const model      = process.env['CLAUDE_MODEL'] ?? 'claude-opus-4-6'
   const client     = getAnthropicClient()
   const agentTools = getToolsForModule(input.module)
   const toolMap    = new Map(agentTools.map((t) => [t.definition.name, t]))
@@ -214,6 +214,39 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
       durationMs,
     })
     return { reply: disabledReply, toolsUsed: [], toolDetails: [], turnCount: 0, durationMs, hitMaxTurns: false, fallbackReason: undefined }
+  }
+
+  // ── 1b. HU-144 — Modo demo: modelo más barato + cupo de IA ─────────────────
+  // directPrisma: mismo contexto webhook (sin tenantHook) que el resto del runner.
+  const tenantDemo = await directPrisma.tenant.findUnique({
+    where:  { id: input.tenantId },
+    select: { isDemo: true },
+  })
+  const isDemo = !!tenantDemo?.isDemo
+  // En demo se fuerza el modelo Claude más barato (configurable por CLAUDE_MODEL_DEMO);
+  // fuera de demo, el modelo normal (CLAUDE_MODEL). No hardcodeado disperso.
+  const model = isDemo ? demoModel() : (process.env['CLAUDE_MODEL'] ?? 'claude-opus-4-6')
+
+  // Cupo TOTAL de mensajes de agente en la demo (candado de costo, contado en el backend).
+  if (isDemo) {
+    const aiUsed = await directPrisma.agentLog.count({ where: demoAiWhere(input.tenantId) })
+    if (aiUsed >= DEMO_AI_MESSAGE_QUOTA) {
+      const reply      = demoAiExhaustedMessage()
+      const durationMs = Date.now() - startTime
+      // Se registra con turnCount 0 (no invocó a Claude) → NO consume cupo adicional.
+      await saveLog({
+        tenantId:     input.tenantId,
+        module:       input.module,
+        channel:      input.channel,
+        inputMessage: input.message,
+        reply,
+        toolsUsed:    [],
+        toolDetails:  [{ tool: '__demo_ai_quota_exhausted__', input: { used: aiUsed, quota: DEMO_AI_MESSAGE_QUOTA }, output: null, timestamp: new Date().toISOString() }],
+        turnCount:    0,
+        durationMs,
+      })
+      return { reply, toolsUsed: [], toolDetails: [], turnCount: 0, durationMs, hitMaxTurns: false, fallbackReason: undefined }
+    }
   }
 
   // ── 2. Contexto del tenant (nombre, sucursales, moneda) ─────────────────────
