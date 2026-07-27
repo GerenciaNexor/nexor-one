@@ -19,7 +19,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma, withTenantContext, runInTenantTransaction } from '../../lib/prisma'
-import { demoModel, demoAiWhere, demoAiExhaustedMessage, DEMO_AI_MESSAGE_QUOTA } from '../../lib/demo-limits'
+import { demoModel, demoAiWhere, demoAiExhaustedMessage, effectiveAiQuota } from '../../lib/demo-limits'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
@@ -220,20 +220,24 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   // directPrisma: mismo contexto webhook (sin tenantHook) que el resto del runner.
   const tenantDemo = await directPrisma.tenant.findUnique({
     where:  { id: input.tenantId },
-    select: { isDemo: true },
+    select: { isDemo: true, demoAiQuotaBonus: true },
   })
   const isDemo = !!tenantDemo?.isDemo
   // En demo se fuerza el modelo Claude más barato (configurable por CLAUDE_MODEL_DEMO);
   // fuera de demo, el modelo normal (CLAUDE_MODEL). No hardcodeado disperso.
   const model = isDemo ? demoModel() : (process.env['CLAUDE_MODEL'] ?? 'claude-opus-4-6')
 
-  // Cupo TOTAL de mensajes de agente en la demo (candado de costo, contado en el backend).
+  // HU-144/148 — Cupo TOTAL de mensajes de agente en la demo (candado de costo). El contador es
+  // PERSISTENTE y a prueba de reseteo: se cuenta desde agent_logs (append-only) para ESTE tenant,
+  // no en la sesión ni en el frontend → cubre WhatsApp/Gmail/chat interno por igual. El tope
+  // efectivo = base (30) + la ampliación que sólo el SUPER_ADMIN puede conceder (auditada).
   if (isDemo) {
+    const quota  = effectiveAiQuota(tenantDemo?.demoAiQuotaBonus)
     const aiUsed = await directPrisma.agentLog.count({ where: demoAiWhere(input.tenantId) })
-    if (aiUsed >= DEMO_AI_MESSAGE_QUOTA) {
-      const reply      = demoAiExhaustedMessage()
+    if (aiUsed >= quota) {
+      const reply      = demoAiExhaustedMessage()  // despedida (invita a gerencia@nexor-one.com)
       const durationMs = Date.now() - startTime
-      // Se registra con turnCount 0 (no invocó a Claude) → NO consume cupo adicional.
+      // Se registra con turnCount 0 (no invocó a Claude) → NO consume cupo adicional ni cuesta tokens.
       await saveLog({
         tenantId:     input.tenantId,
         module:       input.module,
@@ -241,7 +245,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
         inputMessage: input.message,
         reply,
         toolsUsed:    [],
-        toolDetails:  [{ tool: '__demo_ai_quota_exhausted__', input: { used: aiUsed, quota: DEMO_AI_MESSAGE_QUOTA }, output: null, timestamp: new Date().toISOString() }],
+        toolDetails:  [{ tool: '__demo_ai_quota_exhausted__', input: { used: aiUsed, quota }, output: null, timestamp: new Date().toISOString() }],
         turnCount:    0,
         durationMs,
       })

@@ -132,10 +132,13 @@ Webhook WhatsApp/Gmail → responde 200 YA → encola en BullMQ → worker → A
   ([apps/api/src/lib/worker.ts](apps/api/src/lib/worker.ts), cola `incoming-messages`).
 - BullMQ necesita una conexión Redis **separada** de la Queue.
 - Toda acción del agente que modifique datos **debe** quedar en `agent_logs`.
-- **Modo demo (HU-144):** si el tenant es demo, el agente usa el modelo más barato
-  (`CLAUDE_MODEL_DEMO`, default Haiku) y hay un **cupo total de 30 mensajes**
-  (`DEMO_AI_MESSAGE_QUOTA`) contado desde `agent_logs`; al agotarse, `runAgent` no llama a Claude
-  y responde invitando a contactar a NEXOR. Config en [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
+- **Modo demo (HU-144/148):** si el tenant es demo, el agente usa el modelo más barato
+  (`CLAUDE_MODEL_DEMO`, default Haiku) y hay un **cupo de mensajes** contado de forma **persistente y
+  a prueba de reseteo** desde `agent_logs` (append-only, atado al tenant, cubre WhatsApp/Gmail/chat).
+  Cupo efectivo = base 30 (`DEMO_AI_MESSAGE_QUOTA`) + `tenants.demo_ai_quota_bonus` (solo el
+  SUPER_ADMIN lo amplía vía `POST /v1/admin/tenants/:id/ai-quota`, auditado). Al agotarse, `runAgent`
+  no llama a Claude y envía una despedida invitando a `gerencia@nexor-one.com`. Config en
+  [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
 
 Jobs programados (schedulers BullMQ) en [apps/api/src/jobs/](apps/api/src/jobs/), arrancados desde
 [apps/api/src/app.ts](apps/api/src/app.ts).

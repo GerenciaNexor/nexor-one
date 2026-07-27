@@ -37,14 +37,22 @@ El modelo por defecto es **configurable por env** (`CLAUDE_MODEL`). El default e
 `claude-opus-4-6` (ver `apps/api/src/modules/agents/agent.runner.ts`), aunque el `.env.example`
 sugiere `claude-opus-4-5`. PENDIENTE: confirmar/alinear el default exacto entre código y `.env.example`.
 
-**Modo demo (HU-144):** si el tenant es demo (`tenants.is_demo`), el agente usa el modelo Claude
+**Modo demo (HU-144/148):** si el tenant es demo (`tenants.is_demo`), el agente usa el modelo Claude
 **más barato**, configurable por `CLAUDE_MODEL_DEMO` (default en código `claude-haiku-4-5-20251001`),
-tanto para clasificación como para respuesta. Además hay un **cupo total de 30 mensajes de agente
-por demo** (`DEMO_AI_MESSAGE_QUOTA`), contado en el backend desde `agent_logs`
-(`channel ∈ {whatsapp,gmail,internal}` y `turnCount > 0`). Al agotarse, `runAgent` **no llama a
-Claude**: responde con un mensaje que invita a contactar a NEXOR (`DEMO_AI_CONTACT_MESSAGE`) y lo
-registra con `turnCount 0` (no consume cupo). Se mantienen `AGENT_MAX_TURNS` y el prompt caching.
-La configuración vive en [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
+tanto para clasificación como para respuesta. Además hay un **cupo de mensajes de agente por demo**.
+
+- **Contador persistente y a prueba de reseteo (HU-148):** se cuenta en el backend desde `agent_logs`
+  (append-only) para el tenant — `channel ∈ {whatsapp,gmail,internal}` y `turnCount > 0`. Al vivir en
+  la BD y atado al tenant, **no se reinicia** al cerrar sesión, borrar caché ni reconectar el canal, y
+  cubre WhatsApp/Gmail/chat interno por igual (el punto único es `runAgent`).
+- **Cupo efectivo = base (30, `DEMO_AI_MESSAGE_QUOTA`) + ampliación** (`tenants.demo_ai_quota_bonus`).
+  Solo el SUPER_ADMIN amplía (`POST /v1/admin/tenants/:id/ai-quota`, +N mensajes), caso excepcional y
+  **auditado** (`tenant.demo_ai_extend`).
+- Al **agotarse**, `runAgent` **no llama a Claude**: envía un mensaje de **despedida** que invita a
+  `gerencia@nexor-one.com` (`DEMO_AI_CONTACT_MESSAGE`) — convierte el límite en un lead — y lo registra
+  con `turnCount 0` (no consume cupo ni cuesta tokens). Se mantienen `AGENT_MAX_TURNS` y el prompt caching.
+- El uso (X/cupo) es visible para el cliente y el SUPER_ADMIN. Config en
+  [apps/api/src/lib/demo-limits.ts](apps/api/src/lib/demo-limits.ts).
 
 ---
 
