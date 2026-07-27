@@ -30,6 +30,9 @@ SUPER_ADMIN          ← Equipo NEXOR (ve todos los tenants)
 **Qué puede hacer:**
 - **Crear clientes** (tenants) con su primer admin, módulos y **suscripción** (monto), y **editar el
   monto** o **activar/cancelar** la suscripción — gestión manual, sin cobro automático (HU-138).
+- **Crear clientes en modo demo** (HU-142): tenant real con expiración (default 15 días, tope 30),
+  duración editable (`PUT /v1/admin/tenants/:id/demo`). Al vencer se **suspende solo** (acceso
+  bloqueado) **sin borrar datos**; el estado (activa/expirada, días restantes) se ve en el detalle.
 - Ver todos los tenants de la plataforma · activar/desactivar tenants · modificar feature flags
 - Impersonar cualquier tenant para soporte (`/v1/admin/tenants/:id/impersonate` → JWT de tenant de 1h; queda en audit log con IP y `platformAdminId`)
 - Acceder a todos los endpoints bajo `/v1/admin/*` (guard `superAdminHook`: exige `platformAdminId`)

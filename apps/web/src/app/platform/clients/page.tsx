@@ -8,14 +8,24 @@ const MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 type ModuleName = (typeof MODULES)[number]
 
 interface Subscription { amount: number; currency: string; status: 'active' | 'cancelled' }
+// HU-142 — estado de demo derivado en el backend
+interface DemoState {
+  isDemo: boolean
+  status: 'active' | 'expired' | null
+  daysRemaining: number | null
+  startedAt: string | null
+  endedAt: string | null
+}
 interface TenantRow {
   id: string; name: string; slug: string; isActive: boolean; createdAt: string
   subscription: Subscription | null
+  demo: DemoState
 }
 
 interface CreatedTenant {
   id: string; name: string; slug: string; isActive: boolean
-  adminEmail: string; amount: number; currency: string; status: string
+  adminEmail: string; amount: number; currency: string; status: string | null
+  demo: DemoState
 }
 
 function fmtDate(iso: string): string {
@@ -53,7 +63,8 @@ export default function PlatformClientsPage() {
     setRows((prev) => [
       {
         id: c.id, name: c.name, slug: c.slug, isActive: c.isActive, createdAt: new Date().toISOString(),
-        subscription: { amount: c.amount, currency: c.currency, status: (c.status === 'active' ? 'active' : 'cancelled') },
+        subscription: c.demo.isDemo ? null : { amount: c.amount, currency: c.currency, status: (c.status === 'active' ? 'active' : 'cancelled') },
+        demo: c.demo,
       },
       ...prev,
     ])
@@ -123,14 +134,20 @@ export default function PlatformClientsPage() {
                     <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{t.slug}</td>
                     <td className="px-4 py-3 text-center">
-                      {t.isActive
-                        ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Activa</span>
-                        : <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>}
+                      {t.demo.isDemo
+                        ? (t.demo.status === 'active'
+                            ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={t.demo.endedAt ? `Vence ${fmtDate(t.demo.endedAt)}` : undefined}>Demo · {t.demo.daysRemaining}d</span>
+                            : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Demo vencida</span>)
+                        : (t.isActive
+                            ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Activa</span>
+                            : <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-300">Cancelada</span>)}
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                      {t.subscription && t.subscription.amount > 0
-                        ? fmtMoney(t.subscription.amount, t.subscription.currency)
-                        : <span className="text-slate-500">Sin definir</span>}
+                      {t.demo.isDemo
+                        ? <span className="text-slate-500">Demo</span>
+                        : t.subscription && t.subscription.amount > 0
+                          ? fmtMoney(t.subscription.amount, t.subscription.currency)
+                          : <span className="text-slate-500">Sin definir</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{fmtDate(t.createdAt)}</td>
                   </tr>
@@ -159,6 +176,9 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [modules, setModules]           = useState<ModuleName[]>([...MODULES])
   const [amount, setAmount]             = useState('')
   const [reason, setReason]             = useState('')
+  // HU-142 — modo demo
+  const [isDemo, setIsDemo]             = useState(false)
+  const [demoDays, setDemoDays]         = useState('15')
 
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -179,6 +199,7 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
       name: string; slug?: string; taxId?: string; currency?: string
       adminName: string; adminEmail: string; adminPassword: string
       modules?: ModuleName[]; amount?: number; reason: string
+      isDemo?: boolean; demoDurationDays?: number
     } = {
       name: name.trim(),
       adminName: adminName.trim(),
@@ -190,7 +211,13 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
     }
     if (slug.trim())  body.slug = slug.trim()
     if (taxId.trim()) body.taxId = taxId.trim()
-    if (amount.trim()) body.amount = Number(amount)
+    // HU-142 — demo: sin monto de suscripción; se envía la duración (el backend acota a 1..30)
+    if (isDemo) {
+      body.isDemo = true
+      body.demoDurationDays = Math.min(30, Math.max(1, Number(demoDays) || 15))
+    } else if (amount.trim()) {
+      body.amount = Number(amount)
+    }
 
     setSaving(true)
     try {
@@ -271,7 +298,26 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
             ))}
           </div>
 
-          {/* Suscripción */}
+          {/* Modo demo (HU-142) */}
+          <h4 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">Modo demo</h4>
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+            <input type="checkbox" checked={isDemo} onChange={(e) => setIsDemo(e.target.checked)} className="mt-0.5 h-4 w-4 accent-violet-500" />
+            <span>
+              Crear como <span className="font-semibold text-violet-700 dark:text-violet-300">demo</span> con expiración.
+              <span className="mt-0.5 block text-xs text-slate-500">Al vencer se suspende automáticamente (acceso bloqueado) sin borrar datos.</span>
+            </span>
+          </label>
+          {isDemo && (
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Duración (días)</label>
+              <input type="number" min={1} max={30} value={demoDays} onChange={(e) => setDemoDays(e.target.value)} placeholder="15"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100" />
+              <p className="mt-1 text-xs text-slate-500">Por defecto 15 días, máximo 30. Editable después desde el detalle.</p>
+            </div>
+          )}
+
+          {/* Suscripción (solo para clientes de pago; una demo no lleva suscripción) */}
+          {!isDemo && (<>
           <h4 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">Suscripción</h4>
           <div className="mt-2 space-y-3">
             <div>
@@ -279,6 +325,11 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100" />
             </div>
+          </div>
+          </>)}
+
+          {/* Motivo (obligatorio, auditado) */}
+          <div className="mt-3 space-y-3">
             <div>
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo <span className="text-red-600 dark:text-red-400">*</span></label>
               <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500}

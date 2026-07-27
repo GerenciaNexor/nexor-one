@@ -247,6 +247,22 @@ El identificador primario es el **NIT** (estable y único por empresa); el corre
 secundario. Una demo vencida se marca **expirada/consumida** por `demo_ended_at` en el pasado y su
 rastro (`is_demo = true`) es **permanente** — nunca se borra, para que el anti-duplicado funcione.
 
+**Ciclo de vida de la demo (HU-142):**
+
+- Una demo es **el mismo tenant** en otro estado (no un sandbox aparte). Se crea desde la plataforma
+  (`POST /v1/admin/tenants` con `isDemo:true`, `demoDurationDays` — **default 15, tope 30**) con
+  `is_demo`, `demo_started_at` y `demo_ended_at`. **No** lleva suscripción (no es cliente de pago aún;
+  la suscripción se crea en la conversión — HU-146).
+- **Duración editable** al crear o después: `PUT /v1/admin/tenants/:id/demo` recalcula `demo_ended_at`
+  desde el inicio (acotado a 30 días). Extenderla al futuro **reactiva** el acceso de una demo ya
+  suspendida. Auditado `tenant.demo_extend`.
+- **Suspensión automática al vencer**: el scheduler [`demo-expiry`](apps/api/src/jobs/demo-expiry.ts)
+  corre cada hora (y al arrancar) y pone `is_active=false` en las demos vencidas (`demo_ended_at ≤ now`)
+  → el `tenantHook` bloquea el acceso (`403 TENANT_DISABLED`). **Nunca borra**: los datos se conservan
+  para la conversión (HU-146). Cada suspensión se audita `tenant.demo_expire` con actor **`system`**.
+- **Estado consultable** por el SUPER_ADMIN: el listado y el detalle de clientes devuelven un objeto
+  `demo` derivado `{ isDemo, status: 'active'|'expired', daysRemaining, startedAt, endedAt }`.
+
 ---
 
 #### `feature_flags`

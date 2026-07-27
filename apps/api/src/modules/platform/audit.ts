@@ -6,11 +6,20 @@
 import type { Prisma } from '@prisma/client'
 import { directPrisma } from '../../lib/prisma'
 
+/**
+ * Actor "sistema" para acciones automáticas (sin admin humano detrás), p. ej. la suspensión
+ * de una demo vencida por el scheduler. `platform_admin_id` no tiene FK (por diseño), así que
+ * este centinela es válido; la lectura lo etiqueta como "Sistema (automático)".
+ */
+export const SYSTEM_ACTOR = 'system'
+
 /** Acciones canónicas auditables de la plataforma. */
 export type PlatformAction =
   | 'tenant.create'
   | 'tenant.activate'
   | 'tenant.deactivate'
+  | 'tenant.demo_extend'   // HU-142 — ajuste manual de la duración de la demo
+  | 'tenant.demo_expire'   // HU-142 — suspensión automática de la demo al vencer
   | 'subscription.update'
   | 'module.enable'
   | 'module.disable'
@@ -83,6 +92,11 @@ export async function listPlatformAuditLogs(filters: AuditListFilters, page: num
   const adminMap  = new Map(admins.map((a) => [a.id, a]))
   const tenantMap = new Map(tenants.map((t) => [t.id, t]))
 
+  // HU-142 — las acciones automáticas usan el actor centinela "system": se etiqueta legible.
+  const labelActor = (id: string) =>
+    adminMap.get(id) ??
+    (id === SYSTEM_ACTOR ? { id, email: null, name: 'Sistema (automático)' } : { id, email: null, name: null })
+
   return {
     data: rows.map((r) => ({
       id:         r.id,
@@ -91,7 +105,7 @@ export async function listPlatformAuditLogs(filters: AuditListFilters, page: num
       metadata:   r.metadata,
       ip:         r.ip,
       createdAt:  r.createdAt,
-      platformAdmin: adminMap.get(r.platformAdminId) ?? { id: r.platformAdminId, email: null, name: null },
+      platformAdmin: labelActor(r.platformAdminId),
       tenant:     r.tenantId ? (tenantMap.get(r.tenantId) ?? { id: r.tenantId, name: null }) : null,
     })),
     total,

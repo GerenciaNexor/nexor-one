@@ -1,5 +1,5 @@
 import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
-import { getSubscription, getSubscriptionsMap } from '../platform/tenants'
+import { getSubscription, getSubscriptionsMap, getDemoState } from '../platform/tenants'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -17,6 +17,10 @@ export async function listAllTenants(page: number, limit: number) {
         slug: true,
         isActive: true,
         createdAt: true,
+        // HU-142 — estado de demo para el listado de la plataforma
+        isDemo: true,
+        demoStartedAt: true,
+        demoEndedAt: true,
       },
     }),
     prisma.tenant.count(),
@@ -26,7 +30,11 @@ export async function listAllTenants(page: number, limit: number) {
   const subs = await getSubscriptionsMap(data.map((t) => t.id))
 
   return {
-    data: data.map((t) => ({ ...t, subscription: subs.get(t.id) ?? null })),
+    data: data.map(({ isDemo, demoStartedAt, demoEndedAt, ...t }) => ({
+      ...t,
+      subscription: subs.get(t.id) ?? null,
+      demo: getDemoState({ isDemo, demoStartedAt, demoEndedAt }), // HU-142
+    })),
     total,
     page,
     limit,
@@ -51,6 +59,10 @@ export async function getTenantDetail(tenantId: string) {
       logoUrl: true,
       createdAt: true,
       updatedAt: true,
+      // HU-142 — modo demo
+      isDemo: true,
+      demoStartedAt: true,
+      demoEndedAt: true,
     },
   })
 
@@ -84,12 +96,14 @@ export async function getTenantDetail(tenantId: string) {
     ),
   ])
 
+  const { isDemo, demoStartedAt, demoEndedAt, ...tenantBase } = tenant
   return {
-    ...tenant,
+    ...tenantBase,
     branches,
     users,
     featureFlags: Object.fromEntries(featureFlags.map((f) => [f.module, f.enabled])),
     subscription: await getSubscription(tenantId), // HU-138 (deny-all → directPrisma)
+    demo: getDemoState({ isDemo, demoStartedAt, demoEndedAt }), // HU-142
   }
 }
 
