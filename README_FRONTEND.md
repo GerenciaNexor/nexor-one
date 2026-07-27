@@ -201,7 +201,7 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 | `dashboard/` | **BarChart** (ranking horizontal para el Top 10 de productos — HU-130) |
 | `chat/` | FloatingChat, MarkdownMessage |
 | `landing/` | Reveal (animación al hacer scroll), ChatDemo (conversación animada) |
-| `ui/` | Portal, Toast, SkeletonRows |
+| `ui/` | Portal, Toast, SkeletonRows, **HelpTip** (ayuda contextual "¿qué es esto?" — HU-151) |
 | `ocr/` | OcrExtractButton |
 
 > **Etiquetas de subsecciones (HU-150).** Las pestañas de ARI/NIRA usan nombres en lenguaje del
@@ -210,6 +210,13 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 > `/nira/compare` → **"Comparar precios"**, `/nira/ranking` → **"Mejores proveedores"**,
 > `/nira/history` → **"Compras realizadas"**. Se aplican en el SubNav, el `<h1>` de cada página y el
 > acceso rápido del Inicio. Clientes, Cotizaciones, Reportes, Proveedores y Órdenes de compra no cambian.
+>
+> **Ayuda contextual por subsección (HU-151).** Componente reutilizable
+> [HelpTip](apps/web/src/components/ui/HelpTip.tsx): un icono discreto "?" que muestra una frase breve
+> en lenguaje llano. En **escritorio** aparece al pasar el mouse; en **móvil** (sin hover), al **tocar**
+> el icono; se cierra al hacer clic fuera o con Escape (accesible, `role="tooltip"`). Cada SubNav
+> (ARI/NIRA/KIRA/AGENDA/VERA) lleva el texto por subsección en su array `TABS` (`help`) y muestra el
+> HelpTip **junto a la pestaña activa** — un solo componente, sin tooltips sueltos.
 
 Hooks en [apps/web/src/hooks/](apps/web/src/hooks/): `useTheme`.
 
