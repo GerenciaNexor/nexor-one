@@ -20,7 +20,7 @@ interface DemoState {
   daysRemaining: number | null
   startedAt: string | null
   endedAt: string | null
-  ai?: { limit: number; used: number; remaining: number; model: string }       // HU-144
+  ai?: { limit: number; used: number; remaining: number; model: string; bonus?: number } // HU-144/148
   limits?: Record<string, DemoUsageEntry>                                       // HU-145 (límites de datos)
   limitLabels?: Record<string, string>                                         // HU-145
 }
@@ -122,6 +122,7 @@ export default function PlatformClientDetailPage() {
   const [amountModal, setAmountModal] = useState(false)
   const [demoModal, setDemoModal]       = useState(false) // HU-142
   const [convertModal, setConvertModal] = useState(false) // HU-146
+  const [aiQuotaModal, setAiQuotaModal] = useState(false) // HU-148
 
   const [integrations, setIntegrations] = useState<ChannelIntegration[]>([])
   const [channelModal, setChannelModal] = useState<ChannelModalState | null>(null)
@@ -228,6 +229,13 @@ export default function PlatformClientDetailPage() {
   function onConverted(): void {
     setConvertModal(false)
     load()
+  }
+
+  // HU-148 — tras ampliar el cupo de IA: refrescar el uso/límite mostrado
+  function onAiQuotaExtended(ai: { limit: number; used: number; remaining: number; bonus: number }): void {
+    if (!t || !t.demo.ai) return
+    setT({ ...t, demo: { ...t.demo, ai: { ...t.demo.ai, limit: ai.limit, used: ai.used, remaining: ai.remaining, bonus: ai.bonus } } })
+    setAiQuotaModal(false)
   }
 
   async function impersonate(): Promise<void> {
@@ -341,10 +349,17 @@ export default function PlatformClientDetailPage() {
                 <dd className="text-slate-700 dark:text-slate-300">{t.demo.endedAt ? fmtDate(t.demo.endedAt) : '—'}</dd>
               </div>
               {t.demo.ai && (
-                <div className="flex justify-between gap-4">
+                <div className="flex items-center justify-between gap-4">
                   <dt className="text-slate-500">Mensajes de IA</dt>
-                  <dd className={`font-semibold tabular-nums ${t.demo.ai.used >= t.demo.ai.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {t.demo.ai.used} de {t.demo.ai.limit}
+                  <dd className="flex items-center gap-2">
+                    <span className={`font-semibold tabular-nums ${t.demo.ai.used >= t.demo.ai.limit ? 'text-red-700 dark:text-red-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {t.demo.ai.used} de {t.demo.ai.limit}
+                    </span>
+                    {t.demo.ai.bonus ? <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">+{t.demo.ai.bonus}</span> : null}
+                    <button onClick={() => setAiQuotaModal(true)}
+                      className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10">
+                      Ampliar
+                    </button>
                   </dd>
                 </div>
               )}
@@ -564,6 +579,17 @@ export default function PlatformClientDetailPage() {
           tenantName={t.name}
           onConverted={onConverted}
           onCancel={() => setConvertModal(false)}
+        />
+      )}
+
+      {aiQuotaModal && t.demo.ai && (
+        <AiQuotaModal
+          tenantId={t.id}
+          tenantName={t.name}
+          currentLimit={t.demo.ai.limit}
+          currentUsed={t.demo.ai.used}
+          onExtended={onAiQuotaExtended}
+          onCancel={() => setAiQuotaModal(false)}
         />
       )}
 
@@ -844,6 +870,70 @@ function ConvertModal({ tenantId, tenantName, onConverted, onCancel }: {
           <button onClick={submit} disabled={saving}
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
             {saving ? 'Convirtiendo…' : 'Convertir a cliente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal ampliar cupo de IA de la demo (HU-148) ──────────────────────────────
+
+function AiQuotaModal({ tenantId, tenantName, currentLimit, currentUsed, onExtended, onCancel }: {
+  tenantId: string; tenantName: string; currentLimit: number; currentUsed: number
+  onExtended: (ai: { limit: number; used: number; remaining: number; bonus: number }) => void
+  onCancel: () => void
+}) {
+  const [add, setAdd]       = useState('10')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+
+  async function submit(): Promise<void> {
+    setErr(null)
+    const num = Math.floor(Number(add))
+    if (!Number.isFinite(num) || num < 1) { setErr('Ingresa cuántos mensajes ampliar (≥ 1).'); return }
+    if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
+    setSaving(true)
+    try {
+      const res = await apiClient.post<{ success: true; data: { ai: { limit: number; used: number; remaining: number; bonus: number } } }>(
+        `/v1/admin/tenants/${tenantId}/ai-quota`,
+        { addMessages: num, reason: reason.trim() },
+      )
+      onExtended(res.data.ai)
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo ampliar el cupo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Ampliar cupo de IA de {tenantName}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Uso actual: <strong className="text-slate-700 dark:text-slate-300">{currentUsed} de {currentLimit}</strong> mensajes.
+          Caso excepcional — el base es 30. La ampliación queda auditada.
+        </p>
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Ampliar en (mensajes)</label>
+        <input type="number" min={1} value={add} onChange={(e) => setAdd(e.target.value)} placeholder="10"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">Motivo (obligatorio)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500}
+          placeholder="Ej.: el cliente pidió seguir probando el agente unos días más…"
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500" />
+
+        {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onCancel} disabled={saving}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">Cancelar</button>
+          <button onClick={submit} disabled={saving}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
+            {saving ? 'Ampliando…' : 'Ampliar cupo'}
           </button>
         </div>
       </div>

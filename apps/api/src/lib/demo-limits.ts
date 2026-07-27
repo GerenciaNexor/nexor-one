@@ -3,8 +3,9 @@
  *
  * Lección de HU-128: los topes se imponen en el servidor, no ocultando botones en el frontend.
  * Un tenant en modo demo (`tenants.is_demo`, HU-142) no puede superar estos topes; al alcanzarlos
- * la API rechaza la creación con un mensaje claro (`DEMO_LIMIT_REACHED`). La carga masiva —la
- * puerta trasera para saltarse los topes— queda deshabilitada en demo (`DEMO_BULK_UPLOAD_DISABLED`).
+ * la API rechaza la creación con un mensaje claro (`DEMO_LIMIT_REACHED`). La carga masiva —la puerta
+ * trasera para saltarse los topes— respeta los MISMOS límites (cierre S16): valida el total
+ * resultante (existente + archivo) antes de importar y rechaza si lo supera.
  *
  * Los límites viven en UN solo lugar (`DEMO_LIMITS`), no dispersos ni hardcodeados por módulo.
  * Se afloja en datos (no cuestan); la IA se aprieta aparte (HU-144).
@@ -42,13 +43,20 @@ export function demoModel(): string {
   return process.env['CLAUDE_MODEL_DEMO'] ?? DEFAULT_DEMO_MODEL
 }
 
-/** Mensaje cuando se agota el cupo de IA: invita a contactar a NEXOR (genera lead). Configurable. */
+/** Mensaje de DESPEDIDA al agotar el cupo de IA: invita a contactar a NEXOR (convierte el límite
+ *  en un lead). Configurable por `DEMO_AI_CONTACT_MESSAGE`. */
 export function demoAiExhaustedMessage(): string {
   return (
     process.env['DEMO_AI_CONTACT_MESSAGE'] ??
-    'Alcanzaste el límite de mensajes del asistente de IA del plan demo. Para seguir usando el ' +
-    'agente y activar tu cuenta completa, escríbenos a ventas@nexor-one.com y con gusto te ayudamos. 🚀'
+    'Gracias por probar el asistente de IA de NEXOR 🙌. Alcanzaste el límite de mensajes del plan demo, ' +
+    'así que por aquí me despido. Para ampliar tu prueba o activar tu cuenta completa, escríbenos a ' +
+    'gerencia@nexor-one.com y con gusto continuamos. 🚀'
   )
+}
+
+/** HU-148 — Cupo de IA EFECTIVO del tenant = base (30) + su ampliación (`demoAiQuotaBonus`). */
+export function effectiveAiQuota(demoAiQuotaBonus: number | null | undefined): number {
+  return DEMO_AI_MESSAGE_QUOTA + Math.max(0, demoAiQuotaBonus ?? 0)
 }
 
 /** Canales que cuentan como "mensaje de agente" (excluye 'admin' = impersonación auditada). */
@@ -128,15 +136,37 @@ export async function assertDemoLimit(tenantId: string, entity: DemoLimitedEntit
 }
 
 /**
- * HU-143 — La carga masiva es la puerta trasera de los topes: deshabilitada en demo.
- * Lanza `403 DEMO_BULK_UPLOAD_DISABLED`. Llamar al inicio de los endpoints de carga masiva.
+ * Cierre S16 — La carga masiva es la puerta trasera de los topes de datos: debe respetar los
+ * MISMOS límites del plan demo que la creación uno-a-uno (HU-143). Mapea cada tipo de carga a su
+ * entidad con tope; `stock` y `transactions` no crean entidades limitadas (sin cap).
  */
-export async function assertBulkUploadAllowed(tenantId: string): Promise<void> {
-  if (await isDemoTenant(tenantId)) {
+const BULK_TYPE_TO_ENTITY: Record<string, DemoLimitedEntity | undefined> = {
+  users:        'users',
+  products:     'products',
+  suppliers:    'suppliers',
+  clients:      'clients',
+  appointments: 'appointments',
+  // stock (movimientos) y transactions (VERA) no crean entidades con tope de demo → sin cap.
+}
+
+/**
+ * Cierre S16 — Valida una carga masiva contra el tope del plan demo, en el BACKEND, considerando el
+ * TOTAL resultante (existente + filas del archivo). Rechaza con `403 DEMO_LIMIT_REACHED` indicando el
+ * tope y cuántos se pueden cargar aún. Fuera de demo NO cambia nada (retorna sin tocar). Una llamada
+ * directa a la API tampoco se salta el tope: la validación vive aquí, no en el frontend.
+ */
+export async function assertBulkUploadWithinDemoLimits(tenantId: string, type: string, incomingRows: number): Promise<void> {
+  if (!(await isDemoTenant(tenantId))) return // plan no-demo: comportamiento actual, sin topes
+  const entity = BULK_TYPE_TO_ENTITY[type]
+  if (!entity) return // stock / transactions: no aplican topes de demo
+  const cap      = DEMO_LIMITS[entity]
+  const existing = await countEntity(prisma, tenantId, entity)
+  const remaining = Math.max(0, cap - existing)
+  if (existing + incomingRows > cap) {
     throw {
       statusCode: 403,
-      code: 'DEMO_BULK_UPLOAD_DISABLED',
-      message: 'Plan demo: la carga masiva está deshabilitada. Agrega los registros de muestra manualmente, respetando los límites del plan.',
+      code:       'DEMO_LIMIT_REACHED',
+      message:    `Plan demo: el tope es ${cap} ${DEMO_LIMIT_LABEL[entity]}. Ya tienes ${existing} y el archivo trae ${incomingRows}; puedes cargar ${remaining} más. Reduce el archivo o convierte tu cuenta a un plan completo.`,
     }
   }
 }
@@ -150,14 +180,16 @@ export interface DemoUsageEntry { limit: number; used: number; remaining: number
 export async function getDemoUsage(tenantId: string) {
   const t = await prisma.tenant.findUnique({
     where:  { id: tenantId },
-    select: { isDemo: true, demoStartedAt: true, demoEndedAt: true },
+    select: { isDemo: true, demoStartedAt: true, demoEndedAt: true, demoAiQuotaBonus: true },
   })
   if (!t?.isDemo) return { isDemo: false as const }
 
   const usage = await countDemoDataUsage(prisma, tenantId)
 
-  // HU-144 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad).
+  // HU-144/148 — cupo de IA (mensajes de agente), contado desde agent_logs (fuente de verdad,
+  // persistente y sin reseteo). El tope efectivo = base + ampliación del SUPER_ADMIN.
   const aiUsed = await prisma.agentLog.count({ where: demoAiWhere(tenantId) })
+  const aiLimit = effectiveAiQuota(t.demoAiQuotaBonus)
 
   const now = Date.now()
   const end = t.demoEndedAt ? t.demoEndedAt.getTime() : null
@@ -167,14 +199,18 @@ export async function getDemoUsage(tenantId: string) {
     daysRemaining:     end === null ? 0 : Math.max(0, Math.ceil((end - now) / 86_400_000)),
     startedAt:         t.demoStartedAt,
     endedAt:           t.demoEndedAt,
-    bulkUploadEnabled: false,
+    // Cierre S16 — la carga masiva SÍ está disponible en demo, pero respeta los mismos topes
+    // (existente + archivo ≤ límite por tipo). No es la puerta trasera.
+    bulkUploadEnabled: true,
     labels:            DEMO_LIMIT_LABEL,
     usage,
     ai: {
-      limit:     DEMO_AI_MESSAGE_QUOTA,
+      limit:     aiLimit,
       used:      aiUsed,
-      remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - aiUsed),
+      remaining: Math.max(0, aiLimit - aiUsed),
       model:     demoModel(),
+      baseLimit: DEMO_AI_MESSAGE_QUOTA,
+      bonus:     Math.max(0, t.demoAiQuotaBonus ?? 0),
     },
   }
 }

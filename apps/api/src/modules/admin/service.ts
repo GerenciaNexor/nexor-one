@@ -1,6 +1,6 @@
 import { prisma, directPrisma, withTenantContext } from '../../lib/prisma'
 import { getSubscription, getSubscriptionsMap, getDemoState } from '../platform/tenants'
-import { demoAiWhere, DEMO_AI_MESSAGE_QUOTA, demoModel, countDemoDataUsage, DEMO_LIMIT_LABEL } from '../../lib/demo-limits'
+import { demoAiWhere, effectiveAiQuota, demoModel, countDemoDataUsage, DEMO_LIMIT_LABEL } from '../../lib/demo-limits'
 
 // ─── Listado de tenants ───────────────────────────────────────────────────────
 
@@ -64,6 +64,7 @@ export async function getTenantDetail(tenantId: string) {
       isDemo: true,
       demoStartedAt: true,
       demoEndedAt: true,
+      demoAiQuotaBonus: true, // HU-148
     },
   })
 
@@ -97,15 +98,16 @@ export async function getTenantDetail(tenantId: string) {
     ),
   ])
 
-  const { isDemo, demoStartedAt, demoEndedAt, ...tenantBase } = tenant
+  const { isDemo, demoStartedAt, demoEndedAt, demoAiQuotaBonus, ...tenantBase } = tenant
   const demo = getDemoState({ isDemo, demoStartedAt, demoEndedAt }) // HU-142
-  // HU-144 — el SUPER_ADMIN también ve el uso de IA de la demo (mensajes de agente / cupo).
+  // HU-144/148 — el SUPER_ADMIN ve el uso de IA de la demo con el cupo EFECTIVO (base + ampliación).
   const demoWithAi = isDemo
     ? {
         ...demo,
         ai: await (async () => {
           const used = await withTenantContext(tenantId, (tx) => tx.agentLog.count({ where: demoAiWhere(tenantId) }))
-          return { limit: DEMO_AI_MESSAGE_QUOTA, used, remaining: Math.max(0, DEMO_AI_MESSAGE_QUOTA - used), model: demoModel() }
+          const limit = effectiveAiQuota(demoAiQuotaBonus)
+          return { limit, used, remaining: Math.max(0, limit - used), model: demoModel(), bonus: demoAiQuotaBonus ?? 0 }
         })(),
         // HU-145 — el SUPER_ADMIN también ve los límites de DATOS de la demo (X de N por entidad).
         limits: await withTenantContext(tenantId, (tx) => countDemoDataUsage(tx, tenantId)),
