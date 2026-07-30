@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import type { Supplier } from './SupplierFormModal'
@@ -42,6 +42,77 @@ interface Props {
 }
 
 const EMPTY_LINE: LineItem = { productId: '', productLabel: '', quantityOrdered: '1', unitCost: '0' }
+
+// ─── Buscador de producto del catálogo (HU-153 — camino principal) ─────────────
+// Filtra client-side sobre el catálogo ya cargado (mejor que un <select> de cientos).
+function NiraProductPicker({ products, value, label, error, onPick }: {
+  products: Product[]
+  value:    string
+  label:    string
+  error?:   boolean
+  onPick:   (id: string) => void
+}) {
+  const [q, setQ]     = useState(label)
+  const [open, setOpen] = useState(false)
+  const isSel = useRef(!!value)
+
+  useEffect(() => {
+    if (!value) { setQ(''); isSel.current = false }
+    else        { setQ(label); isSel.current = true }
+  }, [value, label])
+
+  const results = (isSel.current || !q.trim())
+    ? []
+    : products.filter((p) => {
+        const s = q.toLowerCase()
+        return p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s)
+      }).slice(0, 8)
+
+  const base = 'w-full rounded-lg py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500'
+  const border = error ? 'border border-red-400'
+    : isSel.current ? 'border border-blue-300 bg-blue-50/40 dark:border-blue-700 dark:bg-blue-900/10'
+    : 'border border-slate-300 dark:border-slate-600'
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+        </span>
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => { isSel.current = false; setQ(e.target.value); if (!e.target.value) onPick(''); setOpen(true) }}
+          onFocus={() => { if (results.length) setOpen(true) }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Escribe para buscar en tu inventario (nombre o SKU)…"
+          className={`${base} ${border}`}
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute left-0 top-full z-20 mt-0.5 w-full min-w-[16rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-900">
+          {results.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { isSel.current = true; setQ(`${p.sku} — ${p.name}`); setOpen(false); onPick(p.id) }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-slate-800 dark:text-slate-200">{p.name}</p>
+                <p className="text-xs text-slate-400">{p.sku} · {p.unit}</p>
+              </div>
+              {p.costPrice != null && (
+                <span className="shrink-0 text-xs text-slate-500">${p.costPrice.toLocaleString('es-CO')}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -163,6 +234,14 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
         unitCost:     product.costPrice != null ? String(product.costPrice) : '0',
         _conf:        undefined,  // el usuario eligió explícitamente — ya no necesita verificar
       }
+      return next
+    })
+  }
+
+  function clearLineProduct(idx: number) {
+    setLines((prev) => {
+      const next = [...prev]
+      next[idx] = { ...next[idx]!, productId: '', productLabel: '' }
       return next
     })
   }
@@ -338,18 +417,15 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
               <div className="space-y-2">
                 {lines.map((line, idx) => (
                   <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_7rem_7rem_1.5rem] sm:items-start">
-                    {/* Producto */}
+                    {/* Producto — camino PRINCIPAL (buscador del catálogo) */}
                     <div>
-                      <select
+                      <NiraProductPicker
+                        products={products}
                         value={line.productId}
-                        onChange={(e) => pickProduct(idx, e.target.value)}
-                        className={lineErrors[idx] ? inpErr : sel}
-                      >
-                        <option value="">Seleccionar producto…</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>{p.sku} — {p.name} ({p.unit})</option>
-                        ))}
-                      </select>
+                        label={line.productLabel}
+                        error={!!lineErrors[idx]}
+                        onPick={(id) => id ? pickProduct(idx, id) : clearLineProduct(idx)}
+                      />
                       {line._ocrNoMatch && !line.productId && (
                         <span className="mt-1 inline-flex items-center rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
                           No existe en catálogo

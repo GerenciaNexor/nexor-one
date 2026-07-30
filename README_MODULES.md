@@ -58,6 +58,13 @@ etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa**
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
+> **HU-153 — el catálogo es el camino principal.** En el modal de nueva cotización, cada línea empieza
+> por el **buscador del producto del catálogo (KIRA)**; al elegirlo se **auto-rellenan descripción y
+> precio** (editables) y la línea queda **vinculada al producto real** (sostiene el movimiento de stock,
+> HU-128). El texto libre de la descripción queda como **excepción** para ítems que no están en el
+> catálogo (un servicio, algo puntual). En NIRA (órdenes de compra) el producto ya era obligatorio; su
+> selector pasó a un **buscador** consistente que auto-rellena el costo. No cambia el cálculo de totales.
+
 **Integración con WhatsApp y email**  
 Cuando un cliente escribe "quiero comprar X" por WhatsApp, el agente ARI crea el lead, registra la interacción y notifica al vendedor — todo sin que el vendedor haya hecho nada.
 
