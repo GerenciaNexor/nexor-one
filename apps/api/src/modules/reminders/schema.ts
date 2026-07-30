@@ -4,26 +4,38 @@ export const ALERT_LEVELS = ['normal', 'urgent', 'critical'] as const
 export const RECURRENCES  = ['none', 'hourly', 'daily', 'weekly', 'monthly'] as const
 export const RELATED_TYPES = ['appointment', 'client', 'deal', 'purchase_order'] as const
 
+// Mensajes SIEMPRE en español y orientados al usuario (nada de errores crudos de Zod en inglés).
+const titleField = z.string({ required_error: 'El título es obligatorio', invalid_type_error: 'El título debe ser texto' })
+  .min(1, 'El título es obligatorio').max(255, 'El título es muy largo (máximo 255 caracteres)')
+const descField = z.string({ invalid_type_error: 'La nota debe ser texto' })
+  .max(2000, 'La nota es muy larga (máximo 2000 caracteres)').nullish()
+const whenField = z.string({ required_error: 'La fecha y hora son obligatorias', invalid_type_error: 'Fecha y hora inválidas' })
+  .min(1, 'La fecha y hora son obligatorias')
+const alertField = z.enum(ALERT_LEVELS, { invalid_type_error: 'Nivel de alerta inválido' })
+const recurField = z.enum(RECURRENCES, { invalid_type_error: 'Recurrencia inválida' })
+const relTypeField = z.enum(RELATED_TYPES, { invalid_type_error: 'Tipo de relación inválido' }).nullish()
+const relIdField = z.string({ invalid_type_error: 'Referencia inválida' }).max(30).nullish()
+
 export const CreateReminderSchema = z.object({
-  title:       z.string().min(1, 'El título es requerido').max(255),
-  description: z.string().max(2000).optional(),
-  /** Fecha/hora ISO o datetime-local ("YYYY-MM-DDTHH:mm"). */
-  remindAt:    z.string().min(1, 'La fecha y hora son requeridas'),
-  alertLevel:  z.enum(ALERT_LEVELS).default('normal'),
-  recurrence:  z.enum(RECURRENCES).default('none'),
-  relatedType: z.enum(RELATED_TYPES).nullable().optional(),
-  relatedId:   z.string().max(30).nullable().optional(),
+  title:       titleField,
+  description: descField,
+  /** Fecha/hora ISO (instante absoluto) o datetime-local. */
+  remindAt:    whenField,
+  alertLevel:  alertField.default('normal'),
+  recurrence:  recurField.default('none'),
+  relatedType: relTypeField,
+  relatedId:   relIdField,
 })
 
 export const UpdateReminderSchema = z.object({
-  title:       z.string().min(1).max(255).optional(),
-  description: z.string().max(2000).nullable().optional(),
-  remindAt:    z.string().min(1).optional(),
-  alertLevel:  z.enum(ALERT_LEVELS).optional(),
-  recurrence:  z.enum(RECURRENCES).optional(),
-  relatedType: z.enum(RELATED_TYPES).nullable().optional(),
-  relatedId:   z.string().max(30).nullable().optional(),
-  isActive:    z.boolean().optional(),
+  title:       titleField.optional(),
+  description: descField,
+  remindAt:    whenField.optional(),
+  alertLevel:  alertField.optional(),
+  recurrence:  recurField.optional(),
+  relatedType: relTypeField,
+  relatedId:   relIdField,
+  isActive:    z.boolean({ invalid_type_error: 'Valor inválido' }).optional(),
 })
 
 export type CreateReminderInput = z.infer<typeof CreateReminderSchema>

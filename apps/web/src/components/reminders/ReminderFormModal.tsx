@@ -46,10 +46,10 @@ function toLocalInput(iso: string): string {
   const off = d.getTimezoneOffset() * 60_000
   return new Date(d.getTime() - off).toISOString().slice(0, 16)
 }
+// Valor por defecto = ahora mismo (hora local del navegador), sin sumar horas.
 function defaultWhen(): string {
-  const d = new Date(Date.now() + 60 * 60_000) // dentro de 1 hora
-  const off = d.getTimezoneOffset() * 60_000
-  return new Date(d.getTime() - off).toISOString().slice(0, 16)
+  const off = new Date().getTimezoneOffset() * 60_000
+  return new Date(Date.now() - off).toISOString().slice(0, 16)
 }
 
 export function ReminderFormModal({ reminder, onClose, onSaved }: {
@@ -72,11 +72,15 @@ export function ReminderFormModal({ reminder, onClose, onSaved }: {
     setErr(null)
     if (!title.trim()) { setErr('El título es obligatorio.'); return }
     if (!remindAt)     { setErr('La fecha y hora son obligatorias.'); return }
+    // datetime-local (hora local del navegador) → instante absoluto ISO, para que el
+    // servidor no reinterprete la hora según SU zona horaria.
+    const when = new Date(remindAt)
+    if (isNaN(when.getTime())) { setErr('La fecha y hora no son válidas.'); return }
     setSaving(true)
     const body = {
       title: title.trim(),
       description: description.trim() || null,
-      remindAt,
+      remindAt: when.toISOString(),
       alertLevel,
       recurrence,
       relatedType: relatedType || null,
