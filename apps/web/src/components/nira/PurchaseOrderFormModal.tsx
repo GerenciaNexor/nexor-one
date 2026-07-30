@@ -81,6 +81,7 @@ function NiraProductPicker({ products, value, label, error, onPick }: {
         </span>
         <input
           type="text"
+          data-testid="po-product-search"
           value={q}
           onChange={(e) => { isSel.current = false; setQ(e.target.value); if (!e.target.value) onPick(''); setOpen(true) }}
           onFocus={() => { if (results.length) setOpen(true) }}
@@ -95,6 +96,7 @@ function NiraProductPicker({ products, value, label, error, onPick }: {
             <button
               key={p.id}
               type="button"
+              data-testid="po-product-option"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { isSel.current = true; setQ(`${p.sku} — ${p.name}`); setOpen(false); onPick(p.id) }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
