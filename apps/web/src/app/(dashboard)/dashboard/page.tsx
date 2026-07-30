@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api-client'
 import { getCache, setCache } from '@/lib/page-cache'
+import { ReminderFormModal, type Reminder } from '@/components/reminders/ReminderFormModal'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,26 @@ const NOTIF_ICONS: Record<string, { color: string; bg: string; icon: React.React
 
 interface POItem        { id: string; orderNumber: string; supplier: { name: string } | null; total: number; createdAt: string }
 interface StockAlert    { productId: string; productName: string; sku: string; branchName: string; currentQty: number; minQty: number; deficit: number }
-interface NotificationItem { id: string; type: string; title: string; message: string; link: string | null; createdAt: string }
+interface NotificationItem { id: string; type: string; module: string | null; title: string; message: string; link: string | null; createdAt: string }
+
+// HU-156 — separa las notificaciones del Inicio por tipo/sección (categoría legible).
+const MODULE_CATEGORY: Record<string, string> = {
+  KIRA: 'Inventario', NIRA: 'Compras', ARI: 'Ventas', AGENDA: 'Agenda', VERA: 'Finanzas',
+}
+function notifCategory(n: NotificationItem): string {
+  if (n.type === 'reminder') return 'Recordatorios'
+  return (n.module && MODULE_CATEGORY[n.module]) || 'General'
+}
+/** Agrupa notificaciones por categoría preservando el orden de aparición. */
+function groupNotifications(list: NotificationItem[]): [string, NotificationItem[]][] {
+  const map = new Map<string, NotificationItem[]>()
+  for (const n of list) {
+    const cat = notifCategory(n)
+    if (!map.has(cat)) map.set(cat, [])
+    map.get(cat)!.push(n)
+  }
+  return [...map.entries()]
+}
 interface Appointment   { id: string; clientName: string | null; client: { name: string } | null; serviceType: { name: string } | null; startAt: string; status: string }
 
 // ─── Componentes internos ─────────────────────────────────────────────────────
@@ -213,6 +233,79 @@ function DemoUsageBanner() {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ─── Recordatorios (HU-156) ─────────────────────────────────────────────────────
+
+const REMINDER_ALERT: Record<string, { dot: string; border: string }> = {
+  critical: { dot: 'bg-red-500',    border: 'border-l-red-400 dark:border-l-red-500' },
+  urgent:   { dot: 'bg-amber-500',  border: 'border-l-amber-400 dark:border-l-amber-500' },
+  normal:   { dot: 'bg-slate-400',  border: 'border-l-slate-300 dark:border-l-slate-600' },
+}
+const REMINDER_RECUR: Record<string, string> = { hourly: 'cada hora', daily: 'cada día', weekly: 'cada semana', monthly: 'cada mes', none: '' }
+
+function fmtWhen(iso: string): string {
+  return new Date(iso).toLocaleString('es-CO', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function RemindersSection() {
+  const [items, setItems] = useState<Reminder[] | null>(null)
+  const [modal, setModal] = useState<{ open: boolean; edit: Reminder | null }>({ open: false, edit: null })
+
+  function load() {
+    apiClient.get<{ data: Reminder[] }>('/v1/reminders?activeOnly=true')
+      .then((r) => setItems(r.data)).catch(() => setItems([]))
+  }
+  useEffect(() => { load() }, [])
+
+  async function remove(id: string) {
+    await apiClient.delete(`/v1/reminders/${id}`).catch(() => {})
+    load()
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Recordatorios</h2>
+        <button onClick={() => setModal({ open: true, edit: null })} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">+ Nuevo</button>
+      </div>
+      {items === null ? <BlockSkeleton rows={2} />
+        : items.length === 0 ? <EmptyState text="No tienes recordatorios. Crea el primero para no olvidar tareas." />
+        : (
+          <ul className="space-y-2">
+            {items.map((r) => {
+              const a = REMINDER_ALERT[r.alertLevel] ?? REMINDER_ALERT.normal
+              return (
+                <li key={r.id} className={`group flex items-start gap-2 rounded-lg border border-l-4 ${a!.border} border-slate-100 bg-slate-50/60 p-2.5 dark:border-slate-700 dark:bg-slate-800/60`}>
+                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${a!.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{r.title}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      {fmtWhen(r.remindAt)}{r.recurrence !== 'none' ? ` · ${REMINDER_RECUR[r.recurrence]}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button onClick={() => setModal({ open: true, edit: r })} className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700" aria-label="Editar">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                    </button>
+                    <button onClick={() => remove(r.id)} className="rounded p-1 text-slate-400 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30" aria-label="Eliminar">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      {modal.open && (
+        <ReminderFormModal
+          reminder={modal.edit}
+          onClose={() => setModal({ open: false, edit: null })}
+          onSaved={() => { setModal({ open: false, edit: null }); load() }}
+        />
+      )}
     </div>
   )
 }
@@ -441,29 +534,39 @@ export default function InicioPage() {
         {/* ─ Columna derecha ──────────────────────────────────────────────── */}
         <div className="space-y-6">
 
-          {/* Notificaciones sin leer (universal) */}
+          {/* Recordatorios (HU-156) */}
+          <RemindersSection />
+
+          {/* Notificaciones sin leer — separadas por tipo/sección (HU-156) */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
             <SectionHeader title="Notificaciones sin leer" count={totalUnread} href="/notifications" linkLabel="Ver todas" />
             {notifications === null ? <BlockSkeleton />
               : notifications.length === 0 ? <EmptyState text="Sin notificaciones pendientes" />
               : (
-                <div className="space-y-2">
-                  {notifications.map((n) => {
-                    const style = NOTIF_ICONS[n.type] ?? { color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-700/40', icon: null }
-                    const body = (
-                      <div className={`flex gap-3 rounded-lg p-3 ${style.bg}`}>
-                        <div className={`mt-0.5 shrink-0 ${style.color}`}>{style.icon}</div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{n.title}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{n.message}</p>
-                          <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.createdAt)}</p>
-                        </div>
+                <div className="space-y-4">
+                  {groupNotifications(notifications).map(([category, items]) => (
+                    <div key={category}>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{category}</p>
+                      <div className="space-y-2">
+                        {items.map((n) => {
+                          const style = NOTIF_ICONS[n.type] ?? { color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-700/40', icon: null }
+                          const body = (
+                            <div className={`flex gap-3 rounded-lg p-3 ${style.bg}`}>
+                              <div className={`mt-0.5 shrink-0 ${style.color}`}>{style.icon}</div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{n.title}</p>
+                                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{n.message}</p>
+                                <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.createdAt)}</p>
+                              </div>
+                            </div>
+                          )
+                          return n.link
+                            ? <Link key={n.id} href={n.link} className="block transition-opacity hover:opacity-80">{body}</Link>
+                            : <div key={n.id}>{body}</div>
+                        })}
                       </div>
-                    )
-                    return n.link
-                      ? <Link key={n.id} href={n.link} className="block transition-opacity hover:opacity-80">{body}</Link>
-                      : <div key={n.id}>{body}</div>
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
           </div>

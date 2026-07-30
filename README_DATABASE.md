@@ -1018,6 +1018,30 @@ CREATE POLICY tenant_isolation ON clients
   USING (tenant_id = current_setting('app.current_tenant_id'));
 ```
 
+#### `reminders` (HU-156)
+
+Recordatorios **universales** por usuario/tenant: sirven para cualquier cosa (una cita, un cliente,
+una venta, una compra, o libre). Un job los dispara y genera una `notifications`.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | VARCHAR(30) PK | CUID |
+| `tenant_id` / `user_id` | VARCHAR(30) FK | Empresa (RLS) · dueño del recordatorio |
+| `title` | VARCHAR(255) | Título |
+| `description` | TEXT NULL | Nota opcional |
+| `remind_at` | TIMESTAMPTZ | Próxima hora de disparo (avanza en los recurrentes) |
+| `alert_level` | VARCHAR(20) | `normal` \| `urgent` \| `critical` — **solo visual** (color) |
+| `recurrence` | VARCHAR(20) | `none` \| `hourly` \| `daily` \| `weekly` \| `monthly` |
+| `related_type` / `related_id` | VARCHAR(30) NULL | Asociación opcional: `appointment`/`client`/`deal`/`purchase_order` |
+| `is_active` | BOOLEAN | Se desactiva al disparar un `none`; los recurrentes siguen activos |
+| `last_fired_at` | TIMESTAMPTZ NULL | Último disparo |
+
+**RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). Aislado por `tenant_id`; el filtrado por usuario
+(cada quien ve los suyos) es de servicio. **Disparo:** job `reminder-fire` cada 1 min (directPrisma) →
+crea la notificación y reprograma (`remind_at` a la próxima ocurrencia futura) o desactiva.
+
+---
+
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
 
 En la práctica no se aplica a mano: **`setup-rls.ts` (`pnpm --filter @nexor/api db:rls`) es la fuente

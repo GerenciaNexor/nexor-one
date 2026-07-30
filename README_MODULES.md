@@ -363,7 +363,16 @@ nunca se llama uno que daría 403, así nada queda permanentemente vacío):
 | Órdenes esperando aprobación | `GET /v1/nira/purchase-orders?status=submitted` | NIRA |
 | Borradores sin enviar | `GET /v1/nira/purchase-orders?status=draft` | NIRA |
 | Citas de hoy (agendadas/confirmadas) | `GET /v1/agenda/appointments?date=<hoy>` | AGENDA |
-| Notificaciones sin leer | `GET /v1/notifications?isRead=false` | universal |
+| **Recordatorios** (HU-156) | `GET /v1/reminders?activeOnly=true` | universal |
+| Notificaciones sin leer (**separadas por tipo/sección**, HU-156) | `GET /v1/notifications?isRead=false` | universal |
+
+> **Recordatorios universales (HU-156).** Cualquier usuario crea recordatorios (para una tarea, cita,
+> cliente, venta, compra, o libres) con **título, fecha/hora, nivel de alerta** (normal/urgente/crítico,
+> solo visual por color) y **recurrencia** (cada hora/día/semana/mes o única). Se ven en el Inicio
+> (sección "Recordatorios") y, al dispararse, en Notificaciones. Un **job** (`reminder-fire`, cada 1 min)
+> los dispara a su hora —no depende de la app abierta— y genera la notificación; los recurrentes se
+> reprograman, los de una vez se desactivan. Son por **tenant/usuario** (RLS). CRUD en `/v1/reminders`.
+> Además, en el Inicio las notificaciones quedan **agrupadas por tipo/sección** para identificarlas mejor.
 
 Cada bloque **enlaza a su sección** (acción directa, no solo información). **Visibilidad por rol:**
 `TENANT_ADMIN/BRANCH_ADMIN` ven todos los módulos activos (transversales); `AREA_MANAGER/OPERATIVE`

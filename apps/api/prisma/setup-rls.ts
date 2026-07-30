@@ -68,6 +68,8 @@ const BUSINESS_TABLES = [
   'transaction_categories',
   'cost_centers',
   'monthly_budgets',
+  // HU-156 — recordatorios universales por usuario/tenant.
+  'reminders',
 ] as const
 
 async function setupRLS(): Promise<void> {
