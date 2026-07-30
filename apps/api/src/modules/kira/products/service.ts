@@ -17,6 +17,9 @@ const PRODUCT_SELECT = {
   abcClass:    true,
   preferredSupplierId: true,
   preferredSupplier:   { select: { id: true, name: true } },
+  isSellable:  true,
+  isRentable:  true,
+  rentalPrice: true,
   isActive:    true,
   createdAt:   true,
   updatedAt:   true,
@@ -27,8 +30,9 @@ const PRODUCT_SELECT = {
 function toApiProduct(p: any) {
   return {
     ...p,
-    salePrice: p.salePrice !== null ? parseFloat(String(p.salePrice)) : null,
-    costPrice: p.costPrice !== null ? parseFloat(String(p.costPrice)) : null,
+    salePrice:   p.salePrice   !== null ? parseFloat(String(p.salePrice))   : null,
+    costPrice:   p.costPrice   !== null ? parseFloat(String(p.costPrice))   : null,
+    rentalPrice: p.rentalPrice !== null && p.rentalPrice !== undefined ? parseFloat(String(p.rentalPrice)) : null,
   }
 }
 
@@ -83,6 +87,9 @@ export async function createProduct(tenantId: string, input: CreateProductInput)
         costPrice:   input.costPrice,
         minStock:    input.minStock,
         maxStock:    input.maxStock,
+        isSellable:  input.isSellable,
+        isRentable:  input.isRentable,
+        rentalPrice: input.isRentable ? input.rentalPrice : null,
       },
       select: PRODUCT_SELECT,
     })
@@ -103,7 +110,7 @@ export async function updateProduct(
 ) {
   const existing = await prisma.product.findFirst({
     where: { id: productId, tenantId },
-    select: { minStock: true, maxStock: true },
+    select: { minStock: true, maxStock: true, isSellable: true, isRentable: true },
   })
   if (!existing) throw { statusCode: 404, message: 'Producto no encontrado', code: 'NOT_FOUND' }
 
@@ -112,6 +119,13 @@ export async function updateProduct(
   const effectiveMaxStock = input.maxStock !== undefined ? input.maxStock : existing.maxStock
   if (effectiveMaxStock !== null && effectiveMaxStock <= effectiveMinStock) {
     throw { statusCode: 400, message: 'El stock máximo debe ser mayor al stock mínimo', code: 'VALIDATION_ERROR' }
+  }
+
+  // HU-158 — el producto debe seguir siendo de venta, de alquiler o ambos.
+  const effSellable = input.isSellable ?? existing.isSellable
+  const effRentable = input.isRentable ?? existing.isRentable
+  if (!effSellable && !effRentable) {
+    throw { statusCode: 400, message: 'El producto debe ser de venta, de alquiler o ambos', code: 'VALIDATION_ERROR' }
   }
 
   // HU-123 — validar que el proveedor preferido pertenezca al tenant (si se está fijando).
@@ -135,6 +149,10 @@ export async function updateProduct(
       ...(input.minStock    !== undefined && { minStock:    input.minStock }),
       ...(input.maxStock    !== undefined && { maxStock:    input.maxStock }),
       ...(input.preferredSupplierId !== undefined && { preferredSupplierId: input.preferredSupplierId }),
+      ...(input.isSellable  !== undefined && { isSellable:  input.isSellable }),
+      ...(input.isRentable  !== undefined && { isRentable:  input.isRentable }),
+      // Si queda no-alquilable, se limpia la tarifa; si no, se aplica lo enviado.
+      ...(!effRentable ? { rentalPrice: null } : (input.rentalPrice !== undefined && { rentalPrice: input.rentalPrice })),
     },
     select: PRODUCT_SELECT,
   })

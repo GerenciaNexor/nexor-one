@@ -352,12 +352,17 @@ async function fulfillSaleInventory(
     const product   = await tx.product.findFirst({ where: { id: productId, tenantId }, select: { name: true, costPrice: true } })
     if (!product) continue
 
-    const stock  = await tx.stock.findUnique({ where: { productId_branchId: { productId, branchId } }, select: { quantity: true } })
-    const before = stock ? parseFloat(String(stock.quantity)) : 0
-    if (before < qty) {
+    // HU-158 — la venta toma del DISPONIBLE (total − alquilado), nunca de unidades alquiladas.
+    // El descuento reduce el TOTAL (salida definitiva); el disponible resultante sigue ≥ 0
+    // porque disponible = total − alquilado ≥ qty ⇒ total − qty ≥ alquilado.
+    const stock     = await tx.stock.findUnique({ where: { productId_branchId: { productId, branchId } }, select: { quantity: true, rentedQuantity: true } })
+    const before    = stock ? parseFloat(String(stock.quantity)) : 0
+    const rented    = stock ? parseFloat(String(stock.rentedQuantity)) : 0
+    const available = Math.max(0, before - rented)
+    if (available < qty) {
       throw {
         statusCode: 409,
-        message:    `Stock insuficiente para "${product.name}": disponible ${before}, requerido ${qty}. No se puede cerrar la venta sin existencias.`,
+        message:    `Stock insuficiente para "${product.name}": disponible ${available}${rented > 0 ? ` (de ${before}, ${rented} alquilado)` : ''}, requerido ${qty}. No se puede cerrar la venta sin existencias disponibles.`,
         code:       'INSUFFICIENT_STOCK',
       }
     }

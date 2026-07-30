@@ -137,9 +137,10 @@ const registrarMovimiento: AgentTool = {
     // Current stock (required for quantityBefore / quantityAfter)
     const currentStock = await prisma.stock.findUnique({
       where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-      select: { quantity: true },
+      select: { quantity: true, rentedQuantity: true },
     })
     const before = Number(currentStock?.quantity ?? 0)
+    const rented = Number(currentStock?.rentedQuantity ?? 0)   // HU-158 — unidades alquiladas
 
     // Calculate after based on type
     let after: number
@@ -156,6 +157,11 @@ const registrarMovimiento: AgentTool = {
       if (after < 0) {
         return { error: `Adjustment would leave stock at ${after}. Stock cannot be negative.` }
       }
+    }
+
+    // HU-158 — el total no puede bajar por debajo de lo alquilado (disponible ≥ 0).
+    if (after < rented) {
+      return { error: `Cannot remove those units: ${rented} are currently rented out. Available to move: ${Math.max(0, before - rented)}.` }
     }
 
     const absQty = Math.abs(qty)

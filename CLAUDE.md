@@ -50,16 +50,17 @@ pnpm --filter @nexor/api db:studio
 `prisma migrate` y los seeds **no** disparan RLS automáticamente: `setup-rls.ts` debe correrse
 aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo siempre.
 
-`setup-rls.ts` cubre **32 tablas de negocio** (incluye bandeja, carga masiva y chat —
+`setup-rls.ts` cubre **33 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
 desde HU-127; `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
-`cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; y `reminders` desde HU-156).
+`cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156; y
+`rentals` desde HU-158).
 Además habilita RLS
 **deny-all** en las tablas de plataforma `platform_admins` (HU-134) y `platform_audit_logs` (HU-136)
 — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
 del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
-cross-tenant de las 32 tablas bajo el rol real `nexor_app` en una BD temporal.
+cross-tenant de las 33 tablas bajo el rol real `nexor_app` en una BD temporal.
 
 ### E2E (un proyecto/archivo concreto)
 
@@ -164,6 +165,12 @@ Next.js 14 App Router. Rutas agrupadas en [apps/web/src/app/](apps/web/src/app/)
    Todo `stock_movement` registra **quién** (`user_id`), **cómo** (`type`) y **por qué** (`reason`,
    obligatorio) — HU-128. El stock **nunca queda negativo** (toda salida valida disponibilidad; la
    venta se bloquea si falta stock). En ventas se congelan `sale_price_frozen`/`cost_price_frozen`.
+   **HU-158 — alquiler:** `disponible = stocks.quantity − stocks.rented_quantity`. Venta y alquiler
+   operan sobre el **disponible**, nunca sobre el total. El alquiler es una salida **temporal**: no
+   baja el total, sube `rented_quantity` (baja el disponible); la venta sí baja el total. Ninguna
+   salida/ajuste puede dejar `quantity < rented_quantity` (invariante `disponible ≥ 0`, con CHECK en
+   DB). Los alquileres viven en la tabla `rentals` (fuente de verdad; `rented_quantity` es su caché);
+   **no** tocan `stock_movements`, así la trazabilidad de HU-128 queda intacta.
 3. Tokens de integración (WhatsApp, Gmail) siempre cifrados — nunca en responses de la API
    (cifrado en [apps/api/src/lib/encryption.ts](apps/api/src/lib/encryption.ts); `ENCRYPTION_KEY`
    se valida al arrancar y el server hace `process.exit(1)` si falta).

@@ -90,6 +90,7 @@ model Tenant {
   agentLogs             AgentLog[]
   notifications         Notification[]
   reminders             Reminder[]
+  rentals               Rental[]
   clients               Client[]
   clientRatings         ClientRating[]
   pipelineStages        PipelineStage[]
@@ -143,6 +144,7 @@ model Branch {
   deals            Deal[]
   stocks           Stock[]
   stockMovements   StockMovement[]
+  rentals          Rental[]
   purchaseOrders   PurchaseOrder[]
   serviceTypes     ServiceType[]
   availability     Availability[]
@@ -179,6 +181,7 @@ model User {
 
   notifications            Notification[]
   reminders                Reminder[]
+  rentals                  Rental[]
   assignedClients          Client[]              @relation("ClientAssignee")
   assignedDeals            Deal[]                @relation("DealAssignee")
   interactions             Interaction[]
@@ -454,6 +457,7 @@ model Client {
   quotes       Quote[]
   appointments Appointment[]
   ratings      ClientRating[]
+  rentals      Rental[]
 
   @@index([tenantId])
   @@index([tenantId, assignedTo])
@@ -631,6 +635,12 @@ model Product {
   abcClass            String?  @map("abc_class") @db.VarChar(1)
   /// HU-123 — proveedor preferido para reabastecer este producto (opcional).
   preferredSupplierId String?  @map("preferred_supplier_id") @db.VarChar(30)
+  /// HU-158 — el producto se puede vender (salida definitiva). Default true (retrocompat).
+  isSellable          Boolean  @default(true)  @map("is_sellable")
+  /// HU-158 — el producto se puede alquilar (salida temporal). Default false.
+  isRentable          Boolean  @default(false) @map("is_rentable")
+  /// HU-158 — tarifa de alquiler (por unidad/periodo). Opcional; la usa el módulo de alquiler.
+  rentalPrice         Decimal? @map("rental_price") @db.Decimal(15, 2)
   isActive            Boolean  @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -641,6 +651,7 @@ model Product {
   stockMovements     StockMovement[]
   quoteItems         QuoteItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  rentals            Rental[]
   preferredSupplier  Supplier?           @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, sku])
@@ -657,7 +668,11 @@ model Stock {
   id        String  @id @default(cuid()) @db.VarChar(30)
   productId String  @map("product_id") @db.VarChar(30)
   branchId  String  @map("branch_id") @db.VarChar(30)
+  /// Stock TOTAL en la sucursal (HU-158: incluye lo alquilado; el alquiler no lo reduce).
   quantity  Decimal @default(0) @db.Decimal(10, 2)
+  /// HU-158 — unidades alquiladas actualmente (salida temporal). Disponible = quantity − rentedQuantity.
+  /// Caché consistente del total de alquileres activos (fuente de verdad: tabla `rentals`).
+  rentedQuantity Decimal @default(0) @map("rented_quantity") @db.Decimal(10, 2)
 
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -667,6 +682,41 @@ model Stock {
   @@unique([productId, branchId])
   @@index([branchId])
   @@map("stocks")
+}
+
+/// HU-158 — Alquileres: salida TEMPORAL de stock. No reduce el total, reduce el disponible.
+/// Fuente de verdad de "cuánto está alquilado"; `stocks.rentedQuantity` es su caché.
+/// Base del módulo de alquiler (HU-159–163). Append-friendly: un alquiler se cierra con `returned`.
+model Rental {
+  id         String    @id @default(cuid()) @db.VarChar(30)
+  tenantId   String    @map("tenant_id") @db.VarChar(30)
+  productId  String    @map("product_id") @db.VarChar(30)
+  branchId   String    @map("branch_id") @db.VarChar(30)
+  /// A quién se le alquiló (opcional en el habilitador; lo usa el flujo de HU-159).
+  clientId   String?   @map("client_id") @db.VarChar(30)
+  /// Quién registró el alquiler.
+  userId     String?   @map("user_id") @db.VarChar(30)
+  quantity   Decimal   @db.Decimal(10, 2)
+  /// active | returned. Solo los `active` cuentan como alquilado (reducen el disponible).
+  status     String    @default("active") @db.VarChar(20)
+  rentedAt   DateTime  @default(now()) @map("rented_at") @db.Timestamptz(6)
+  dueAt      DateTime? @map("due_at") @db.Timestamptz(6)
+  returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
+  notes      String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  client  Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, productId, branchId, status])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@map("rentals")
 }
 
 /// Historial INMUTABLE de cada cambio en el inventario.

@@ -206,6 +206,16 @@ KIRA calcula semanalmente qué productos generan el 80% del valor del inventario
 **Trazabilidad completa (HU-128)**  
 Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
 
+**Venta vs. alquiler — disponible ≠ total (HU-158)**  
+Un producto se marca como **de venta, de alquiler o ambos** (al crearlo o editarlo, con tarifa de
+alquiler opcional). El inventario distingue **total / disponible / alquilado**, donde
+**disponible = total − alquilado** (la vista de Stock muestra las tres columnas). El **alquiler** es una
+salida **temporal**: no baja el total, sube lo alquilado (baja el disponible); la **venta** es definitiva
+(baja el total). **Tanto la venta como el alquiler solo pueden tomar del disponible** — nunca de unidades
+ya alquiladas —, y ninguna salida/ajuste puede dejar el total por debajo de lo alquilado. Los alquileres
+viven en la tabla `rentals` (no tocan `stock_movements`, así HU-128 queda intacta). Endpoints:
+`POST /v1/kira/rentals` (alquilar), `POST /v1/kira/rentals/:id/return` (devolver), `GET /v1/kira/rentals`.
+
 **Quién mueve el stock (auditoría HU-128):**
 
 | Camino | `type` | `reason` | Referencia |

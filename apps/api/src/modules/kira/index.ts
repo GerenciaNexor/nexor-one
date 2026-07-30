@@ -9,6 +9,7 @@ import stockModule from './stock/index'
 import lotsModule from './lots/index'
 import reportsModule from './reports/index'
 import alertsModule from './alerts/index'
+import rentalsModule from './rentals/index'
 
 export default async function kiraModule(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireFeatureFlag('KIRA'))
@@ -17,4 +18,5 @@ export default async function kiraModule(app: FastifyInstance): Promise<void> {
   await app.register(lotsModule,     { prefix: '/lots' })
   await app.register(reportsModule,  { prefix: '/reports' })
   await app.register(alertsModule,   { prefix: '/alerts' })
+  await app.register(rentalsModule,  { prefix: '/rentals' })
 }

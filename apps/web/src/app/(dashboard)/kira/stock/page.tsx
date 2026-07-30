@@ -179,7 +179,9 @@ export default function StockPage() {
                 <th className="px-4 py-3">Producto</th>
                 <th className="px-4 py-3">SKU</th>
                 {!isOperative && <th className="px-4 py-3">Sucursal</th>}
-                <th className="px-4 py-3 text-right">Cantidad</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-right">Disponible</th>
+                <th className="px-4 py-3 text-right">Alquilado</th>
                 <th className="px-4 py-3 text-right">Mínimo</th>
                 <th className="px-4 py-3 text-center">Estado</th>
                 <th className="px-4 py-3" />
@@ -187,14 +189,14 @@ export default function StockPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <SkeletonRows rows={8} cols={isOperative ? 6 : 7} />
+                <SkeletonRows rows={8} cols={isOperative ? 8 : 9} />
               ) : fetchError ? (
-                <tr><td colSpan={isOperative ? 6 : 7} className="py-16 text-center">
+                <tr><td colSpan={isOperative ? 8 : 9} className="py-16 text-center">
                   <p className="text-sm text-red-500">{fetchError}</p>
                   <button onClick={() => load()} className="mt-3 text-sm text-blue-600 hover:underline">Reintentar</button>
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={isOperative ? 6 : 7} className="p-0">{stockEmpty}</td></tr>
+                <tr><td colSpan={isOperative ? 8 : 9} className="p-0">{stockEmpty}</td></tr>
               ) : (
                 filtered.map((s) => (
                   <tr
@@ -210,11 +212,19 @@ export default function StockPage() {
                     {!isOperative && (
                       <td className="px-4 py-3 text-slate-500">{s.branch.name}</td>
                     )}
+                    <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                      {s.total ?? s.quantity} {s.product.unit}
+                    </td>
                     <td className={[
                       'px-4 py-3 text-right font-semibold',
-                      s.belowMin ? 'text-red-600' : 'text-slate-800',
+                      s.belowMin ? 'text-red-600' : 'text-emerald-700',
                     ].join(' ')}>
-                      {s.quantity} {s.product.unit}
+                      {s.available ?? s.quantity}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {(s.rented ?? 0) > 0
+                        ? <span className="font-medium text-violet-600">{s.rented}</span>
+                        : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-400">{s.product.minStock}</td>
                     <td className="px-4 py-3 text-center">
@@ -290,12 +300,20 @@ export default function StockPage() {
                   </span>
                 )}
               </div>
-              <div className="mt-2.5 flex items-center justify-between">
-                <div className="text-sm">
-                  <span className={['font-semibold', s.belowMin ? 'text-red-600' : 'text-slate-800'].join(' ')}>
-                    {s.quantity} {s.product.unit}
-                  </span>
-                  <span className="ml-1.5 text-xs text-slate-400">mín. {s.product.minStock}</span>
+              <div className="mt-2.5 flex flex-wrap items-end justify-between gap-2">
+                <div className="flex gap-4 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Total</p>
+                    <p className="font-semibold text-slate-800">{s.total ?? s.quantity} <span className="text-xs font-normal text-slate-400">{s.product.unit}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Disponible</p>
+                    <p className={['font-semibold', s.belowMin ? 'text-red-600' : 'text-emerald-700'].join(' ')}>{s.available ?? s.quantity}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Alquilado</p>
+                    <p className={(s.rented ?? 0) > 0 ? 'font-semibold text-violet-600' : 'text-slate-300'}>{(s.rented ?? 0) > 0 ? s.rented : '—'}</p>
+                  </div>
                 </div>
                 <button
                   onClick={(ev) => { ev.stopPropagation(); openModal(s.product.id, s.branch.id) }}

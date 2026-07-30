@@ -15,6 +15,9 @@ export interface Product {
   unit: string
   salePrice: number | null
   costPrice: number | null
+  rentalPrice: number | null
+  isSellable: boolean
+  isRentable: boolean
   minStock: number
   maxStock: number | null
   abcClass: 'A' | 'B' | 'C' | null
@@ -33,6 +36,9 @@ interface FormFields {
   unit: string
   salePrice: string
   costPrice: string
+  rentalPrice: string
+  isSellable: boolean
+  isRentable: boolean
   minStock: string
   maxStock: string
   preferredSupplierId: string
@@ -47,7 +53,9 @@ interface Props {
 
 const EMPTY: FormFields = {
   sku: '', name: '', description: '', category: '',
-  unit: '', salePrice: '', costPrice: '', minStock: '0', maxStock: '', preferredSupplierId: '',
+  unit: '', salePrice: '', costPrice: '', rentalPrice: '',
+  isSellable: true, isRentable: false,
+  minStock: '0', maxStock: '', preferredSupplierId: '',
 }
 
 function toFormFields(p: Product): FormFields {
@@ -57,8 +65,11 @@ function toFormFields(p: Product): FormFields {
     description: p.description ?? '',
     category:    p.category    ?? '',
     unit:        p.unit,
-    salePrice:   p.salePrice  != null ? String(p.salePrice)  : '',
-    costPrice:   p.costPrice  != null ? String(p.costPrice)  : '',
+    salePrice:   p.salePrice   != null ? String(p.salePrice)   : '',
+    costPrice:   p.costPrice   != null ? String(p.costPrice)   : '',
+    rentalPrice: p.rentalPrice != null ? String(p.rentalPrice) : '',
+    isSellable:  p.isSellable ?? true,
+    isRentable:  p.isRentable ?? false,
     minStock:    String(p.minStock),
     maxStock:    p.maxStock   != null ? String(p.maxStock)   : '',
     preferredSupplierId: p.preferredSupplierId ?? '',
@@ -100,6 +111,8 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
     const max = parseFloat(form.maxStock)
     if (form.maxStock !== '' && !isNaN(max) && !isNaN(min) && max <= min)
       e.maxStock = 'El stock máximo debe ser mayor al mínimo'
+    if (!form.isSellable && !form.isRentable)
+      e.isSellable = 'Marca al menos una: de venta o de alquiler'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -119,6 +132,13 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
       costPrice:   form.costPrice !== '' ? parseFloat(form.costPrice) : undefined,
       minStock:    form.minStock  !== '' ? parseFloat(form.minStock)  : 0,
       maxStock:    form.maxStock  !== '' ? parseFloat(form.maxStock)  : undefined,
+      // HU-158 — modalidad venta/alquiler + tarifa (en create rentalPrice va undefined si no aplica;
+      // en edit va null para limpiarla, coherente con el backend).
+      isSellable:  form.isSellable,
+      isRentable:  form.isRentable,
+      rentalPrice: form.isRentable && form.rentalPrice !== ''
+        ? parseFloat(form.rentalPrice)
+        : (mode === 'edit' ? null : undefined),
     }
     if (mode === 'create') body.sku = form.sku.trim()
     // HU-123 — proveedor preferido (solo edición): '' → null para quitarlo
@@ -261,6 +281,39 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="border-t border-slate-100" />
+
+            {/* ── Modalidad: venta / alquiler (HU-158) ───────────────── */}
+            <div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Modalidad</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors ${form.isSellable ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  <input type="checkbox" checked={form.isSellable}
+                    onChange={(e) => setForm((p) => ({ ...p, isSellable: e.target.checked }))}
+                    className="h-4 w-4 accent-blue-600" />
+                  <span>Se vende <span className="text-xs text-slate-400">(salida definitiva)</span></span>
+                </label>
+                <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors ${form.isRentable ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  <input type="checkbox" checked={form.isRentable}
+                    onChange={(e) => setForm((p) => ({ ...p, isRentable: e.target.checked }))}
+                    className="h-4 w-4 accent-violet-600" />
+                  <span>Se alquila <span className="text-xs text-slate-400">(salida temporal)</span></span>
+                </label>
+              </div>
+              {errors.isSellable && <p className="mt-1.5 text-xs text-red-500">{errors.isSellable}</p>}
+              {form.isRentable && (
+                <div className="mt-3">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Tarifa de alquiler <span className="font-normal text-slate-400">(por unidad/periodo)</span></label>
+                  <div className="relative max-w-[12rem]">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">$</span>
+                    <input type="number" min="0" step="1" value={form.rentalPrice}
+                      onChange={field('rentalPrice')}
+                      className={`${inp} pl-7`} placeholder="0" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-slate-100" />

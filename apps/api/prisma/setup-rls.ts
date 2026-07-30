@@ -70,6 +70,8 @@ const BUSINESS_TABLES = [
   'monthly_budgets',
   // HU-156 — recordatorios universales por usuario/tenant.
   'reminders',
+  // HU-158 — alquileres (salida temporal de stock); base del módulo de alquiler.
+  'rentals',
 ] as const
 
 async function setupRLS(): Promise<void> {

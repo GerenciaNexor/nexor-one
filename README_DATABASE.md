@@ -785,6 +785,9 @@ Catálogo global de productos por tenant. El stock es por sucursal, pero el prod
 | `max_stock` | `INTEGER` | NULL | Máximo de stock — alerta si supera aquí |
 | `abc_class` | `VARCHAR(1)` | NULL | Clasificación ABC (A, B, C) calculada automáticamente |
 | `preferred_supplier_id` | `VARCHAR(30)` | NULL, FK → suppliers.id (ON DELETE SET NULL) | Proveedor **preferido** del producto — NIRA lo prioriza al reabastecer (HU-123) |
+| `is_sellable` | `BOOLEAN` | NOT NULL, DEFAULT true | **HU-158** — el producto se vende (salida definitiva) |
+| `is_rentable` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-158** — el producto se alquila (salida temporal) |
+| `rental_price` | `DECIMAL(15,2)` | NULL | **HU-158** — tarifa de alquiler (por unidad/periodo) |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el producto está activo |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
@@ -809,11 +812,14 @@ Stock actual de cada producto en cada sucursal. Es la única fuente de verdad de
 | `id` | `VARCHAR(30)` | PK, NOT NULL | CUID |
 | `product_id` | `VARCHAR(30)` | FK → products.id, NOT NULL | Producto |
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NOT NULL | Sucursal |
-| `quantity` | `DECIMAL(10,2)` | NOT NULL, DEFAULT 0 | Cantidad actual en stock |
+| `quantity` | `DECIMAL(10,2)` | NOT NULL, DEFAULT 0 | Cantidad **TOTAL** en stock (incluye lo alquilado) |
+| `rented_quantity` | `DECIMAL(10,2)` | NOT NULL, DEFAULT 0 | **HU-158** — unidades alquiladas ahora. **Disponible = quantity − rented_quantity** |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última actualización |
 
 **Índices:** `UNIQUE(product_id, branch_id)`, `(branch_id)`  
-**Regla de negocio:** `quantity` NUNCA puede ser negativo. Validar en la capa de servicio antes de guardar.
+**CHECK (HU-158):** `rented_quantity >= 0` y `rented_quantity <= quantity` (disponible nunca negativo; alquilado nunca > total).  
+**Regla de negocio:** `quantity` NUNCA puede ser negativo. Venta y alquiler operan sobre el **disponible**;
+el alquiler no baja el total (salida temporal), la venta sí (salida definitiva). Validar en el servicio.
 
 ---
 
@@ -1050,12 +1056,38 @@ serie (`status='done'`, inactivo). `DELETE` exige `status='done'` (si no → 422
 
 ---
 
+#### `rentals` (HU-158)
+
+Alquileres: **salida temporal** de stock. No reduce el total, reduce el disponible. Es la **fuente de
+verdad** de "cuánto está alquilado"; `stocks.rented_quantity` es su caché (consistente en la misma
+transacción). Base del módulo de alquiler (HU-159–163).
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | VARCHAR(30) PK | CUID |
+| `tenant_id` | VARCHAR(30) FK | Empresa (RLS) |
+| `product_id` / `branch_id` | VARCHAR(30) FK | Producto y sucursal del alquiler |
+| `client_id` | VARCHAR(30) NULL | A quién se alquiló (opcional; lo usa HU-159) |
+| `user_id` | VARCHAR(30) NULL | Quién registró |
+| `quantity` | DECIMAL(10,2) | Unidades alquiladas (CHECK > 0) |
+| `status` | VARCHAR(20) | `active` \| `returned`. Solo los `active` cuentan como alquilado |
+| `rented_at` / `due_at` / `returned_at` | TIMESTAMPTZ | Salida · vencimiento opcional · devolución |
+| `notes` | TEXT NULL | Notas |
+
+**RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). **Operaciones** (`/v1/kira/rentals`):
+`POST /` alquila (valida producto alquilable + `quantity ≤ disponible`; sube `rented_quantity`, NO el
+total); `POST /:id/return` devuelve (baja `rented_quantity`, total intacto); `GET /` lista. **No** escribe
+en `stock_movements` (la trazabilidad de HU-128 queda intacta); el total solo cambia por venta/compra/ajuste.
+
+---
+
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
 
 En la práctica no se aplica a mano: **`setup-rls.ts` (`pnpm --filter @nexor/api db:rls`) es la fuente
 única de verdad** y debe correrse tras cada migración y tras cualquier restore de backup (RLS no se
-preserva en un `pg_restore`). Cubre **31 tablas de negocio** con la política `tenant_isolation`
-(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). Las 5 últimas se añadieron en **HU-135-fix**
+preserva en un `pg_restore`). Cubre **33 tablas de negocio** con la política `tenant_isolation`
+(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). `reminders` (HU-156) y `rentals` (HU-158) son
+las más recientes; antes, las 5 de **HU-135-fix**
 (cierre de cobertura 26→31): `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
 `cost_centers`, `monthly_budgets` — forzadas también por la migración
 `20260703120000_rls_remaining_tables`. Antes de forzarlas se verificó que ningún job ni ruta las

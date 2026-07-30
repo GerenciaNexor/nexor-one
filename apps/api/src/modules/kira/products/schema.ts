@@ -10,9 +10,16 @@ export const CreateProductSchema = z.object({
   costPrice:   z.number().positive('El precio de costo debe ser positivo').optional(),
   minStock:    z.number().int().min(0, 'El stock mínimo no puede ser negativo').default(0),
   maxStock:    z.number().int().positive('El stock máximo debe ser positivo').optional(),
+  // HU-158 — el producto se puede vender, alquilar, o ambos.
+  isSellable:  z.boolean().default(true),
+  isRentable:  z.boolean().default(false),
+  rentalPrice: z.number().positive('La tarifa de alquiler debe ser positiva').optional(),
 }).refine(
   (data) => data.maxStock === undefined || data.maxStock > data.minStock,
   { message: 'El stock máximo debe ser mayor al stock mínimo', path: ['maxStock'] },
+).refine(
+  (data) => data.isSellable || data.isRentable,
+  { message: 'El producto debe ser de venta, de alquiler o ambos', path: ['isSellable'] },
 )
 
 export const UpdateProductSchema = z.object({
@@ -26,6 +33,10 @@ export const UpdateProductSchema = z.object({
   maxStock:    z.number().int().positive('El stock máximo debe ser positivo').optional(),
   // HU-123 — proveedor preferido del producto. null para quitarlo.
   preferredSupplierId: z.string().min(1).nullable().optional(),
+  // HU-158 — venta / alquiler. rentalPrice nullable para poder limpiarlo.
+  isSellable:  z.boolean().optional(),
+  isRentable:  z.boolean().optional(),
+  rentalPrice: z.number().positive('La tarifa de alquiler debe ser positiva').nullable().optional(),
 })
 
 // La validación cruzada minStock/maxStock en updates se hace en el service,
