@@ -5,6 +5,7 @@ import {
   ReorderStagesSchema,
   CreateDealSchema,
   MoveDealSchema,
+  UpdateDealSchema,
   DealQuerySchema,
   RateClientSchema,
 } from './schema'
@@ -18,6 +19,7 @@ import {
   getDeal,
   createDeal,
   moveDeal,
+  updateDeal,
   rateClientForDeal,
 } from './service'
 import { requireRoleAndModule, getBranchFilter } from '../../../lib/guards'
@@ -213,7 +215,36 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const { id } = request.params as { id: string }
     try {
-      const deal = await getDeal(request.user.tenantId, id)
+      const deal = await getDeal(request.user.tenantId, id, request.user.userId, request.user.role, getBranchFilter(request.user))
+      return reply.code(200).send(deal)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * PUT /v1/ari/deals/:id  (HU-155) — editar los datos del negocio (no la etapa).
+   */
+  app.put('/deals/:id', {
+    schema: {
+      tags:        ['ARI'],
+      summary:     'Editar deal',
+      description: 'Edita los datos del negocio (título, valor, probabilidad, cierre estimado, cliente, vendedor). La etapa se cambia con /deals/:id/stage. Respeta rol y sucursal.',
+      security:    bearerAuth,
+      params:      idParam,
+      body:        z2j(UpdateDealSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'ARI'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = UpdateDealSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos de entrada inválidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const deal = await updateDeal(request.user.tenantId, id, parsed.data, request.user.userId, request.user.role, getBranchFilter(request.user))
       return reply.code(200).send(deal)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }

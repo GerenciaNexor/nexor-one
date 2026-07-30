@@ -58,6 +58,14 @@ etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa**
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
+> **HU-155 — detalle del negocio/venta.** Al hacer clic en una tarjeta de **Negocios en curso** o en
+> una fila de **Ventas realizadas** se abre el **mismo** componente de detalle (`DealDetailModal`): un
+> negocio en proceso y una venta cerrada son el mismo deal en distinto estado. Muestra datos del negocio
+> (monto, etapa, probabilidad, cierre estimado, vendedor, días en la etapa), el **cliente** con enlace a
+> su ficha, las **cotizaciones vinculadas** y las **interacciones/notas**; con acciones **mover de etapa,
+> marcar ganado/perdido y editar** (`PUT /v1/ari/deals/:id`). Respeta rol y sucursal (un OPERATIVE solo
+> abre/edita sus deals asignados). Ventas realizadas ya **no** redirige al pipeline.
+
 > **HU-154 — contraparte obligatoria con genérico.** El cliente sigue siendo **obligatorio**, pero
 > entre las opciones aparece **"Consumidor final"** (para ventas de mostrador sin datos). Es un cliente
 > REAL, **único por tenant** (`clients.is_generic`, índice único parcial), creado de forma idempotente

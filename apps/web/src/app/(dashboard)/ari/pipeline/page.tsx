@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { DealFormModal, type PipelineStage, type Deal } from '@/components/ari/DealFormModal'
+import { DealDetailModal } from '@/components/ari/DealDetailModal'
 import { RateClientModal } from '@/components/ari/RateClientModal'
 import { Portal } from '@/components/ui/Portal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -181,11 +182,13 @@ function DealCard({
   deal,
   stages,
   onMove,
+  onOpen,
   canManage,
 }: {
   deal:      Deal
   stages:    PipelineStage[]
   onMove:    (deal: Deal, targetStageId: string) => void
+  onOpen:    (deal: Deal) => void
   canManage: boolean
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -201,9 +204,10 @@ function DealCard({
         e.dataTransfer.setData('text/plain', deal.id)
         e.dataTransfer.effectAllowed = 'move'
       }}
+      onClick={() => onOpen(deal)}
       className={[
-        'group relative rounded-xl p-3.5 shadow-sm transition-all',
-        draggable ? 'cursor-grab active:cursor-grabbing' : '',
+        'group relative cursor-pointer rounded-xl p-3.5 shadow-sm transition-all',
+        draggable ? 'active:cursor-grabbing' : '',
         isClosed  ? 'opacity-70' : 'hover:shadow-md',
         isStale
           ? 'border border-l-4 border-amber-300 bg-white dark:border-amber-600 dark:bg-slate-800'
@@ -220,7 +224,7 @@ function DealCard({
         {canManage && !isClosed && (
           <div className="relative shrink-0">
             <button
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v) }}
               className="flex h-5 w-5 items-center justify-center rounded text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-500 dark:hover:bg-slate-700"
               title="Mover a etapa"
             >
@@ -231,7 +235,7 @@ function DealCard({
 
             {menuOpen && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false) }} />
                 <div className="absolute right-0 top-6 z-20 min-w-[160px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
                   <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                     Mover a
@@ -241,7 +245,7 @@ function DealCard({
                     .map((s) => (
                       <button
                         key={s.id}
-                        onClick={() => { onMove(deal, s.id); setMenuOpen(false) }}
+                        onClick={(e) => { e.stopPropagation(); onMove(deal, s.id); setMenuOpen(false) }}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         {s.color && (
@@ -331,6 +335,7 @@ export default function PipelinePage() {
 
   // Modales
   const [createModal, setCreateModal]         = useState<{ stageId: string } | null>(null)
+  const [detailId, setDetailId]               = useState<string | null>(null) // HU-155
   const [wonConfirmState, setWonConfirmState] = useState<WonConfirmState | null>(null)
   const [lostReasonState, setLostReasonState] = useState<LostReasonState | null>(null)
   const [rateClientDeal, setRateClientDeal]   = useState<Deal | null>(null)  // HU-126
@@ -640,6 +645,7 @@ export default function PipelinePage() {
                         deal={deal}
                         stages={stages}
                         onMove={handleMoveRequest}
+                        onOpen={(d) => setDetailId(d.id)}
                         canManage={true}
                       />
                     ))
@@ -704,6 +710,11 @@ export default function PipelinePage() {
           onClose={() => setRateClientDeal(null)}
           onRated={() => setRateClientDeal(null)}
         />
+      )}
+
+      {/* ── HU-155 — detalle del negocio (mismo componente que en Ventas realizadas) ── */}
+      {detailId && (
+        <DealDetailModal dealId={detailId} onClose={() => setDetailId(null)} onChanged={fetchData} />
       )}
     </div>
   )
