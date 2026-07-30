@@ -12,6 +12,7 @@
  */
 import { ModuleName } from '@prisma/client'
 import { directPrisma } from '../lib/prisma'
+import { nextOccurrence } from '../modules/reminders/recurrence'
 
 const ONE_MINUTE_MS = 60 * 1000
 
@@ -23,19 +24,6 @@ const REL: Record<string, { module: ModuleName; link: string }> = {
 }
 
 const LEVEL_ICON: Record<string, string> = { critical: '🔴', urgent: '🟠', normal: '⏰' }
-
-/** Próxima ocurrencia estrictamente futura, o null si no es recurrente. */
-function nextOccurrence(from: Date, recurrence: string, now: Date): Date | null {
-  if (recurrence === 'none') return null
-  const stepMs: Record<string, number> = { hourly: 3_600_000, daily: 86_400_000, weekly: 604_800_000 }
-  const d = new Date(from)
-  let guard = 0
-  do {
-    if (recurrence === 'monthly') d.setMonth(d.getMonth() + 1)
-    else d.setTime(d.getTime() + (stepMs[recurrence] ?? 86_400_000))
-  } while (d.getTime() <= now.getTime() && ++guard < 100_000)
-  return d
-}
 
 export async function runReminderFire(): Promise<{ fired: number }> {
   const now = new Date()

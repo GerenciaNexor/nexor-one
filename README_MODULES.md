@@ -363,7 +363,7 @@ nunca se llama uno que daría 403, así nada queda permanentemente vacío):
 | Órdenes esperando aprobación | `GET /v1/nira/purchase-orders?status=submitted` | NIRA |
 | Borradores sin enviar | `GET /v1/nira/purchase-orders?status=draft` | NIRA |
 | Citas de hoy (agendadas/confirmadas) | `GET /v1/agenda/appointments?date=<hoy>` | AGENDA |
-| **Recordatorios** (HU-156) | `GET /v1/reminders?activeOnly=true` | universal |
+| **Recordatorios** (HU-156/157) | `GET /v1/reminders?status=pending` | universal |
 | Notificaciones sin leer (**separadas por tipo/sección**, HU-156) | `GET /v1/notifications?isRead=false` | universal |
 
 > **Recordatorios universales (HU-156).** Cualquier usuario crea recordatorios (para una tarea, cita,
@@ -373,6 +373,16 @@ nunca se llama uno que daría 403, así nada queda permanentemente vacío):
 > los dispara a su hora —no depende de la app abierta— y genera la notificación; los recurrentes se
 > reprograman, los de una vez se desactivan. Son por **tenant/usuario** (RLS). CRUD en `/v1/reminders`.
 > Además, en el Inicio las notificaciones quedan **agrupadas por tipo/sección** para identificarlas mejor.
+>
+> **Gestión y finalización (HU-157).** Se crean/gestionan también desde **Agenda** (`/agenda/reminders`),
+> con el mismo modal/endpoint que en Inicio. Al hacer clic en uno se abre un **detalle** con *Editar*,
+> *Marcar como hecho* y (recurrentes) *Finalizar serie*. Cada recordatorio tiene **estado**
+> `pending | done` (columna `status`, HU-157): un pendiente **no se puede eliminar** —primero se marca
+> hecho (422 `REMINDER_PENDING`)—; así se evita borrar pendientes sin atender. Marcar hecho un
+> **recurrente** cierra la ocurrencia actual y **reprograma la siguiente** (sigue pendiente); *Finalizar
+> serie* lo apaga para siempre. Acción de marcar hecho: `POST /v1/reminders/:id/complete` (`{ series: true }`
+> para finalizar la serie). El **job de disparo no cambió** (misma lógica de recurrencia, ahora en un util
+> compartido `modules/reminders/recurrence.ts`).
 
 Cada bloque **enlaza a su sección** (acción directa, no solo información). **Visibilidad por rol:**
 `TENANT_ADMIN/BRANCH_ADMIN` ven todos los módulos activos (transversales); `AREA_MANAGER/OPERATIVE`

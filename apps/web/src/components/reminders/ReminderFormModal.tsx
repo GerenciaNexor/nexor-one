@@ -14,6 +14,8 @@ export interface Reminder {
   relatedType: 'appointment' | 'client' | 'deal' | 'purchase_order' | null
   relatedId:   string | null
   isActive:    boolean
+  status:      'pending' | 'done'
+  completedAt: string | null
   lastFiredAt: string | null
   createdAt:   string
 }

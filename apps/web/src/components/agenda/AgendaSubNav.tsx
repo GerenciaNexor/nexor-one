@@ -15,6 +15,7 @@ export function AgendaSubNav() {
   const tabs = [
     { href: '/agenda/calendar',      label: 'Calendario',    help: 'Tus citas en vista de calendario para ver la disponibilidad de un vistazo.' },
     { href: '/agenda/appointments',  label: 'Citas',         help: 'El listado de citas agendadas, para crearlas, confirmarlas o reprogramarlas.' },
+    { href: '/agenda/reminders',     label: 'Recordatorios', help: 'Tus recordatorios personales para no olvidar tareas: créalos, edítalos y márcalos como hechos.' },
     ...(role && SETTINGS_ROLES.includes(role)
       ? [{ href: '/agenda/settings', label: 'Configuración', help: 'Define tus servicios, tus horarios de atención y los días bloqueados.' }]
       : []),

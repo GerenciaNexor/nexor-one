@@ -396,6 +396,9 @@ model Reminder {
   relatedType String?   @map("related_type") @db.VarChar(30)
   relatedId   String?   @map("related_id") @db.VarChar(30)
   isActive    Boolean   @default(true) @map("is_active")
+  /// pending | done (HU-157). Un recordatorio pendiente no se puede eliminar; primero se marca hecho.
+  status      String    @default("pending") @db.VarChar(20)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
   lastFiredAt DateTime? @map("last_fired_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

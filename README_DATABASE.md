@@ -1018,7 +1018,7 @@ CREATE POLICY tenant_isolation ON clients
   USING (tenant_id = current_setting('app.current_tenant_id'));
 ```
 
-#### `reminders` (HU-156)
+#### `reminders` (HU-156/157)
 
 Recordatorios **universales** por usuario/tenant: sirven para cualquier cosa (una cita, un cliente,
 una venta, una compra, o libre). Un job los dispara y genera una `notifications`.
@@ -1034,11 +1034,19 @@ una venta, una compra, o libre). Un job los dispara y genera una `notifications`
 | `recurrence` | VARCHAR(20) | `none` \| `hourly` \| `daily` \| `weekly` \| `monthly` |
 | `related_type` / `related_id` | VARCHAR(30) NULL | Asociación opcional: `appointment`/`client`/`deal`/`purchase_order` |
 | `is_active` | BOOLEAN | Se desactiva al disparar un `none`; los recurrentes siguen activos |
+| `status` | VARCHAR(20) | **HU-157** — `pending` \| `done`. Un `pending` no se puede eliminar (regla de finalización) |
+| `completed_at` | TIMESTAMPTZ NULL | **HU-157** — cuándo se marcó hecho/finalizado |
 | `last_fired_at` | TIMESTAMPTZ NULL | Último disparo |
+
+**Índices:** `(tenant_id, user_id, status)` (HU-157 — listar pendientes/hechos del usuario).
 
 **RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). Aislado por `tenant_id`; el filtrado por usuario
 (cada quien ve los suyos) es de servicio. **Disparo:** job `reminder-fire` cada 1 min (directPrisma) →
 crea la notificación y reprograma (`remind_at` a la próxima ocurrencia futura) o desactiva.
+
+**Finalización (HU-157):** `POST /v1/reminders/:id/complete` marca hecho. En recurrentes cierra la
+ocurrencia actual y **reprograma** la siguiente (sigue `pending`); con `{ series: true }` finaliza la
+serie (`status='done'`, inactivo). `DELETE` exige `status='done'` (si no → 422 `REMINDER_PENDING`).
 
 ---
 

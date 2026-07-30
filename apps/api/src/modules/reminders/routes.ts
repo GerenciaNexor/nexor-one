@@ -1,24 +1,25 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateReminderSchema, UpdateReminderSchema } from './schema'
-import { createReminder, listReminders, updateReminder, deleteReminder } from './service'
+import { createReminder, listReminders, updateReminder, deleteReminder, completeReminder } from './service'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
-const errReply = (reply: import('fastify').FastifyReply, err: unknown) => {
+const errReply = (reply: FastifyReply, err: unknown) => {
   const e = err as { statusCode?: number; message?: string; code?: string }
   return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
 }
 
 export async function remindersRoutes(app: FastifyInstance): Promise<void> {
-  /** GET /v1/reminders — recordatorios del usuario (activeOnly=true para próximos). */
+  /** GET /v1/reminders — recordatorios del usuario. `status=pending|done` filtra; `activeOnly=true` = próximos. */
   app.get('/', {
     schema: {
       tags: ['Reminders'], summary: 'Listar recordatorios del usuario', security: bearerAuth,
-      querystring: { type: 'object', properties: { activeOnly: { type: 'string' } } },
+      querystring: { type: 'object', properties: { activeOnly: { type: 'string' }, status: { type: 'string' } } },
       response: { 200: listRes, ...stdErrors },
     },
   }, async (request, reply) => {
-    const q = request.query as { activeOnly?: string }
-    const result = await listReminders(request.user.tenantId, request.user.userId, q.activeOnly === 'true')
+    const q = request.query as { activeOnly?: string; status?: string }
+    const status = q.status === 'pending' || q.status === 'done' ? q.status : undefined
+    const result = await listReminders(request.user.tenantId, request.user.userId, { status, activeOnly: q.activeOnly === 'true' })
     return reply.code(200).send(result)
   })
 
@@ -47,7 +48,19 @@ export async function remindersRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) { return errReply(reply, err) }
   })
 
-  /** DELETE /v1/reminders/:id — eliminar recordatorio. */
+  /** POST /v1/reminders/:id/complete — marcar como hecho. body { series?: boolean } para finalizar la serie. */
+  app.post('/:id/complete', {
+    schema: { tags: ['Reminders'], summary: 'Marcar recordatorio como hecho', security: bearerAuth, params: idParam, body: { type: 'object', properties: { series: { type: 'boolean' } } }, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { series } = (request.body ?? {}) as { series?: boolean }
+    try {
+      const r = await completeReminder(request.user.tenantId, request.user.userId, id, { series: series === true })
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** DELETE /v1/reminders/:id — eliminar recordatorio (solo si ya está hecho — HU-157). */
   app.delete('/:id', {
     schema: { tags: ['Reminders'], summary: 'Eliminar recordatorio', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
   }, async (request, reply) => {
