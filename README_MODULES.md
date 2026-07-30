@@ -58,6 +58,13 @@ etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa**
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
+> **HU-154 — contraparte obligatoria con genérico.** El cliente sigue siendo **obligatorio**, pero
+> entre las opciones aparece **"Consumidor final"** (para ventas de mostrador sin datos). Es un cliente
+> REAL, **único por tenant** (`clients.is_generic`, índice único parcial), creado de forma idempotente
+> (al crear el tenant y al listar) y **sujeto a RLS** — jamás compartido entre empresas. Se comporta como
+> cualquier cliente aguas abajo (reportes, VERA, stock): sin casos especiales. NIRA tiene su equivalente
+> **"Proveedor ocasional"** (`suppliers.is_generic`).
+
 > **HU-153 — el catálogo es el camino principal.** En el modal de nueva cotización, cada línea empieza
 > por el **buscador del producto del catálogo (KIRA)**; al elegirlo se **auto-rellenan descripción y
 > precio** (editables) y la línea queda **vinculada al producto real** (sostiene el movimiento de stock,

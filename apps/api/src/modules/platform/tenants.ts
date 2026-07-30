@@ -9,6 +9,8 @@ import { Prisma } from '@prisma/client'
 import { directPrisma } from '../../lib/prisma'
 import { logPlatformAction, SYSTEM_ACTOR } from './audit'
 import { demoAiWhere, effectiveAiQuota } from '../../lib/demo-limits'
+import { ensureGenericClient } from '../ari/clients/service'
+import { ensureGenericSupplier } from '../nira/suppliers/service'
 
 const MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
 
@@ -165,6 +167,11 @@ export async function createTenantWithAdmin(input: CreateTenantInput, actorId: s
   const sub = isDemo ? null : await directPrisma.subscription.create({
     data: { tenantId: tenant.id, amount: new Prisma.Decimal(input.amount ?? 0), currency, status: 'active' },
   })
+
+  // HU-154 — cada tenant nace con su contraparte genérica única: "Consumidor final" (ARI) y
+  // "Proveedor ocasional" (NIRA). Idempotente y con RLS propio (nunca compartido entre tenants).
+  await ensureGenericClient(directPrisma, tenant.id)
+  await ensureGenericSupplier(directPrisma, tenant.id)
 
   await logPlatformAction({
     platformAdminId: actorId, tenantId: tenant.id, action: 'tenant.create', reason: input.reason, ip,

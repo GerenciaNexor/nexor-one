@@ -1,9 +1,37 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { Role } from '@nexor/shared'
 import { prisma } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
 import { hasMinRole } from '../../../lib/guards'
 import type { CreateClientInput, UpdateClientInput, ClientQuery, CreateInteractionInput } from './schema'
+
+// ─── HU-154 — Cliente genérico "Consumidor final" (único por tenant) ────────────
+/** Nombre visible del cliente genérico de mostrador. */
+export const GENERIC_CLIENT_NAME = 'Consumidor final'
+type DbClient = PrismaClient | Prisma.TransactionClient
+
+/**
+ * Garantiza que exista el "Consumidor final" del tenant (idempotente). Es un cliente REAL con
+ * tenant_id → sujeto al RLS de `clients`, jamás global. El índice único parcial evita duplicados;
+ * ante una carrera (P2002) se relee. `db` = proxy por-request (RLS) o directPrisma (creación de tenant).
+ */
+export async function ensureGenericClient(db: DbClient, tenantId: string): Promise<string> {
+  const existing = await db.client.findFirst({ where: { tenantId, isGeneric: true }, select: { id: true } })
+  if (existing) return existing.id
+  try {
+    const created = await db.client.create({
+      data:   { tenantId, name: GENERIC_CLIENT_NAME, isGeneric: true, source: 'manual' },
+      select: { id: true },
+    })
+    return created.id
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === 'P2002') {
+      const again = await db.client.findFirst({ where: { tenantId, isGeneric: true }, select: { id: true } })
+      if (again) return again.id
+    }
+    throw err
+  }
+}
 
 // ─── Selects ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +52,7 @@ const CLIENT_SELECT = {
   assignedTo: true,
   branchId:   true,
   isActive:   true,
+  isGeneric:     true, // HU-154
   isFavorite:    true,
   discountType:  true,
   discountValue: true,
@@ -69,31 +98,38 @@ export async function listClients(
 ) {
   const isManager = hasMinRole(role, 'AREA_MANAGER')
 
+  // HU-154 — asegurar el "Consumidor final" del tenant antes de listar (aparece en el dropdown).
+  await ensureGenericClient(prisma, tenantId)
+
+  // Se usa AND para poder combinar el OR de visibilidad (asignado o genérico) con el OR de búsqueda.
   const where: Prisma.ClientWhereInput = {
     tenantId,
-    // OPERATIVE solo ve sus clientes asignados
-    ...(!isManager ? { assignedTo: userId } : {}),
-    ...(query.source ? { source: query.source } : {}),
-    ...(query.favorite ? { isFavorite: query.favorite === 'true' } : {}),
-    ...(query.assignedTo === 'me'
-      ? { assignedTo: userId }
-      : query.assignedTo ? { assignedTo: query.assignedTo } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { name:    { contains: query.search, mode: 'insensitive' } },
-            { email:   { contains: query.search, mode: 'insensitive' } },
-            { phone:   { contains: query.search, mode: 'insensitive' } },
-            { company: { contains: query.search, mode: 'insensitive' } },
-          ],
-        }
-      : {}),
+    AND: [
+      // OPERATIVE solo ve sus clientes asignados — pero el genérico es visible para todos.
+      ...(!isManager ? [{ OR: [{ assignedTo: userId }, { isGeneric: true }] }] : []),
+      ...(query.source ? [{ source: query.source }] : []),
+      ...(query.favorite ? [{ isFavorite: query.favorite === 'true' }] : []),
+      ...(query.assignedTo === 'me'
+        ? [{ assignedTo: userId }]
+        : query.assignedTo ? [{ assignedTo: query.assignedTo }] : []),
+      ...(query.search
+        ? [{
+            OR: [
+              { name:    { contains: query.search, mode: 'insensitive' as const } },
+              { email:   { contains: query.search, mode: 'insensitive' as const } },
+              { phone:   { contains: query.search, mode: 'insensitive' as const } },
+              { company: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }]
+        : []),
+    ],
   }
 
   const clients = await prisma.client.findMany({
     where,
     select:  CLIENT_SELECT,
-    orderBy: { createdAt: 'desc' },
+    // HU-154 — el genérico ("Consumidor final") aparece primero en el listado/dropdown.
+    orderBy: [{ isGeneric: 'desc' }, { createdAt: 'desc' }],
   })
   return { data: clients.map(toApiClient), total: clients.length }
 }
@@ -194,9 +230,11 @@ export async function updateClient(
 export async function deactivateClient(tenantId: string, clientId: string) {
   const existing = await prisma.client.findFirst({
     where:  { id: clientId, tenantId },
-    select: { id: true },
+    select: { id: true, isGeneric: true },
   })
   if (!existing) throw { statusCode: 404, message: 'Cliente no encontrado', code: 'NOT_FOUND' }
+  // HU-154 — el "Consumidor final" es un registro del sistema: no se desactiva ni se borra.
+  if (existing.isGeneric) throw { statusCode: 422, message: 'El "Consumidor final" no se puede desactivar', code: 'GENERIC_PROTECTED' }
 
   const client = await prisma.client.update({
     where: { id: clientId },

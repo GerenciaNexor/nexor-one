@@ -477,12 +477,13 @@ Clientes y prospectos de la empresa. Un cliente puede existir aunque nunca haya 
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal que lo atiende |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el cliente está activo |
 | `is_favorite` | `BOOLEAN` | NOT NULL, DEFAULT false | Cliente favorito (HU-124) |
+| `is_generic` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-154** — "Consumidor final": cliente genérico de mostrador. **Único por tenant** (índice único parcial). Se comporta como cualquier cliente |
 | `discount_type` | `VARCHAR(10)` | NULL | `'percent'` (0-100) \| `'amount'` (monto fijo) \| NULL (HU-124) |
 | `discount_value` | `DECIMAL(15,2)` | NULL | Valor del descuento manual preferente; NULL si no hay (HU-124) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`
+**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`, **`(tenant_id) WHERE is_generic` UNIQUE parcial** (HU-154 — un solo "Consumidor final" por tenant)
 
 **Favorito + descuento (HU-124):** marca informativa para el equipo de ventas. `discount_type` y
 `discount_value` van juntos (ambos NULL = sin descuento). El descuento **no** dispara envíos
@@ -642,6 +643,7 @@ Proveedores de la empresa.
 | `payment_terms` | `INTEGER` | NULL | Días de crédito (ej: 30, 60, 90) |
 | `notes` | `TEXT` | NULL | Notas internas |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el proveedor está activo |
+| `is_generic` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-154** — "Proveedor ocasional": proveedor genérico. **Único por tenant** (índice único parcial). Se comporta como cualquier proveedor |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 

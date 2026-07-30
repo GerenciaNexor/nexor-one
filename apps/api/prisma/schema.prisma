@@ -397,6 +397,9 @@ model Client {
   assignedTo    String?  @map("assigned_to") @db.VarChar(30)
   branchId      String?  @map("branch_id") @db.VarChar(30)
   isActive      Boolean  @default(true) @map("is_active")
+  /// HU-154 — "Consumidor final": cliente genérico ÚNICO por tenant (un solo registro con is_generic=true,
+  /// garantizado por índice único parcial). Se comporta como cualquier cliente; no se borra ni duplica.
+  isGeneric     Boolean  @default(false) @map("is_generic")
   /// HU-124 — cliente favorito + descuento manual preferente (informativo: no dispara envíos).
   isFavorite    Boolean  @default(false) @map("is_favorite")
   /// 'percent' (0-100) | 'amount' (monto fijo) | null si no hay descuento.
@@ -687,6 +690,9 @@ model Supplier {
   paymentTerms Int?    @map("payment_terms")
   notes        String? @db.Text
   isActive     Boolean @default(true) @map("is_active")
+  /// HU-154 — "Proveedor ocasional": proveedor genérico ÚNICO por tenant (un solo registro con
+  /// is_generic=true, garantizado por índice único parcial). Se comporta como cualquier proveedor.
+  isGeneric    Boolean @default(false) @map("is_generic")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
