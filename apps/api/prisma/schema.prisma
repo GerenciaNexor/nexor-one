@@ -699,7 +699,16 @@ model Rental {
   quantity   Decimal   @db.Decimal(10, 2)
   /// active | returned. Solo los `active` cuentan como alquilado (reducen el disponible).
   status     String    @default("active") @db.VarChar(20)
+  /// HU-159 — cobro: `fixed` (monto fijo) | `daily` (tarifa por día). El total se resuelve en HU-160.
+  chargeType String    @default("fixed") @map("charge_type") @db.VarChar(20)
+  /// Monto fijo pactado (cuando chargeType='fixed').
+  fixedAmount Decimal? @map("fixed_amount") @db.Decimal(15, 2)
+  /// Tarifa por día (cuando chargeType='daily').
+  dailyRate   Decimal? @map("daily_rate") @db.Decimal(15, 2)
+  /// Depósito dejado por el cliente. NO es ingreso todavía (se resuelve en la devolución — HU-162).
+  deposit     Decimal  @default(0) @db.Decimal(15, 2)
   rentedAt   DateTime  @default(now()) @map("rented_at") @db.Timestamptz(6)
+  /// Fecha de retorno (fija) o estimada (por días).
   dueAt      DateTime? @map("due_at") @db.Timestamptz(6)
   returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
   notes      String?   @db.Text

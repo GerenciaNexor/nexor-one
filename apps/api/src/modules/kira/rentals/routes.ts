@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateRentalSchema, ReturnRentalSchema, RentalQuerySchema } from './schema'
-import { createRental, returnRental, listRentals } from './service'
+import { createRental, returnRental, listRentals, listRentalClients } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { z2j, listRes, objRes, idParam, stdErrors, bearerAuth } from '../../../lib/openapi'
 
@@ -41,7 +41,16 @@ export async function rentalsRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) { return errReply(reply, err) }
   })
 
-  /** GET /v1/kira/rentals — historial de alquileres (filtros: status/producto/sucursal). */
+  /** GET /v1/kira/rentals/clients — clientes para el selector de alquiler (incluye "Consumidor final"). */
+  app.get('/clients', {
+    schema: { tags: ['KIRA'], summary: 'Clientes para alquiler', security: bearerAuth, response: { 200: listRes, ...stdErrors } },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
+    const result = await listRentalClients(request.user.tenantId)
+    return reply.code(200).send(result)
+  })
+
+  /** GET /v1/kira/rentals — historial de alquileres (filtros: status/producto/sucursal/cliente). */
   app.get('/', {
     schema: { tags: ['KIRA'], summary: 'Listar alquileres', security: bearerAuth, querystring: z2j(RentalQuerySchema), response: { 200: listRes, ...stdErrors } },
     preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),

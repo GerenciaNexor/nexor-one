@@ -1067,11 +1067,14 @@ transacción). Base del módulo de alquiler (HU-159–163).
 | `id` | VARCHAR(30) PK | CUID |
 | `tenant_id` | VARCHAR(30) FK | Empresa (RLS) |
 | `product_id` / `branch_id` | VARCHAR(30) FK | Producto y sucursal del alquiler |
-| `client_id` | VARCHAR(30) NULL | A quién se alquiló (opcional; lo usa HU-159) |
+| `client_id` | VARCHAR(30) NULL | A quién se alquiló (la API lo exige desde HU-159; incluye "Consumidor final") |
 | `user_id` | VARCHAR(30) NULL | Quién registró |
 | `quantity` | DECIMAL(10,2) | Unidades alquiladas (CHECK > 0) |
 | `status` | VARCHAR(20) | `active` \| `returned`. Solo los `active` cuentan como alquilado |
-| `rented_at` / `due_at` / `returned_at` | TIMESTAMPTZ | Salida · vencimiento opcional · devolución |
+| `charge_type` | VARCHAR(20) | **HU-159** — `fixed` (monto fijo) \| `daily` (tarifa por día) |
+| `fixed_amount` / `daily_rate` | DECIMAL(15,2) NULL | **HU-159** — precio según el tipo de cobro (CHECK ≥ 0) |
+| `deposit` | DECIMAL(15,2) | **HU-159** — depósito del cliente (NO es ingreso aún — HU-162). CHECK ≥ 0 |
+| `rented_at` / `due_at` / `returned_at` | TIMESTAMPTZ | Salida · fecha de retorno (fija/estimada) · devolución |
 | `notes` | TEXT NULL | Notas |
 
 **RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). **Operaciones** (`/v1/kira/rentals`):

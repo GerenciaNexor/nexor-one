@@ -214,7 +214,15 @@ salida **temporal**: no baja el total, sube lo alquilado (baja el disponible); l
 (baja el total). **Tanto la venta como el alquiler solo pueden tomar del disponible** — nunca de unidades
 ya alquiladas —, y ninguna salida/ajuste puede dejar el total por debajo de lo alquilado. Los alquileres
 viven en la tabla `rentals` (no tocan `stock_movements`, así HU-128 queda intacta). Endpoints:
-`POST /v1/kira/rentals` (alquilar), `POST /v1/kira/rentals/:id/return` (devolver), `GET /v1/kira/rentals`.
+`POST /v1/kira/rentals` (alquilar), `POST /v1/kira/rentals/:id/return` (devolver), `GET /v1/kira/rentals`,
+`GET /v1/kira/rentals/clients` (selector de clientes, incluye "Consumidor final").
+
+**Registrar un alquiler (HU-159)**  
+Desde **KIRA → Alquileres** se registra un alquiler eligiendo **cliente** (mismo modelo que ARI, incluye
+"Consumidor final"), **producto** (solo los marcados alquiler/ambos) y **cantidad**. El cobro puede ser
+**monto fijo** (con fecha de retorno) o **por días** (tarifa diaria + fecha estimada), y se guarda el
+**depósito** dejado por el cliente. Al crearse baja el **disponible** (no el total, HU-158) y no se puede
+alquilar más de lo disponible. El depósito **no es ingreso todavía** (se resuelve en la devolución, HU-162).
 
 **Quién mueve el stock (auditoría HU-128):**
 

@@ -1,10 +1,16 @@
 import { prisma } from '../../../lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { ensureGenericClient } from '../../ari/clients/service'
 import type { CreateRentalInput, ReturnRentalInput, RentalQuery } from './schema'
 
 function num(v: unknown): number {
   const n = parseFloat(String(v))
   return isNaN(n) ? 0 : n
+}
+function numN(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  const n = parseFloat(String(v))
+  return isNaN(n) ? null : n
 }
 function safe(v: unknown): number {
   return Math.max(0, num(v))
@@ -12,8 +18,8 @@ function safe(v: unknown): number {
 
 const RENTAL_SELECT = {
   id: true, tenantId: true, productId: true, branchId: true, clientId: true, userId: true,
-  quantity: true, status: true, rentedAt: true, dueAt: true, returnedAt: true, notes: true,
-  createdAt: true, updatedAt: true,
+  quantity: true, status: true, chargeType: true, fixedAmount: true, dailyRate: true, deposit: true,
+  rentedAt: true, dueAt: true, returnedAt: true, notes: true, createdAt: true, updatedAt: true,
   product: { select: { sku: true, name: true, unit: true } },
   branch:  { select: { name: true } },
   client:  { select: { name: true } },
@@ -22,7 +28,25 @@ const RENTAL_SELECT = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toApi(r: any) {
-  return { ...r, quantity: num(r.quantity) }
+  return {
+    ...r,
+    quantity:    num(r.quantity),
+    fixedAmount: numN(r.fixedAmount),
+    dailyRate:   numN(r.dailyRate),
+    deposit:     num(r.deposit),
+  }
+}
+
+/** HU-159 — Clientes para el selector de alquiler (accesible desde KIRA, sin depender de ARI).
+ *  Garantiza el "Consumidor final" (HU-154) y lo lista primero. */
+export async function listRentalClients(tenantId: string) {
+  await ensureGenericClient(prisma, tenantId)
+  const data = await prisma.client.findMany({
+    where:   { tenantId, isActive: true },
+    select:  { id: true, name: true, isGeneric: true },
+    orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }],
+  })
+  return { data, total: data.length }
 }
 
 /**
@@ -68,17 +92,25 @@ export async function createRental(tenantId: string, userId: string, input: Crea
       }
     }
 
+    const due = new Date(input.dueAt)
+    if (isNaN(due.getTime())) throw { statusCode: 400, message: 'Fecha de retorno inválida', code: 'VALIDATION_ERROR' }
+
     const rental = await tx.rental.create({
       data: {
         tenantId,
-        productId: input.productId,
-        branchId:  input.branchId,
-        clientId:  input.clientId ?? null,
+        productId:   input.productId,
+        branchId:    input.branchId,
+        clientId:    input.clientId ?? null,
         userId,
-        quantity:  input.quantity,
-        status:    'active',
-        dueAt:     input.dueAt ? new Date(input.dueAt) : null,
-        notes:     input.notes ?? null,
+        quantity:    input.quantity,
+        status:      'active',
+        chargeType:  input.chargeType,
+        // Solo se guarda el precio del tipo de cobro elegido; el otro queda null.
+        fixedAmount: input.chargeType === 'fixed' ? input.fixedAmount : null,
+        dailyRate:   input.chargeType === 'daily' ? input.dailyRate   : null,
+        deposit:     input.deposit,
+        dueAt:       due,
+        notes:       input.notes ?? null,
       },
       select: RENTAL_SELECT,
     })
@@ -138,6 +170,7 @@ export async function listRentals(tenantId: string, query: RentalQuery) {
     ...(query.status    ? { status:    query.status }    : {}),
     ...(query.productId ? { productId: query.productId } : {}),
     ...(query.branchId  ? { branchId:  query.branchId }  : {}),
+    ...(query.clientId  ? { clientId:  query.clientId }  : {}),
   }
   const [rows, total] = await Promise.all([
     prisma.rental.findMany({
