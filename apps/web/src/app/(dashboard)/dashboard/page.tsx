@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api-client'
 import { getCache, setCache } from '@/lib/page-cache'
+import { RemindersPanel } from '@/components/reminders/RemindersPanel'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,26 @@ const NOTIF_ICONS: Record<string, { color: string; bg: string; icon: React.React
 
 interface POItem        { id: string; orderNumber: string; supplier: { name: string } | null; total: number; createdAt: string }
 interface StockAlert    { productId: string; productName: string; sku: string; branchName: string; currentQty: number; minQty: number; deficit: number }
-interface NotificationItem { id: string; type: string; title: string; message: string; link: string | null; createdAt: string }
+interface NotificationItem { id: string; type: string; module: string | null; title: string; message: string; link: string | null; createdAt: string }
+
+// HU-156 — separa las notificaciones del Inicio por tipo/sección (categoría legible).
+const MODULE_CATEGORY: Record<string, string> = {
+  KIRA: 'Inventario', NIRA: 'Compras', ARI: 'Ventas', AGENDA: 'Agenda', VERA: 'Finanzas',
+}
+function notifCategory(n: NotificationItem): string {
+  if (n.type === 'reminder') return 'Recordatorios'
+  return (n.module && MODULE_CATEGORY[n.module]) || 'General'
+}
+/** Agrupa notificaciones por categoría preservando el orden de aparición. */
+function groupNotifications(list: NotificationItem[]): [string, NotificationItem[]][] {
+  const map = new Map<string, NotificationItem[]>()
+  for (const n of list) {
+    const cat = notifCategory(n)
+    if (!map.has(cat)) map.set(cat, [])
+    map.get(cat)!.push(n)
+  }
+  return [...map.entries()]
+}
 interface Appointment   { id: string; clientName: string | null; client: { name: string } | null; serviceType: { name: string } | null; startAt: string; status: string }
 
 // ─── Componentes internos ─────────────────────────────────────────────────────
@@ -441,29 +461,39 @@ export default function InicioPage() {
         {/* ─ Columna derecha ──────────────────────────────────────────────── */}
         <div className="space-y-6">
 
-          {/* Notificaciones sin leer (universal) */}
+          {/* Recordatorios (HU-156) */}
+          <RemindersPanel variant="compact" />
+
+          {/* Notificaciones sin leer — separadas por tipo/sección (HU-156) */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
             <SectionHeader title="Notificaciones sin leer" count={totalUnread} href="/notifications" linkLabel="Ver todas" />
             {notifications === null ? <BlockSkeleton />
               : notifications.length === 0 ? <EmptyState text="Sin notificaciones pendientes" />
               : (
-                <div className="space-y-2">
-                  {notifications.map((n) => {
-                    const style = NOTIF_ICONS[n.type] ?? { color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-700/40', icon: null }
-                    const body = (
-                      <div className={`flex gap-3 rounded-lg p-3 ${style.bg}`}>
-                        <div className={`mt-0.5 shrink-0 ${style.color}`}>{style.icon}</div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{n.title}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{n.message}</p>
-                          <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.createdAt)}</p>
-                        </div>
+                <div className="space-y-4">
+                  {groupNotifications(notifications).map(([category, items]) => (
+                    <div key={category}>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{category}</p>
+                      <div className="space-y-2">
+                        {items.map((n) => {
+                          const style = NOTIF_ICONS[n.type] ?? { color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-700/40', icon: null }
+                          const body = (
+                            <div className={`flex gap-3 rounded-lg p-3 ${style.bg}`}>
+                              <div className={`mt-0.5 shrink-0 ${style.color}`}>{style.icon}</div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{n.title}</p>
+                                <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{n.message}</p>
+                                <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(n.createdAt)}</p>
+                              </div>
+                            </div>
+                          )
+                          return n.link
+                            ? <Link key={n.id} href={n.link} className="block transition-opacity hover:opacity-80">{body}</Link>
+                            : <div key={n.id}>{body}</div>
+                        })}
                       </div>
-                    )
-                    return n.link
-                      ? <Link key={n.id} href={n.link} className="block transition-opacity hover:opacity-80">{body}</Link>
-                      : <div key={n.id}>{body}</div>
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
           </div>

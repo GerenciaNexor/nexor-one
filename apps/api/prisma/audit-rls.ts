@@ -1,4 +1,4 @@
-/* HU-135 — Auditoría de aislamiento cross-tenant de las 31 tablas con RLS, bajo el rol
+/* HU-135 — Auditoría de aislamiento cross-tenant de las 32 tablas con RLS, bajo el rol
  * REAL nexor_app (NOSUPERUSER NOBYPASSRLS). BD temporal Railway (nunca prod). Cubre:
  *   catálogo (RLS enabled+forced + política) · lectura cross-tenant · escritura
  *   (UPDATE/DELETE/INSERT) cross-tenant · fail-safe sin contexto · concurrencia. */
@@ -17,8 +17,10 @@ const TABLES = [
   'suppliers','purchase_orders','supplier_ratings','service_types','availability','appointments',
   'transactions','conversations','conversation_messages','bulk_upload_logs','chat_messages',
   'dashboard_daily_rollups',
-  // HU-135-fix — 5 tablas restantes (cobertura RLS completa: 31 tablas).
+  // HU-135-fix — 5 tablas restantes (cierre 26→31).
   'blocked_dates','appointment_cancel_tokens','transaction_categories','cost_centers','monthly_budgets',
+  // HU-156 — recordatorios universales.
+  'reminders',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -58,6 +60,7 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.transactionCategory.create({ data: { tenantId: t, name: 'Cat', type: 'income' } })
   await db.costCenter.create({ data: { tenantId: t, name: 'CC' } })
   await db.monthlyBudget.create({ data: { tenantId: t, year: 2026, month: 1, amount: new Prisma.Decimal(1000) } })
+  await db.reminder.create({ data: { tenantId: t, userId: u, title: 'R', remindAt: new Date() } })
 }
 
 async function main(): Promise<void> {

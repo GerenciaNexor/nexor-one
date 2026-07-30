@@ -1,6 +1,35 @@
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { prisma } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
 import type { CreateSupplierInput, UpdateSupplierInput, SupplierQuery } from './schema'
+
+// ─── HU-154 — Proveedor genérico "Proveedor ocasional" (único por tenant) ───────
+/** Nombre visible del proveedor genérico ocasional. */
+export const GENERIC_SUPPLIER_NAME = 'Proveedor ocasional'
+type DbClient = PrismaClient | Prisma.TransactionClient
+
+/**
+ * Garantiza que exista el "Proveedor ocasional" del tenant (idempotente). Proveedor REAL con
+ * tenant_id → sujeto al RLS de `suppliers`, jamás global. Índice único parcial evita duplicados;
+ * ante carrera (P2002) se relee. `db` = proxy por-request (RLS) o directPrisma (creación de tenant).
+ */
+export async function ensureGenericSupplier(db: DbClient, tenantId: string): Promise<string> {
+  const existing = await db.supplier.findFirst({ where: { tenantId, isGeneric: true }, select: { id: true } })
+  if (existing) return existing.id
+  try {
+    const created = await db.supplier.create({
+      data:   { tenantId, name: GENERIC_SUPPLIER_NAME, isGeneric: true },
+      select: { id: true },
+    })
+    return created.id
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === 'P2002') {
+      const again = await db.supplier.findFirst({ where: { tenantId, isGeneric: true }, select: { id: true } })
+      if (again) return again.id
+    }
+    throw err
+  }
+}
 
 // ─── Select ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +46,7 @@ const SUPPLIER_SELECT = {
   paymentTerms: true,
   notes:        true,
   isActive:     true,
+  isGeneric:    true, // HU-154
   createdAt:    true,
   updatedAt:    true,
   score: {
@@ -87,6 +117,9 @@ async function assertTaxIdUnique(
 export async function listSuppliers(tenantId: string, query: SupplierQuery) {
   const isActive = query.active === 'false' ? false : true
 
+  // HU-154 — asegurar el "Proveedor ocasional" del tenant antes de listar (aparece en el dropdown).
+  await ensureGenericSupplier(prisma, tenantId)
+
   const data = await prisma.supplier.findMany({
     where: {
       tenantId,
@@ -101,7 +134,8 @@ export async function listSuppliers(tenantId: string, query: SupplierQuery) {
         : {}),
     },
     select:  SUPPLIER_SELECT,
-    orderBy: { name: 'asc' },
+    // HU-154 — el genérico ("Proveedor ocasional") aparece primero en el listado/dropdown.
+    orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }],
   })
 
   return { data, total: data.length }
@@ -224,11 +258,13 @@ export async function getSuppliersRanking(tenantId: string) {
 export async function deactivateSupplier(tenantId: string, supplierId: string) {
   const existing = await prisma.supplier.findFirst({
     where:  { id: supplierId, tenantId },
-    select: { isActive: true },
+    select: { isActive: true, isGeneric: true },
   })
   if (!existing) {
     throw { statusCode: 404, message: 'Proveedor no encontrado', code: 'NOT_FOUND' }
   }
+  // HU-154 — el "Proveedor ocasional" es un registro del sistema: no se desactiva ni se borra.
+  if (existing.isGeneric) throw { statusCode: 422, message: 'El "Proveedor ocasional" no se puede desactivar', code: 'GENERIC_PROTECTED' }
   if (!existing.isActive) {
     throw { statusCode: 409, message: 'El proveedor ya está desactivado', code: 'ALREADY_INACTIVE' }
   }

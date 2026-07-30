@@ -58,6 +58,28 @@ etapa `isFinalWon`, HU-126, consistente con el Dashboard). Filtros por **etapa**
 **Cotizaciones automáticas**  
 ARI genera cotizaciones numeradas con productos del catálogo, precios, descuentos y fecha de validez. Cuando el cliente acepta, la venta pasa a VERA automáticamente como ingreso.
 
+> **HU-155 — detalle del negocio/venta.** Al hacer clic en una tarjeta de **Negocios en curso** o en
+> una fila de **Ventas realizadas** se abre el **mismo** componente de detalle (`DealDetailModal`): un
+> negocio en proceso y una venta cerrada son el mismo deal en distinto estado. Muestra datos del negocio
+> (monto, etapa, probabilidad, cierre estimado, vendedor, días en la etapa), el **cliente** con enlace a
+> su ficha, las **cotizaciones vinculadas** y las **interacciones/notas**; con acciones **mover de etapa,
+> marcar ganado/perdido y editar** (`PUT /v1/ari/deals/:id`). Respeta rol y sucursal (un OPERATIVE solo
+> abre/edita sus deals asignados). Ventas realizadas ya **no** redirige al pipeline.
+
+> **HU-154 — contraparte obligatoria con genérico.** El cliente sigue siendo **obligatorio**, pero
+> entre las opciones aparece **"Consumidor final"** (para ventas de mostrador sin datos). Es un cliente
+> REAL, **único por tenant** (`clients.is_generic`, índice único parcial), creado de forma idempotente
+> (al crear el tenant y al listar) y **sujeto a RLS** — jamás compartido entre empresas. Se comporta como
+> cualquier cliente aguas abajo (reportes, VERA, stock): sin casos especiales. NIRA tiene su equivalente
+> **"Proveedor ocasional"** (`suppliers.is_generic`).
+
+> **HU-153 — el catálogo es el camino principal.** En el modal de nueva cotización, cada línea empieza
+> por el **buscador del producto del catálogo (KIRA)**; al elegirlo se **auto-rellenan descripción y
+> precio** (editables) y la línea queda **vinculada al producto real** (sostiene el movimiento de stock,
+> HU-128). El texto libre de la descripción queda como **excepción** para ítems que no están en el
+> catálogo (un servicio, algo puntual). En NIRA (órdenes de compra) el producto ya era obligatorio; su
+> selector pasó a un **buscador** consistente que auto-rellena el costo. No cambia el cálculo de totales.
+
 **Integración con WhatsApp y email**  
 Cuando un cliente escribe "quiero comprar X" por WhatsApp, el agente ARI crea el lead, registra la interacción y notifica al vendedor — todo sin que el vendedor haya hecho nada.
 
@@ -341,7 +363,26 @@ nunca se llama uno que daría 403, así nada queda permanentemente vacío):
 | Órdenes esperando aprobación | `GET /v1/nira/purchase-orders?status=submitted` | NIRA |
 | Borradores sin enviar | `GET /v1/nira/purchase-orders?status=draft` | NIRA |
 | Citas de hoy (agendadas/confirmadas) | `GET /v1/agenda/appointments?date=<hoy>` | AGENDA |
-| Notificaciones sin leer | `GET /v1/notifications?isRead=false` | universal |
+| **Recordatorios** (HU-156/157) | `GET /v1/reminders?status=pending` | universal |
+| Notificaciones sin leer (**separadas por tipo/sección**, HU-156) | `GET /v1/notifications?isRead=false` | universal |
+
+> **Recordatorios universales (HU-156).** Cualquier usuario crea recordatorios (para una tarea, cita,
+> cliente, venta, compra, o libres) con **título, fecha/hora, nivel de alerta** (normal/urgente/crítico,
+> solo visual por color) y **recurrencia** (cada hora/día/semana/mes o única). Se ven en el Inicio
+> (sección "Recordatorios") y, al dispararse, en Notificaciones. Un **job** (`reminder-fire`, cada 1 min)
+> los dispara a su hora —no depende de la app abierta— y genera la notificación; los recurrentes se
+> reprograman, los de una vez se desactivan. Son por **tenant/usuario** (RLS). CRUD en `/v1/reminders`.
+> Además, en el Inicio las notificaciones quedan **agrupadas por tipo/sección** para identificarlas mejor.
+>
+> **Gestión y finalización (HU-157).** Se crean/gestionan también desde **Agenda** (`/agenda/reminders`),
+> con el mismo modal/endpoint que en Inicio. Al hacer clic en uno se abre un **detalle** con *Editar*,
+> *Marcar como hecho* y (recurrentes) *Finalizar serie*. Cada recordatorio tiene **estado**
+> `pending | done` (columna `status`, HU-157): un pendiente **no se puede eliminar** —primero se marca
+> hecho (422 `REMINDER_PENDING`)—; así se evita borrar pendientes sin atender. Marcar hecho un
+> **recurrente** cierra la ocurrencia actual y **reprograma la siguiente** (sigue pendiente); *Finalizar
+> serie* lo apaga para siempre. Acción de marcar hecho: `POST /v1/reminders/:id/complete` (`{ series: true }`
+> para finalizar la serie). El **job de disparo no cambió** (misma lógica de recurrencia, ahora en un util
+> compartido `modules/reminders/recurrence.ts`).
 
 Cada bloque **enlaza a su sección** (acción directa, no solo información). **Visibilidad por rol:**
 `TENANT_ADMIN/BRANCH_ADMIN` ven todos los módulos activos (transversales); `AREA_MANAGER/OPERATIVE`

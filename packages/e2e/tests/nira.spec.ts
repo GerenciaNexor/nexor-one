@@ -23,6 +23,7 @@ test.describe('Flujo NIRA — orden de compra', () => {
   let supplierId:   string
   let supplierName: string
   let productId:    string
+  let productSku:   string
   let poId:         string
 
   test.beforeAll(async () => {
@@ -42,8 +43,9 @@ test.describe('Flujo NIRA — orden de compra', () => {
 
     // Crear un producto KIRA para garantizar que el modal de OC tenga al menos uno disponible
     // (KIRA afterAll borra su propio producto, por lo que NIRA necesita crear el suyo)
+    productSku = `NIRA-E2E-${Date.now()}`
     const product = await api(token).post<Product>('/v1/kira/products', {
-      sku:  `NIRA-E2E-${Date.now()}`,
+      sku:  productSku,
       name: `Producto NIRA E2E ${Date.now()}`,
       unit: 'und',
     })
@@ -82,12 +84,15 @@ test.describe('Flujo NIRA — orden de compra', () => {
     // Verificar que el DOM refleja la selección del proveedor (confirma que React procesó el onChange)
     await expect(supplierSelect).toHaveValue(supplierId)
 
-    // Tercer select del form = producto (segundo es sucursal). Esperar que tenga opciones.
-    const productSelect = form.locator('select').filter({ hasText: 'Seleccionar producto' }).first()
-    await expect(productSelect.locator('option').nth(1)).toBeAttached({ timeout: 35_000 })
-    await productSelect.selectOption({ index: 1 })
-    // Verificar que el DOM refleja la selección del producto
-    await expect(productSelect).not.toHaveValue('')
+    // HU-153 — el producto ya no es un <select>: es un buscador del catálogo (NiraProductPicker).
+    // Escribir el SKU del producto sembrado y elegir la opción que aparece en el dropdown.
+    const productSearch = form.getByTestId('po-product-search').first()
+    await productSearch.fill(productSku)
+    const firstOption = form.getByTestId('po-product-option').first()
+    await expect(firstOption).toBeVisible({ timeout: 35_000 })
+    await firstOption.click()
+    // Al elegir, el input queda con el "SKU — Nombre" (confirma que React procesó el onPick)
+    await expect(productSearch).toHaveValue(new RegExp(productSku))
 
     // Crear borrador — capturar cualquier respuesta POST (no solo 201) para diagnóstico preciso
     const draftCreated = page.waitForResponse(

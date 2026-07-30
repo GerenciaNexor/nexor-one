@@ -8,6 +8,7 @@ import type {
   ReorderStagesInput,
   CreateDealInput,
   MoveDealInput,
+  UpdateDealInput,
   DealQuery,
   RateClientInput,
 } from './schema'
@@ -199,12 +200,92 @@ export async function listDeals(
   return { data: deals.map(toDeal), total: deals.length }
 }
 
-export async function getDeal(tenantId: string, dealId: string) {
+// HU-155 — detalle completo del negocio/venta. Respeta rol y sucursal: un no-manager solo abre
+// sus deals asignados, y el filtro de sucursal acota igual que el listado (si no cumple → 404).
+export async function getDeal(
+  tenantId: string,
+  dealId:   string,
+  userId:   string,
+  role:     Role,
+  branchFilter?: string,
+) {
+  const isManager = hasMinRole(role, 'AREA_MANAGER')
   const deal = await prisma.deal.findFirst({
-    where:  { id: dealId, tenantId },
-    select: DEAL_SELECT,
+    where: {
+      id: dealId,
+      tenantId,
+      ...(!isManager ? { assignedTo: userId } : {}),
+      ...(branchFilter ? { branchId: branchFilter } : {}),
+    },
+    select: {
+      ...DEAL_SELECT,
+      lostReason: true,
+      // Cliente enriquecido (para enlazar a su ficha con contacto básico)
+      client: { select: { id: true, name: true, company: true, email: true, phone: true } },
+      // Cotizaciones vinculadas al negocio
+      quotes: {
+        select: { id: true, quoteNumber: true, status: true, total: true, validUntil: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      },
+      // Interacciones / notas del negocio (las más recientes)
+      interactions: {
+        select: { id: true, type: true, direction: true, content: true, createdAt: true, user: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      },
+    },
   })
   if (!deal) throw { statusCode: 404, message: 'Deal no encontrado', code: 'NOT_FOUND' }
+
+  return {
+    ...toDeal(deal),
+    quotes: (deal as { quotes: { total: unknown }[] }).quotes.map((q) => ({
+      ...q,
+      total: q.total != null ? parseFloat(String(q.total)) : null,
+    })),
+  }
+}
+
+// HU-155 — edición de los datos del negocio (no la etapa). Respeta rol/sucursal como getDeal.
+export async function updateDeal(
+  tenantId: string,
+  dealId:   string,
+  input:    UpdateDealInput,
+  userId:   string,
+  role:     Role,
+  branchFilter?: string,
+) {
+  const isManager = hasMinRole(role, 'AREA_MANAGER')
+  const existing = await prisma.deal.findFirst({
+    where: {
+      id: dealId,
+      tenantId,
+      ...(!isManager ? { assignedTo: userId } : {}),
+      ...(branchFilter ? { branchId: branchFilter } : {}),
+    },
+    select: { id: true },
+  })
+  if (!existing) throw { statusCode: 404, message: 'Deal no encontrado', code: 'NOT_FOUND' }
+
+  // Si cambia el cliente, validar que sea del tenant.
+  if (input.clientId) {
+    const client = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } })
+    if (!client) throw { statusCode: 404, message: 'Cliente no encontrado', code: 'NOT_FOUND' }
+  }
+
+  const deal = await prisma.deal.update({
+    where: { id: dealId },
+    data: {
+      ...(input.clientId      !== undefined && { clientId:      input.clientId }),
+      ...(input.title         !== undefined && { title:         input.title }),
+      ...(input.assignedTo    !== undefined && { assignedTo:    input.assignedTo }),
+      ...(input.branchId      !== undefined && { branchId:      input.branchId }),
+      ...(input.value         !== undefined && { value:         input.value }),
+      ...(input.probability   !== undefined && { probability:   input.probability }),
+      ...(input.expectedClose !== undefined && { expectedClose: input.expectedClose ? new Date(input.expectedClose) : null }),
+    },
+    select: DEAL_SELECT,
+  })
   return toDeal(deal)
 }
 

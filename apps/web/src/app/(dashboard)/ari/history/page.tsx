@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
+import { DealDetailModal } from '@/components/ari/DealDetailModal'
 import { getCache, setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -42,7 +42,8 @@ function dealOutcome(stage: Deal['stage']): { label: string; cls: string } {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export default function VentasHistoryPage() {
-  const router = useRouter()
+  const [detailId, setDetailId] = useState<string | null>(null) // HU-155
+  const [reloadTick, setReloadTick] = useState(0)
 
   const [deals, setDeals]     = useState<Deal[]>(() => getCache<Deal[]>('ari-history') ?? [])
   const [total, setTotal]     = useState(() => getCache<{ total: number }>('ari-history-meta')?.total ?? 0)
@@ -82,7 +83,7 @@ export default function VentasHistoryPage() {
       })
       .catch((err: unknown) => setFetchError((err as { message?: string }).message ?? 'Error al cargar el historial'))
       .finally(() => setLoading(false))
-  }, [stageId, from, to])
+  }, [stageId, from, to, reloadTick])
 
   function clearFilters(): void {
     setStageId(''); setFrom(''); setTo('')
@@ -161,7 +162,7 @@ export default function VentasHistoryPage() {
                   return (
                     <tr
                       key={d.id}
-                      onClick={() => router.push('/ari/pipeline')}
+                      onClick={() => setDetailId(d.id)}
                       className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/40"
                     >
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{d.title}</td>
@@ -185,6 +186,11 @@ export default function VentasHistoryPage() {
           </table>
         </div>
       </div>
+
+      {/* HU-155 — detalle del negocio/venta (mismo componente que en el pipeline) */}
+      {detailId && (
+        <DealDetailModal dealId={detailId} onClose={() => setDetailId(null)} onChanged={() => setReloadTick((t) => t + 1)} />
+      )}
     </div>
   )
 }

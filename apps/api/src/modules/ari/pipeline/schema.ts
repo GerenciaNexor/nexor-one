@@ -45,6 +45,17 @@ export const MoveDealSchema = z.object({
   lostReason: z.string().optional(),
 })
 
+// HU-155 — edición del deal (parcial). NO cambia la etapa (eso es MoveDeal); edita sus datos.
+export const UpdateDealSchema = z.object({
+  clientId:      z.string().min(1).optional(),
+  title:         z.string().min(1, 'El título es requerido').max(255).optional(),
+  assignedTo:    z.string().nullable().optional(),
+  branchId:      z.string().nullable().optional(),
+  value:         z.number().min(0, 'El valor no puede ser negativo').nullable().optional(),
+  probability:   z.number().int().min(0).max(100).nullable().optional(),
+  expectedClose: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)').nullable().optional(),
+})
+
 export const DealQuerySchema = z.object({
   stageId:    z.string().optional(),
   assignedTo: z.string().optional(),
@@ -67,5 +78,6 @@ export type UpdateStageInput    = z.infer<typeof UpdateStageSchema>
 export type ReorderStagesInput  = z.infer<typeof ReorderStagesSchema>
 export type CreateDealInput     = z.infer<typeof CreateDealSchema>
 export type MoveDealInput       = z.infer<typeof MoveDealSchema>
+export type UpdateDealInput     = z.infer<typeof UpdateDealSchema>
 export type DealQuery           = z.infer<typeof DealQuerySchema>
 export type RateClientInput     = z.infer<typeof RateClientSchema>

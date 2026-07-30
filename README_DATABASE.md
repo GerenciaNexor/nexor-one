@@ -477,12 +477,13 @@ Clientes y prospectos de la empresa. Un cliente puede existir aunque nunca haya 
 | `branch_id` | `VARCHAR(30)` | FK → branches.id, NULL | Sucursal que lo atiende |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el cliente está activo |
 | `is_favorite` | `BOOLEAN` | NOT NULL, DEFAULT false | Cliente favorito (HU-124) |
+| `is_generic` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-154** — "Consumidor final": cliente genérico de mostrador. **Único por tenant** (índice único parcial). Se comporta como cualquier cliente |
 | `discount_type` | `VARCHAR(10)` | NULL | `'percent'` (0-100) \| `'amount'` (monto fijo) \| NULL (HU-124) |
 | `discount_value` | `DECIMAL(15,2)` | NULL | Valor del descuento manual preferente; NULL si no hay (HU-124) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
-**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`
+**Índices:** `(tenant_id)`, `(tenant_id, assigned_to)`, `(whatsapp_id)`, `(tenant_id, is_active)`, `(tenant_id, is_favorite)`, **`(tenant_id) WHERE is_generic` UNIQUE parcial** (HU-154 — un solo "Consumidor final" por tenant)
 
 **Favorito + descuento (HU-124):** marca informativa para el equipo de ventas. `discount_type` y
 `discount_value` van juntos (ambos NULL = sin descuento). El descuento **no** dispara envíos
@@ -642,6 +643,7 @@ Proveedores de la empresa.
 | `payment_terms` | `INTEGER` | NULL | Días de crédito (ej: 30, 60, 90) |
 | `notes` | `TEXT` | NULL | Notas internas |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT true | Si el proveedor está activo |
+| `is_generic` | `BOOLEAN` | NOT NULL, DEFAULT false | **HU-154** — "Proveedor ocasional": proveedor genérico. **Único por tenant** (índice único parcial). Se comporta como cualquier proveedor |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT NOW() | Fecha de creación |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Última modificación |
 
@@ -1015,6 +1017,38 @@ ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clients
   USING (tenant_id = current_setting('app.current_tenant_id'));
 ```
+
+#### `reminders` (HU-156/157)
+
+Recordatorios **universales** por usuario/tenant: sirven para cualquier cosa (una cita, un cliente,
+una venta, una compra, o libre). Un job los dispara y genera una `notifications`.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | VARCHAR(30) PK | CUID |
+| `tenant_id` / `user_id` | VARCHAR(30) FK | Empresa (RLS) · dueño del recordatorio |
+| `title` | VARCHAR(255) | Título |
+| `description` | TEXT NULL | Nota opcional |
+| `remind_at` | TIMESTAMPTZ | Próxima hora de disparo (avanza en los recurrentes) |
+| `alert_level` | VARCHAR(20) | `normal` \| `urgent` \| `critical` — **solo visual** (color) |
+| `recurrence` | VARCHAR(20) | `none` \| `hourly` \| `daily` \| `weekly` \| `monthly` |
+| `related_type` / `related_id` | VARCHAR(30) NULL | Asociación opcional: `appointment`/`client`/`deal`/`purchase_order` |
+| `is_active` | BOOLEAN | Se desactiva al disparar un `none`; los recurrentes siguen activos |
+| `status` | VARCHAR(20) | **HU-157** — `pending` \| `done`. Un `pending` no se puede eliminar (regla de finalización) |
+| `completed_at` | TIMESTAMPTZ NULL | **HU-157** — cuándo se marcó hecho/finalizado |
+| `last_fired_at` | TIMESTAMPTZ NULL | Último disparo |
+
+**Índices:** `(tenant_id, user_id, status)` (HU-157 — listar pendientes/hechos del usuario).
+
+**RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). Aislado por `tenant_id`; el filtrado por usuario
+(cada quien ve los suyos) es de servicio. **Disparo:** job `reminder-fire` cada 1 min (directPrisma) →
+crea la notificación y reprograma (`remind_at` a la próxima ocurrencia futura) o desactiva.
+
+**Finalización (HU-157):** `POST /v1/reminders/:id/complete` marca hecho. En recurrentes cierra la
+ocurrencia actual y **reprograma** la siguiente (sigue `pending`); con `{ series: true }` finaliza la
+serie (`status='done'`, inactivo). `DELETE` exige `status='done'` (si no → 422 `REMINDER_PENDING`).
+
+---
 
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
 

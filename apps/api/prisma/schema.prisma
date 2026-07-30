@@ -89,6 +89,7 @@ model Tenant {
   integrations          Integration[]
   agentLogs             AgentLog[]
   notifications         Notification[]
+  reminders             Reminder[]
   clients               Client[]
   clientRatings         ClientRating[]
   pipelineStages        PipelineStage[]
@@ -177,6 +178,7 @@ model User {
   branch Branch? @relation(fields: [branchId], references: [id])
 
   notifications            Notification[]
+  reminders                Reminder[]
   assignedClients          Client[]              @relation("ClientAssignee")
   assignedDeals            Deal[]                @relation("DealAssignee")
   interactions             Interaction[]
@@ -375,6 +377,41 @@ model Notification {
   @@map("notifications")
 }
 
+/// HU-156 — Recordatorio UNIVERSAL por usuario/tenant. Sirve para cualquier cosa (cita, cliente,
+/// venta, compra, o libre). Un job dispara `remind_at` y genera una Notification; según `recurrence`
+/// se reprograma (`remind_at` avanza) o se desactiva. `alert_level` es visual (color) por ahora.
+model Reminder {
+  id          String    @id @default(cuid()) @db.VarChar(30)
+  tenantId    String    @map("tenant_id") @db.VarChar(30)
+  userId      String    @map("user_id") @db.VarChar(30)
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  /// Próxima hora de disparo (para recurrentes avanza tras cada disparo).
+  remindAt    DateTime  @map("remind_at") @db.Timestamptz(6)
+  /// normal | urgent | critical — solo visual (color/prioridad).
+  alertLevel  String    @default("normal") @map("alert_level") @db.VarChar(20)
+  /// none | hourly | daily | weekly | monthly.
+  recurrence  String    @default("none") @db.VarChar(20)
+  /// Asociación opcional: appointment | client | deal | purchase_order | null (libre).
+  relatedType String?   @map("related_type") @db.VarChar(30)
+  relatedId   String?   @map("related_id") @db.VarChar(30)
+  isActive    Boolean   @default(true) @map("is_active")
+  /// pending | done (HU-157). Un recordatorio pendiente no se puede eliminar; primero se marca hecho.
+  status      String    @default("pending") @db.VarChar(20)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  lastFiredAt DateTime? @map("last_fired_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([isActive, remindAt])
+  @@map("reminders")
+}
+
 // =============================================================================
 // MODULO ARI — Ventas y CRM
 // =============================================================================
@@ -397,6 +434,9 @@ model Client {
   assignedTo    String?  @map("assigned_to") @db.VarChar(30)
   branchId      String?  @map("branch_id") @db.VarChar(30)
   isActive      Boolean  @default(true) @map("is_active")
+  /// HU-154 — "Consumidor final": cliente genérico ÚNICO por tenant (un solo registro con is_generic=true,
+  /// garantizado por índice único parcial). Se comporta como cualquier cliente; no se borra ni duplica.
+  isGeneric     Boolean  @default(false) @map("is_generic")
   /// HU-124 — cliente favorito + descuento manual preferente (informativo: no dispara envíos).
   isFavorite    Boolean  @default(false) @map("is_favorite")
   /// 'percent' (0-100) | 'amount' (monto fijo) | null si no hay descuento.
@@ -687,6 +727,9 @@ model Supplier {
   paymentTerms Int?    @map("payment_terms")
   notes        String? @db.Text
   isActive     Boolean @default(true) @map("is_active")
+  /// HU-154 — "Proveedor ocasional": proveedor genérico ÚNICO por tenant (un solo registro con
+  /// is_generic=true, garantizado por índice único parcial). Se comporta como cualquier proveedor.
+  isGeneric    Boolean @default(false) @map("is_generic")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

@@ -9,6 +9,7 @@ import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders
 import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
 import { startDashboardRollupScheduler }      from './jobs/dashboard-rollup'
 import { startDemoExpiryScheduler }           from './jobs/demo-expiry'
+import { startReminderScheduler }             from './jobs/reminder-fire'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -43,6 +44,7 @@ import integrationsModule from './modules/integrations/index'
 import tenantsModule from './modules/tenants/index'
 import branchesModule from './modules/branches/index'
 import notificationsModule from './modules/notifications/index'
+import remindersModule from './modules/reminders/index'
 import adminModule from './modules/admin/index'
 import { superAdminHook } from './modules/admin/routes'
 import swaggerPlugin from './plugins/swagger'
@@ -194,6 +196,7 @@ app.register(
     api.register(tenantsModule,       { prefix: '/tenants' })
     api.register(branchesModule,      { prefix: '/branches' })
     api.register(notificationsModule, { prefix: '/notifications' })
+    api.register(remindersModule,     { prefix: '/reminders' })
     api.register(ariModule,           { prefix: '/ari' })
     api.register(kiraModule,          { prefix: '/kira' })
     api.register(usersModule,         { prefix: '/users' })
@@ -228,6 +231,7 @@ const start = async (): Promise<void> => {
     startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
     startDashboardRollupScheduler()      // Rollup diario del Dashboard (HU-127) — corre cada 24 h
     startDemoExpiryScheduler()           // HU-142 — suspende demos vencidas cada 1 h (sin borrar)
+    startReminderScheduler()             // HU-156 — dispara recordatorios cada 1 min → notificación
   } catch (err) {
     app.log.error(err)
     process.exit(1)

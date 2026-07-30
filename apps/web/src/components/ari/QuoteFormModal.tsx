@@ -149,17 +149,22 @@ function ProductSearchInput({
 
   return (
     <div className="relative">
-      <input
-        type="text"
-        value={val}
-        onChange={handleChange}
-        onFocus={() => { if (results.length && !isSelected.current) setOpen(true) }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Buscar producto KIRA…"
-        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:placeholder-slate-500"
-      />
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+        </span>
+        <input
+          type="text"
+          value={val}
+          onChange={handleChange}
+          onFocus={() => { if (results.length && !isSelected.current) setOpen(true) }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Escribe para buscar en tu inventario (nombre o SKU)…"
+          className={`w-full rounded-lg border py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 ${isSelected.current ? 'border-blue-300 bg-blue-50/40 dark:border-blue-700 dark:bg-blue-900/10' : 'border-slate-300 dark:border-slate-600'}`}
+        />
+      </div>
       {open && results.length > 0 && (
-        <div className="absolute left-0 top-full z-20 mt-0.5 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-900">
+        <div className="absolute left-0 top-full z-20 mt-0.5 w-full min-w-[16rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-900">
           {results.map((p) => (
             <button
               key={p.id}
@@ -552,19 +557,54 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
 
                     return (
                       <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                        <div className="grid grid-cols-12 gap-2">
 
-                          {/* Descripción */}
+                        {/* ── Producto del catálogo — camino PRINCIPAL ── */}
+                        <div>
+                          <label className="mb-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Producto del catálogo
+                            <span className="font-normal text-slate-400">· elígelo del inventario y se rellenan descripción y precio</span>
+                            {line._ocrNoMatch && !line.productId && (
+                              <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                                No existe en catálogo
+                              </span>
+                            )}
+                          </label>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <div className="min-w-[15rem] flex-1">
+                              <ProductSearchInput
+                                selectedId={line.productId}
+                                initialLabel={line._catalogName}
+                                onSelect={(id, name, price) => handleProductChange(idx, id, name, price)}
+                              />
+                            </div>
+                            {/* Stock info */}
+                            {line.productId && stock !== undefined && (
+                              stock === null ? (
+                                <span className="text-xs text-slate-400">Consultando stock…</span>
+                              ) : (
+                                <span className={`text-xs font-medium ${stock.totalStock > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  Stock: {stock.totalStock} {stock.unit}
+                                  {stock.branches.length > 1 && (
+                                    <span className="ml-1 font-normal text-slate-400">
+                                      ({stock.branches.map((b) => `${b.branchName}: ${b.quantity}`).join(', ')})
+                                    </span>
+                                  )}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ── Detalle del ítem (descripción auto-rellenada + cantidades) ── */}
+                        <div className="mt-3 grid grid-cols-12 gap-2">
+
+                          {/* Descripción — se rellena al elegir; texto libre solo si no está en catálogo */}
                           <div className="col-span-12 sm:col-span-5">
                             <label className="mb-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
                               Descripción *
+                              <span className="font-normal text-slate-400">(o texto libre si no está en catálogo)</span>
                               {line._conf?.description === 'low' && (
                                 <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Verificar</span>
-                              )}
-                              {line._ocrNoMatch && !line.productId && (
-                                <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-                                  No existe en catálogo
-                                </span>
                               )}
                             </label>
                             <input
@@ -573,7 +613,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
                               onChange={(e) => setLine(idx, { description: e.target.value })}
                               className={confInp(line._conf?.description)}
                               title={line._conf?.description === 'low' ? 'Verificar este valor' : undefined}
-                              placeholder="Producto o servicio…"
+                              placeholder="Se rellena al elegir un producto…"
                             />
                           </div>
 
@@ -638,36 +678,6 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
                               {fmtCOP(lineTotal)}
                             </p>
                           </div>
-                        </div>
-
-                        {/* Fila de búsqueda de producto + info stock */}
-                        <div className="mt-2 flex flex-wrap items-start gap-3">
-                          <div className="w-56">
-                            <p className="mb-1 text-xs text-slate-400">Producto catálogo (opcional)</p>
-                            <ProductSearchInput
-                              selectedId={line.productId}
-                              initialLabel={line._catalogName}
-                              onSelect={(id, name, price) => handleProductChange(idx, id, name, price)}
-                            />
-                          </div>
-
-                          {/* Stock info */}
-                          {line.productId && stock !== undefined && (
-                            <div className="mt-4">
-                              {stock === null ? (
-                                <span className="text-xs text-slate-400">Consultando stock…</span>
-                              ) : (
-                                <span className={`text-xs font-medium ${stock.totalStock > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                  Stock: {stock.totalStock} {stock.unit}
-                                  {stock.branches.length > 1 && (
-                                    <span className="ml-1 font-normal text-slate-400">
-                                      ({stock.branches.map((b) => `${b.branchName}: ${b.quantity}`).join(', ')})
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
                     )

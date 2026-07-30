@@ -44,6 +44,7 @@ interface FormFields {
   value:         string
   probability:   string
   expectedClose: string
+  lostReason:    string
 }
 
 interface Props {
@@ -64,6 +65,7 @@ const EMPTY: FormFields = {
   value:         '',
   probability:   '',
   expectedClose: '',
+  lostReason:    '',
 }
 
 function toFormFields(d: Deal): FormFields {
@@ -76,6 +78,7 @@ function toFormFields(d: Deal): FormFields {
     value:         d.value != null ? String(d.value) : '',
     probability:   d.probability != null ? String(d.probability) : '',
     expectedClose: d.expectedClose ? d.expectedClose.slice(0, 10) : '',
+    lostReason:    d.lostReason ?? '',
   }
 }
 
@@ -134,26 +137,37 @@ export function DealFormModal({ mode, deal, stages, initialStageId, onClose, onS
     setSubmitting(true)
     setApiError(null)
 
-    const body: Record<string, unknown> = {
-      clientId:      form.clientId,
-      stageId:       form.stageId,
-      title:         form.title.trim(),
-      assignedTo:    form.assignedTo    || undefined,
-      branchId:      form.branchId      || undefined,
-      value:         form.value         ? Number(form.value)       : undefined,
-      probability:   form.probability   ? Number(form.probability) : undefined,
-      expectedClose: form.expectedClose || undefined,
-    }
-
     try {
       let saved: Deal
       if (mode === 'create') {
-        saved = await apiClient.post<Deal>('/v1/ari/deals', body)
-      } else {
-        // Para editar usamos el endpoint de mover etapa + recrear — en V1 solo movemos
-        saved = await apiClient.put<Deal>(`/v1/ari/deals/${deal!.id}/stage`, {
-          stageId: form.stageId,
+        saved = await apiClient.post<Deal>('/v1/ari/deals', {
+          clientId:      form.clientId,
+          stageId:       form.stageId,
+          title:         form.title.trim(),
+          assignedTo:    form.assignedTo    || undefined,
+          branchId:      form.branchId      || undefined,
+          value:         form.value         ? Number(form.value)       : undefined,
+          probability:   form.probability   ? Number(form.probability) : undefined,
+          expectedClose: form.expectedClose || undefined,
         })
+      } else {
+        // HU-155 — editar los DATOS del negocio (título, valor, probabilidad, cliente, vendedor…).
+        saved = await apiClient.put<Deal>(`/v1/ari/deals/${deal!.id}`, {
+          clientId:      form.clientId,
+          title:         form.title.trim(),
+          assignedTo:    form.assignedTo    || null,
+          branchId:      form.branchId      || null,
+          value:         form.value         ? Number(form.value)       : null,
+          probability:   form.probability   ? Number(form.probability) : null,
+          expectedClose: form.expectedClose || null,
+        })
+        // Si además cambió la etapa, moverla (incluye razón de pérdida si aplica).
+        if (form.stageId && form.stageId !== deal!.stage.id) {
+          saved = await apiClient.put<Deal>(`/v1/ari/deals/${deal!.id}/stage`, {
+            stageId: form.stageId,
+            ...(form.lostReason.trim() ? { lostReason: form.lostReason.trim() } : {}),
+          })
+        }
       }
       onSuccess(saved)
     } catch (err: unknown) {
@@ -256,8 +270,8 @@ export function DealFormModal({ mode, deal, stages, initialStageId, onClose, onS
                   </label>
                   <input
                     type="text"
-                    value={form.title}
-                    onChange={field('title')}
+                    value={form.lostReason}
+                    onChange={field('lostReason')}
                     className={inp}
                     placeholder="Ej: Precio, competencia, sin presupuesto…"
                   />
