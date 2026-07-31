@@ -223,6 +223,10 @@ Desde **KIRA → Alquileres** se registra un alquiler eligiendo **cliente** (mis
 **monto fijo** (con fecha de retorno) o **por días** (tarifa diaria + fecha estimada), y se guarda el
 **depósito** dejado por el cliente. Al crearse baja el **disponible** (no el total, HU-158) y no se puede
 alquilar más de lo disponible. El depósito **no es ingreso todavía** (se resuelve en la devolución, HU-162).
+Al crear el alquiler se genera **automáticamente un recordatorio de devolución** (HU-163) para la fecha de
+retorno, asociado al alquiler (`related_type=rental` / `related_id`) — reutiliza el motor de HU-156/157:
+aparece en Inicio y Notificaciones, se gestiona desde Agenda, enlaza a `/kira/rentals`, nivel **urgente** por
+defecto, y se **cierra solo** al devolver (HU-160) o marcar no devuelto (HU-161).
 
 **Devolución y resolución del depósito (HU-160)**  
 Al devolver (`POST /v1/kira/rentals/:id/return`), el **disponible sube** (el total no cambia) y en la misma

@@ -184,7 +184,32 @@ export async function createRental(tenantId: string, userId: string, input: Crea
       data:  { rentedQuantity: rented + input.quantity },
     })
 
+    // HU-163 — recordatorio AUTOMÁTICO de devolución (reutiliza el motor HU-156/157). Se asocia
+    // al alquiler vía relatedType/relatedId → enlaza a /kira/rentals; aparece en Inicio, Notificaciones
+    // y se gestiona desde Agenda como cualquier recordatorio. Nivel por defecto: urgente.
+    await tx.reminder.create({
+      data: {
+        tenantId,
+        userId,
+        title:       `Devolver alquiler: ${rental.product.name}`,
+        description: `${input.quantity} ${rental.product.unit}${rental.client?.name ? ` — ${rental.client.name}` : ''}`,
+        remindAt:    due,
+        alertLevel:  'urgent',
+        recurrence:  'none',
+        relatedType: 'rental',
+        relatedId:   rental.id,
+      },
+    })
+
     return toApi(rental)
+  })
+}
+
+/** HU-163 — Cierra el recordatorio de devolución de un alquiler (al devolver o marcar no devuelto). */
+async function closeRentalReminder(tx: Prisma.TransactionClient, tenantId: string, rentalId: string): Promise<void> {
+  await tx.reminder.updateMany({
+    where: { tenantId, relatedType: 'rental', relatedId: rentalId, isActive: true },
+    data:  { status: 'done', isActive: false, completedAt: new Date() },
   })
 }
 
@@ -246,6 +271,9 @@ export async function returnRental(tenantId: string, userId: string, rentalId: s
       where: { productId_branchId: { productId: rental.productId, branchId: rental.branchId } },
       data:  { rentedQuantity: Math.max(0, rented - num(rental.quantity)) },
     })
+
+    // HU-163 — el alquiler se cerró: su recordatorio de devolución se marca hecho.
+    await closeRentalReminder(tx, tenantId, rentalId)
 
     // VERA (HU-162):
     //  - el PRECIO del alquiler es INGRESO de la empresa (categoría "Alquileres").
@@ -350,6 +378,9 @@ export async function markNotReturned(tenantId: string, userId: string, rentalId
       },
       select: RENTAL_SELECT,
     })
+
+    // HU-163 — el alquiler se cerró (no devuelto): su recordatorio de devolución se marca hecho.
+    await closeRentalReminder(tx, tenantId, rentalId)
 
     // VERA — ingreso por la venta (el depósito ya aplicado queda reflejado en la nota).
     const cat = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Ventas', isActive: true }, select: { id: true } })

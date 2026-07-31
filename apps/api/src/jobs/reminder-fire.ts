@@ -21,6 +21,7 @@ const REL: Record<string, { module: ModuleName; link: string }> = {
   client:         { module: ModuleName.ARI,    link: '/ari/clients' },
   deal:           { module: ModuleName.ARI,    link: '/ari/pipeline' },
   purchase_order: { module: ModuleName.NIRA,   link: '/nira/purchase-orders' },
+  rental:         { module: ModuleName.KIRA,   link: '/kira/rentals' },
 }
 
 const LEVEL_ICON: Record<string, string> = { critical: '🔴', urgent: '🟠', normal: '⏰' }
