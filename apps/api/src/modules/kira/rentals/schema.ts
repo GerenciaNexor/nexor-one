@@ -26,9 +26,27 @@ export const CreateRentalSchema = z.object({
   { message: 'Indica la tarifa por día', path: ['dailyRate'] },
 )
 
+export const DEPOSIT_RESOLUTIONS = ['returned', 'retained'] as const
+export const PRODUCT_CONDITIONS   = ['good', 'damaged'] as const
+
+/**
+ * HU-160 — Devolución: resuelve el depósito.
+ *  - `returned`: se devuelve todo al cliente (no hay ingreso).
+ *  - `retained`: se retiene `retainedAmount` (≤ depósito), con motivo (pasa a ingreso en VERA).
+ */
 export const ReturnRentalSchema = z.object({
-  notes: z.string().max(1000).nullish(),
-})
+  depositResolution: z.enum(DEPOSIT_RESOLUTIONS, { invalid_type_error: 'Resolución de depósito inválida' }).default('returned'),
+  retainedAmount:    z.number().min(0, 'El monto retenido no puede ser negativo').optional(),
+  reason:            z.string().max(500).nullish(),
+  productCondition:  z.enum(PRODUCT_CONDITIONS, { invalid_type_error: 'Estado del producto inválido' }).optional(),
+  notes:             z.string().max(1000).nullish(),
+}).refine(
+  (d) => d.depositResolution !== 'retained' || (d.retainedAmount !== undefined && d.retainedAmount > 0),
+  { message: 'Indica cuánto retienes del depósito', path: ['retainedAmount'] },
+).refine(
+  (d) => d.depositResolution !== 'retained' || (typeof d.reason === 'string' && d.reason.trim().length > 0),
+  { message: 'Indica el motivo de la retención', path: ['reason'] },
+)
 
 export const RentalQuerySchema = z.object({
   status:    z.enum(['active', 'returned']).optional(),

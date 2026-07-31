@@ -1075,6 +1075,11 @@ transacción). Base del módulo de alquiler (HU-159–163).
 | `fixed_amount` / `daily_rate` | DECIMAL(15,2) NULL | **HU-159** — precio según el tipo de cobro (CHECK ≥ 0) |
 | `deposit` | DECIMAL(15,2) | **HU-159** — depósito del cliente (NO es ingreso aún — HU-162). CHECK ≥ 0 |
 | `rented_at` / `due_at` / `returned_at` | TIMESTAMPTZ | Salida · fecha de retorno (fija/estimada) · devolución |
+| `returned_by` | VARCHAR(30) NULL, FK → users | **HU-160** — quién registró la devolución |
+| `product_condition` | VARCHAR(20) NULL | **HU-160** — `good` \| `damaged` al devolver |
+| `deposit_retained` | DECIMAL(15,2) | **HU-160** — parte del depósito retenida (→ ingreso VERA). CHECK ≥ 0. Devuelto = `deposit − deposit_retained` |
+| `deposit_reason` | TEXT NULL | **HU-160** — motivo de la retención (obligatorio si retiene) |
+| `charge_total` / `rental_days` | DECIMAL(15,2) / INT NULL | **HU-160** — snapshot del cobro al cerrar (fijo, o tarifa×días) |
 | `notes` | TEXT NULL | Notas |
 
 **RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). **Operaciones** (`/v1/kira/rentals`):

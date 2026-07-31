@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateRentalSchema, ReturnRentalSchema, RentalQuerySchema } from './schema'
-import { createRental, returnRental, listRentals, listRentalClients } from './service'
+import { createRental, returnRental, listRentals, listRentalClients, getRental } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { z2j, listRes, objRes, idParam, stdErrors, bearerAuth } from '../../../lib/openapi'
 
@@ -27,7 +27,19 @@ export async function rentalsRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) { return errReply(reply, err) }
   })
 
-  /** POST /v1/kira/rentals/:id/return — devolver un alquiler (libera el disponible). */
+  /** GET /v1/kira/rentals/:id — detalle del alquiler + preview de cierre (depósito, cobro, días). */
+  app.get('/:id', {
+    schema: { tags: ['KIRA'], summary: 'Detalle de alquiler', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try {
+      const rental = await getRental(request.user.tenantId, id)
+      return reply.code(200).send({ success: true, data: rental })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** POST /v1/kira/rentals/:id/return — devolver un alquiler: sube el disponible y resuelve el depósito. */
   app.post('/:id/return', {
     schema: { tags: ['KIRA'], summary: 'Devolver alquiler', security: bearerAuth, params: idParam, body: z2j(ReturnRentalSchema), response: { 200: objRes, ...stdErrors } },
     preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
@@ -36,7 +48,7 @@ export async function rentalsRoutes(app: FastifyInstance): Promise<void> {
     const parsed = ReturnRentalSchema.safeParse(request.body ?? {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
     try {
-      const rental = await returnRental(request.user.tenantId, id, parsed.data)
+      const rental = await returnRental(request.user.tenantId, request.user.userId, id, parsed.data)
       return reply.code(200).send({ success: true, data: rental })
     } catch (err) { return errReply(reply, err) }
   })

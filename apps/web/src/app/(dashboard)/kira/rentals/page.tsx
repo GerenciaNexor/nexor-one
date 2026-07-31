@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { RentalFormModal } from '@/components/kira/RentalFormModal'
+import { ReturnRentalModal } from '@/components/kira/ReturnRentalModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Rental {
@@ -28,6 +29,7 @@ export default function RentalsPage() {
   const [rentals, setRentals] = useState<Rental[] | null>(null)
   const [status, setStatus]   = useState<'active' | 'returned' | ''>('active')
   const [modal, setModal]     = useState(false)
+  const [returnId, setReturnId] = useState<string | null>(null)
 
   function load() {
     const q = status ? `?status=${status}` : ''
@@ -74,13 +76,14 @@ export default function RentalsPage() {
                 <th className="px-4 py-3 text-right">Depósito</th>
                 <th className="px-4 py-3">Retorno</th>
                 <th className="px-4 py-3 text-center">Estado</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {rentals === null ? (
-                Array.from({ length: 5 }).map((_, i) => <tr key={i}><td colSpan={7} className="px-4 py-3"><div className="h-5 animate-pulse rounded bg-slate-100 dark:bg-slate-700" /></td></tr>)
+                Array.from({ length: 5 }).map((_, i) => <tr key={i}><td colSpan={8} className="px-4 py-3"><div className="h-5 animate-pulse rounded bg-slate-100 dark:bg-slate-700" /></td></tr>)
               ) : rentals.length === 0 ? (
-                <tr><td colSpan={7} className="p-0">
+                <tr><td colSpan={8} className="p-0">
                   <EmptyState bordered={false}
                     title={status === 'active' ? 'No hay alquileres activos' : 'Sin alquileres'}
                     description="Registra un alquiler para controlar qué producto está prestado, a quién y hasta cuándo. Solo aplica a productos marcados como alquilables."
@@ -103,6 +106,14 @@ export default function RentalsPage() {
                       {r.status === 'active'
                         ? <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Alquilado</span>
                         : <span className="inline-flex items-center gap-1 text-xs text-emerald-600">✓ Devuelto</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {r.status === 'active' && (
+                        <button onClick={() => setReturnId(r.id)}
+                          className="whitespace-nowrap rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
+                          Devolver
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -137,12 +148,19 @@ export default function RentalsPage() {
                 <span>Depósito {money(r.deposit)}</span>
                 <span>Retorno {fmtDate(r.dueAt)}</span>
               </div>
+              {r.status === 'active' && (
+                <button onClick={() => setReturnId(r.id)}
+                  className="mt-3 w-full rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
+                  Devolver
+                </button>
+              )}
             </div>
           ))
         )}
       </div>
 
       {modal && <RentalFormModal onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
+      {returnId && <ReturnRentalModal rentalId={returnId} onClose={() => setReturnId(null)} onSuccess={() => { setReturnId(null); load() }} />}
     </div>
   )
 }

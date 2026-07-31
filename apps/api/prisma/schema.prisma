@@ -181,7 +181,8 @@ model User {
 
   notifications            Notification[]
   reminders                Reminder[]
-  rentals                  Rental[]
+  rentals                  Rental[]              @relation("RentalCreatedBy")
+  returnedRentals          Rental[]              @relation("RentalReturnedBy")
   assignedClients          Client[]              @relation("ClientAssignee")
   assignedDeals            Deal[]                @relation("DealAssignee")
   interactions             Interaction[]
@@ -711,16 +712,29 @@ model Rental {
   /// Fecha de retorno (fija) o estimada (por días).
   dueAt      DateTime? @map("due_at") @db.Timestamptz(6)
   returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
+  /// HU-160 — cierre de la devolución (trazabilidad: quién/cuánto/por qué).
+  returnedBy       String?  @map("returned_by") @db.VarChar(30)
+  /// good | damaged — estado del producto al devolver.
+  productCondition String?  @map("product_condition") @db.VarChar(20)
+  /// Parte del depósito RETENIDA (pasa a ingreso en VERA). El resto se devuelve al cliente.
+  depositRetained  Decimal  @default(0) @map("deposit_retained") @db.Decimal(15, 2)
+  /// Motivo de la retención (obligatorio si se retiene algo).
+  depositReason    String?  @map("deposit_reason") @db.Text
+  /// Snapshot del total cobrado por el alquiler al cerrar (fijo, o tarifa×días).
+  chargeTotal      Decimal? @map("charge_total") @db.Decimal(15, 2)
+  /// Días transcurridos usados para el cobro por días (snapshot).
+  rentalDays       Int?     @map("rental_days")
   notes      String?   @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
-  branch  Branch  @relation(fields: [branchId], references: [id])
-  client  Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  user    User?   @relation(fields: [userId], references: [id])
+  tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product        Product @relation(fields: [productId], references: [id])
+  branch         Branch  @relation(fields: [branchId], references: [id])
+  client         Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user           User?   @relation("RentalCreatedBy",  fields: [userId],     references: [id])
+  returnedByUser User?   @relation("RentalReturnedBy", fields: [returnedBy], references: [id])
 
   @@index([tenantId, productId, branchId, status])
   @@index([tenantId, status])

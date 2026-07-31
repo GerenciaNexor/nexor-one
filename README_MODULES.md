@@ -224,6 +224,16 @@ Desde **KIRA → Alquileres** se registra un alquiler eligiendo **cliente** (mis
 **depósito** dejado por el cliente. Al crearse baja el **disponible** (no el total, HU-158) y no se puede
 alquilar más de lo disponible. El depósito **no es ingreso todavía** (se resuelve en la devolución, HU-162).
 
+**Devolución y resolución del depósito (HU-160)**  
+Al devolver (`POST /v1/kira/rentals/:id/return`), el **disponible sube** (el total no cambia) y en la misma
+pantalla se ve el **depósito dejado**, el **cobro** (fijo, o `tarifa × días` con el detalle de días) y el
+**monto a devolver**. El operario **resuelve el depósito**: *devolver todo* (producto en buenas condiciones,
+sin ingreso) o *retener total/parcial* (producto dañado, con **motivo obligatorio**). Lo **retenido pasa a
+ingreso en VERA** (categoría "Alquileres", con motivo y referencia al alquiler); lo devuelto no genera ingreso.
+El alquiler queda `returned` con `returned_at`, `returned_by`, estado del producto y snapshot del cobro
+(`charge_total`/`rental_days`) — trazabilidad completa. `GET /v1/kira/rentals/:id` devuelve el detalle + un
+*preview* (días transcurridos y total a cobrar) para la pantalla de devolución.
+
 **Quién mueve el stock (auditoría HU-128):**
 
 | Camino | `type` | `reason` | Referencia |

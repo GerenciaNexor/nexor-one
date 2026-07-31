@@ -19,22 +19,58 @@ function safe(v: unknown): number {
 const RENTAL_SELECT = {
   id: true, tenantId: true, productId: true, branchId: true, clientId: true, userId: true,
   quantity: true, status: true, chargeType: true, fixedAmount: true, dailyRate: true, deposit: true,
-  rentedAt: true, dueAt: true, returnedAt: true, notes: true, createdAt: true, updatedAt: true,
+  rentedAt: true, dueAt: true, returnedAt: true, returnedBy: true, productCondition: true,
+  depositRetained: true, depositReason: true, chargeTotal: true, rentalDays: true,
+  notes: true, createdAt: true, updatedAt: true,
   product: { select: { sku: true, name: true, unit: true } },
   branch:  { select: { name: true } },
   client:  { select: { name: true } },
   user:    { select: { name: true } },
+  returnedByUser: { select: { name: true } },
 } as const
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toApi(r: any) {
   return {
     ...r,
-    quantity:    num(r.quantity),
-    fixedAmount: numN(r.fixedAmount),
-    dailyRate:   numN(r.dailyRate),
-    deposit:     num(r.deposit),
+    quantity:        num(r.quantity),
+    fixedAmount:     numN(r.fixedAmount),
+    dailyRate:       numN(r.dailyRate),
+    deposit:         num(r.deposit),
+    depositRetained: num(r.depositRetained),
+    chargeTotal:     numN(r.chargeTotal),
   }
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * HU-160 — Cálculo del cobro del alquiler al cerrar:
+ *  - `fixed`: el monto fijo pactado.
+ *  - `daily`: tarifa diaria × días transcurridos (mínimo 1 día).
+ * `days` se calcula desde `rentedAt` hasta `at` (redondeo hacia arriba).
+ */
+export function computeRentalCharge(
+  r: { chargeType: string; fixedAmount: unknown; dailyRate: unknown; rentedAt: Date },
+  at: Date,
+): { days: number; chargeTotal: number } {
+  const days = Math.max(1, Math.ceil((at.getTime() - new Date(r.rentedAt).getTime()) / DAY_MS))
+  const chargeTotal = r.chargeType === 'daily' ? num(r.dailyRate) * days : num(r.fixedAmount)
+  return { days, chargeTotal }
+}
+
+/** Detalle de un alquiler + preview de cierre (para la pantalla de devolución de HU-160). */
+export async function getRental(tenantId: string, rentalId: string) {
+  const rental = await prisma.rental.findFirst({ where: { id: rentalId, tenantId }, select: RENTAL_SELECT })
+  if (!rental) throw { statusCode: 404, message: 'Alquiler no encontrado', code: 'NOT_FOUND' }
+  const now = new Date()
+  const preview = rental.status === 'active'
+    ? (() => {
+        const { days, chargeTotal } = computeRentalCharge(rental, now)
+        return { daysElapsed: days, chargeTotal, depositLeft: num(rental.deposit) }
+      })()
+    : null
+  return { ...toApi(rental), preview }
 }
 
 /** HU-159 — Clientes para el selector de alquiler (accesible desde KIRA, sin depender de ARI).
@@ -126,30 +162,54 @@ export async function createRental(tenantId: string, userId: string, input: Crea
 }
 
 /**
- * HU-158 — Registra la DEVOLUCIÓN de un alquiler: cierra el alquiler y libera el disponible.
- * El total nunca cambió; solo baja `rentedQuantity`.
+ * HU-158/160 — DEVOLUCIÓN de un alquiler: cierra el alquiler, libera el disponible y resuelve el depósito.
+ *  - Sube el disponible (baja `rentedQuantity`); el TOTAL nunca cambia (HU-158).
+ *  - Calcula el cobro (fijo, o tarifa×días) y lo guarda como snapshot (`chargeTotal`/`rentalDays`).
+ *  - Resuelve el depósito: `retained` (con motivo) → **ingreso en VERA**; lo devuelto no genera ingreso.
+ *  - Trazabilidad: `returnedBy`, `returnedAt`, `productCondition`, `depositRetained`, `depositReason`.
  */
-export async function returnRental(tenantId: string, rentalId: string, input: ReturnRentalInput = {}) {
+export async function returnRental(tenantId: string, userId: string, rentalId: string, input: ReturnRentalInput) {
   return prisma.$transaction(async (tx) => {
     const rental = await tx.rental.findFirst({
       where:  { id: rentalId, tenantId },
-      select: { id: true, status: true, productId: true, branchId: true, quantity: true, notes: true },
+      select: {
+        id: true, status: true, productId: true, branchId: true, quantity: true,
+        chargeType: true, fixedAmount: true, dailyRate: true, deposit: true, rentedAt: true,
+        product: { select: { name: true } },
+      },
     })
     if (!rental) throw { statusCode: 404, message: 'Alquiler no encontrado', code: 'NOT_FOUND' }
     if (rental.status !== 'active') {
       throw { statusCode: 409, message: 'Este alquiler ya fue devuelto', code: 'ALREADY_RETURNED' }
     }
 
+    const now = new Date()
+    const deposit = num(rental.deposit)
+    const { days, chargeTotal } = computeRentalCharge(rental, now)
+
+    // Resolución del depósito: retenido (≤ depósito) o devuelto (0).
+    const retained = input.depositResolution === 'retained' ? (input.retainedAmount ?? 0) : 0
+    if (retained > deposit) {
+      throw { statusCode: 400, message: `No puedes retener más que el depósito ($${deposit}).`, code: 'RETAINED_EXCEEDS_DEPOSIT' }
+    }
+
     const updated = await tx.rental.update({
       where: { id: rentalId },
       data:  {
-        status:     'returned',
-        returnedAt: new Date(),
+        status:           'returned',
+        returnedAt:       now,
+        returnedBy:       userId,
+        productCondition: input.productCondition ?? 'good',
+        depositRetained:  retained,
+        depositReason:    retained > 0 ? (input.reason ?? null) : null,
+        chargeTotal,
+        rentalDays:       rental.chargeType === 'daily' ? days : null,
         ...(input.notes !== undefined && input.notes !== null ? { notes: input.notes } : {}),
       },
       select: RENTAL_SELECT,
     })
 
+    // Sube el disponible; el total no cambia.
     const stock = await tx.stock.findUnique({
       where:  { productId_branchId: { productId: rental.productId, branchId: rental.branchId } },
       select: { rentedQuantity: true },
@@ -160,7 +220,27 @@ export async function returnRental(tenantId: string, rentalId: string, input: Re
       data:  { rentedQuantity: Math.max(0, rented - num(rental.quantity)) },
     })
 
-    return toApi(updated)
+    // VERA (HU-162) — solo lo RETENIDO pasa a ingreso; lo devuelto no genera ingreso.
+    if (retained > 0) {
+      const cat = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Alquileres', isActive: true }, select: { id: true } })
+      await tx.transaction.create({
+        data: {
+          tenantId,
+          branchId:      rental.branchId,
+          categoryId:    cat?.id ?? null,
+          type:          'income',
+          amount:        retained,
+          currency:      'COP',
+          description:   `Depósito retenido — ${rental.product.name}${input.reason ? `: ${input.reason}` : ''}`,
+          category:      'Alquileres',
+          referenceType: 'rental',
+          referenceId:   rentalId,
+          date:          now,
+        },
+      })
+    }
+
+    return { ...toApi(updated), depositReturned: deposit - retained, chargeTotal, daysElapsed: days }
   })
 }
 
