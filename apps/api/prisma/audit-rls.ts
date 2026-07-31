@@ -1,4 +1,4 @@
-/* HU-135 — Auditoría de aislamiento cross-tenant de las 32 tablas con RLS, bajo el rol
+/* HU-135 — Auditoría de aislamiento cross-tenant de las 33 tablas con RLS, bajo el rol
  * REAL nexor_app (NOSUPERUSER NOBYPASSRLS). BD temporal Railway (nunca prod). Cubre:
  *   catálogo (RLS enabled+forced + política) · lectura cross-tenant · escritura
  *   (UPDATE/DELETE/INSERT) cross-tenant · fail-safe sin contexto · concurrencia. */
@@ -21,6 +21,8 @@ const TABLES = [
   'blocked_dates','appointment_cancel_tokens','transaction_categories','cost_centers','monthly_budgets',
   // HU-156 — recordatorios universales.
   'reminders',
+  // HU-158 — alquileres (salida temporal de stock).
+  'rentals',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -61,6 +63,7 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.costCenter.create({ data: { tenantId: t, name: 'CC' } })
   await db.monthlyBudget.create({ data: { tenantId: t, year: 2026, month: 1, amount: new Prisma.Decimal(1000) } })
   await db.reminder.create({ data: { tenantId: t, userId: u, title: 'R', remindAt: new Date() } })
+  await db.rental.create({ data: { tenantId: t, productId: p, branchId: br, userId: u, quantity: new Prisma.Decimal(1) } })
 }
 
 async function main(): Promise<void> {

@@ -71,18 +71,21 @@ export async function listStock(
       ...(branchId ? { branchId } : {}),
     },
     select: {
-      id:        true,
-      quantity:  true,
-      updatedAt: true,
+      id:             true,
+      quantity:       true,
+      rentedQuantity: true,
+      updatedAt:      true,
       product: {
         select: {
-          id:       true,
-          sku:      true,
-          name:     true,
-          unit:     true,
-          category: true,
-          minStock: true,
-          maxStock: true,
+          id:         true,
+          sku:        true,
+          name:       true,
+          unit:       true,
+          category:   true,
+          minStock:   true,
+          maxStock:   true,
+          isSellable: true,
+          isRentable: true,
         },
       },
       branch: {
@@ -92,14 +95,24 @@ export async function listStock(
     orderBy: [{ branch: { name: 'asc' } }, { product: { name: 'asc' } }],
   })
 
-  let data = rows.map((r) => ({
-    id:        r.id,
-    quantity:  safeQty(r.quantity),
-    belowMin:  safeQty(r.quantity) < r.product.minStock,
-    updatedAt: r.updatedAt,
-    product:   r.product,
-    branch:    r.branch,
-  }))
+  // HU-158 — disponible = total − alquilado. La alerta de mínimo mira el DISPONIBLE
+  // (lo que realmente se puede usar); sin alquileres, disponible == total (sin cambios).
+  let data = rows.map((r) => {
+    const total     = safeQty(r.quantity)
+    const rented    = safeQty(r.rentedQuantity)
+    const available = Math.max(0, total - rented)
+    return {
+      id:        r.id,
+      quantity:  total,       // compat: `quantity` sigue siendo el TOTAL
+      total,
+      rented,
+      available,
+      belowMin:  available < r.product.minStock,
+      updatedAt: r.updatedAt,
+      product:   r.product,
+      branch:    r.branch,
+    }
+  })
 
   if (query.belowMin === 'true') {
     data = data.filter((r) => r.belowMin)
@@ -136,31 +149,39 @@ export async function getCrossBranchStock(tenantId: string, productId: string) {
   const stocks = await prisma.stock.findMany({
     where: { productId },
     select: {
-      id:        true,
-      quantity:  true,
-      updatedAt: true,
+      id:             true,
+      quantity:       true,
+      rentedQuantity: true,
+      updatedAt:      true,
       branch: { select: { id: true, name: true, city: true, isActive: true } },
     },
     orderBy: { branch: { name: 'asc' } },
   })
 
   const branches = stocks.map((s) => {
-    const qty = safeQty(s.quantity)
+    const total     = safeQty(s.quantity)
+    const rented    = safeQty(s.rentedQuantity)
+    const available = Math.max(0, total - rented)
     return {
       stockId:        s.id,
       branchId:       s.branch.id,
       branchName:     s.branch.name,
       city:           s.branch.city,
       isActiveBranch: s.branch.isActive,
-      quantity:       qty,
-      belowMin:       qty < product.minStock,
+      quantity:       total,   // compat: TOTAL
+      total,
+      rented,
+      available,
+      belowMin:       available < product.minStock,
       updatedAt:      s.updatedAt,
     }
   })
 
-  const totalStock = branches.reduce((sum, b) => sum + b.quantity, 0)
+  const totalStock     = branches.reduce((sum, b) => sum + b.total, 0)
+  const rentedStock    = branches.reduce((sum, b) => sum + b.rented, 0)
+  const availableStock = branches.reduce((sum, b) => sum + b.available, 0)
 
-  return { product, branches, totalStock }
+  return { product, branches, totalStock, rentedStock, availableStock }
 }
 
 // ─── HU-023: Movimientos de inventario ───────────────────────────────────────
@@ -202,9 +223,10 @@ export async function createMovement(
     // 3. Leer stock actual (puede no existir aún si nunca hubo movimientos)
     const stockRecord = await tx.stock.findUnique({
       where: { productId_branchId: { productId: input.productId, branchId: input.branchId } },
-      select: { quantity: true },
+      select: { quantity: true, rentedQuantity: true },
     })
     const qtyBefore = stockRecord ? safeQty(stockRecord.quantity) : 0
+    const rented    = stockRecord ? safeQty(stockRecord.rentedQuantity) : 0
 
     // 4. Calcular delta según tipo de movimiento
     //    - entrada: suma (quantity siempre positivo)
@@ -219,6 +241,16 @@ export async function createMovement(
         statusCode: 400,
         message: `Stock insuficiente. Stock actual: ${qtyBefore}, cantidad solicitada: ${input.quantity}`,
         code: 'INSUFFICIENT_STOCK',
+      }
+    }
+
+    // 5b. HU-158 — el TOTAL nunca puede bajar por debajo de lo ALQUILADO (disponible ≥ 0).
+    //     Una salida/ajuste no puede retirar unidades que están alquiladas afuera.
+    if (qtyAfter < rented) {
+      throw {
+        statusCode: 409,
+        message: `No puedes retirar esas unidades: ${rented} están alquiladas. Disponible para mover: ${Math.max(0, qtyBefore - rented)}.`,
+        code: 'RENTED_UNITS_LOCKED',
       }
     }
 

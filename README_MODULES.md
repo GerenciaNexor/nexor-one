@@ -206,6 +206,48 @@ KIRA calcula semanalmente qué productos generan el 80% del valor del inventario
 **Trazabilidad completa (HU-128)**  
 Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
 
+**Venta vs. alquiler — disponible ≠ total (HU-158)**  
+Un producto se marca como **de venta, de alquiler o ambos** (al crearlo o editarlo, con tarifa de
+alquiler opcional). El inventario distingue **total / disponible / alquilado**, donde
+**disponible = total − alquilado** (la vista de Stock muestra las tres columnas). El **alquiler** es una
+salida **temporal**: no baja el total, sube lo alquilado (baja el disponible); la **venta** es definitiva
+(baja el total). **Tanto la venta como el alquiler solo pueden tomar del disponible** — nunca de unidades
+ya alquiladas —, y ninguna salida/ajuste puede dejar el total por debajo de lo alquilado. Los alquileres
+viven en la tabla `rentals` (no tocan `stock_movements`, así HU-128 queda intacta). Endpoints:
+`POST /v1/kira/rentals` (alquilar), `POST /v1/kira/rentals/:id/return` (devolver), `GET /v1/kira/rentals`,
+`GET /v1/kira/rentals/clients` (selector de clientes, incluye "Consumidor final").
+
+**Registrar un alquiler (HU-159)**  
+Desde **KIRA → Alquileres** se registra un alquiler eligiendo **cliente** (mismo modelo que ARI, incluye
+"Consumidor final"), **producto** (solo los marcados alquiler/ambos) y **cantidad**. El cobro puede ser
+**monto fijo** (con fecha de retorno) o **por días** (tarifa diaria + fecha estimada), y se guarda el
+**depósito** dejado por el cliente. Al crearse baja el **disponible** (no el total, HU-158) y no se puede
+alquilar más de lo disponible. El depósito **no es ingreso todavía** (se resuelve en la devolución, HU-162).
+Al crear el alquiler se genera **automáticamente un recordatorio de devolución** (HU-163) para la fecha de
+retorno, asociado al alquiler (`related_type=rental` / `related_id`) — reutiliza el motor de HU-156/157:
+aparece en Inicio y Notificaciones, se gestiona desde Agenda, enlaza a `/kira/rentals`, nivel **urgente** por
+defecto, y se **cierra solo** al devolver (HU-160) o marcar no devuelto (HU-161).
+
+**Devolución y resolución del depósito (HU-160)**  
+Al devolver (`POST /v1/kira/rentals/:id/return`), el **disponible sube** (el total no cambia) y en la misma
+pantalla se ve el **depósito dejado**, el **cobro** (fijo, o `tarifa × días` con el detalle de días) y el
+**monto a devolver**. El operario **resuelve el depósito**: *devolver todo* (producto en buenas condiciones,
+sin ingreso) o *retener total/parcial* (producto dañado, con **motivo obligatorio**). Lo **retenido pasa a
+ingreso en VERA** (categoría "Alquileres", con motivo y referencia al alquiler); lo devuelto no genera ingreso.
+El alquiler queda `returned` con `returned_at`, `returned_by`, estado del producto y snapshot del cobro
+(`charge_total`/`rental_days`) — trazabilidad completa. `GET /v1/kira/rentals/:id` devuelve el detalle + un
+*preview* (días transcurridos y total a cobrar) para la pantalla de devolución.
+
+**Producto no devuelto → venta (HU-161)**  
+Si el producto **no se devuelve**, se cierra el alquiler como venta (`POST /v1/kira/rentals/:id/not-returned`):
+a diferencia de la devolución normal, aquí **el stock total baja de verdad** (la unidad ya no volverá) y hay
+**ingreso por venta**. Se cobra el producto completo (precio de venta × cantidad, o un monto indicado) y el
+**depósito se aplica** como parte del pago (no vuelve al cliente). El total y el alquilado bajan el mismo
+`qty` (el disponible no cambia: esa unidad nunca estuvo disponible). Se registra la **salida definitiva** en
+`stock_movements` (`type=salida`, `reason=venta`, con precio congelado, append-only — HU-128) y el **ingreso**
+en VERA (categoría "Ventas", con el depósito aplicado en la nota). El alquiler queda `not_returned` con su
+trazabilidad (`returned_by`, `charge_total`, depósito aplicado).
+
 **Quién mueve el stock (auditoría HU-128):**
 
 | Camino | `type` | `reason` | Referencia |
@@ -317,6 +359,17 @@ Se pueden definir límites de gasto por área o proyecto. NIRA verifica el presu
 
 **Reportes contables básicos**  
 VERA genera: estado de resultados por período, flujo de caja, y análisis de rentabilidad por línea de negocio o cliente. Suficiente para la dirección de la empresa en V1.
+
+**Ingreso por alquiler y depósitos en retención (HU-162)**  
+El **precio del alquiler** es ingreso de la empresa: al devolver, se registra como transacción `income`
+categoría **"Alquileres"** (junto con el depósito **retenido**, si lo hubo). El **depósito**, en cambio, es
+**dinero del cliente** (un pasivo): mientras el alquiler está activo está en **retención** — dinero en caja
+que la empresa debe devolver— y **NO se registra como ingreso** ni entra a `transactions`. La retención es
+una **vista derivada** de los alquileres activos: `GET /v1/vera/rental-deposits` devuelve el **total
+retenido** con desglose **por cliente** y **por producto** (filtrable por `clientId`/`productId`), y cada
+retención se rastrea a su alquiler. Al cerrar: **devuelto** → sale de la retención sin ingreso; **retenido**
+(HU-160) o **no devuelto** (HU-161) → pasa a ingreso con motivo y trazabilidad. Retención e ingreso **nunca
+se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las muestra lado a lado).
 
 ### Flujos clave
 

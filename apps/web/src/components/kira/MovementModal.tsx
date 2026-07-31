@@ -24,9 +24,13 @@ interface BranchOption {
 
 export interface StockRow {
   id:       string
-  quantity: number
+  quantity: number   // TOTAL (compat)
+  // HU-158 — total / disponible / alquilado
+  total?:     number
+  available?: number
+  rented?:    number
   belowMin: boolean
-  product:  { id: string; sku: string; name: string; unit: string; minStock: number }
+  product:  { id: string; sku: string; name: string; unit: string; minStock: number; isRentable?: boolean }
   branch:   { id: string; name: string; city: string | null }
 }
 

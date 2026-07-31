@@ -9,6 +9,7 @@ const TABS = [
   { href: '/kira/products',  label: 'Catálogo',    help: 'Tu lista de productos: nombre, precio, categoría y datos de cada uno.' },
   { href: '/kira/stock',     label: 'Stock',       help: 'Cuántas unidades tienes de cada producto por sucursal, con alertas cuando baja del mínimo.' },
   { href: '/kira/movements', label: 'Movimientos', help: 'El registro de entradas, salidas y ajustes de inventario: qué se movió, cuándo y por qué.' },
+  { href: '/kira/rentals',   label: 'Alquileres',  help: 'Productos alquilados a clientes: quién, cuánto, depósito y fecha de retorno. El alquiler baja el disponible, no el total.' },
 ] as const
 
 export function KiraSubNav() {

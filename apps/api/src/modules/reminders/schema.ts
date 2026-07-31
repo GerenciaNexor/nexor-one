@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const ALERT_LEVELS = ['normal', 'urgent', 'critical'] as const
 export const RECURRENCES  = ['none', 'hourly', 'daily', 'weekly', 'monthly'] as const
-export const RELATED_TYPES = ['appointment', 'client', 'deal', 'purchase_order'] as const
+export const RELATED_TYPES = ['appointment', 'client', 'deal', 'purchase_order', 'rental'] as const
 
 // Mensajes SIEMPRE en español y orientados al usuario (nada de errores crudos de Zod en inglés).
 const titleField = z.string({ required_error: 'El título es obligatorio', invalid_type_error: 'El título debe ser texto' })
