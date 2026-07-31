@@ -1,7 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { ensureGenericClient } from '../../ari/clients/service'
-import type { CreateRentalInput, ReturnRentalInput, RentalQuery } from './schema'
+import type { CreateRentalInput, ReturnRentalInput, MarkNotReturnedInput, RentalQuery } from './schema'
 
 function num(v: unknown): number {
   const n = parseFloat(String(v))
@@ -22,7 +22,7 @@ const RENTAL_SELECT = {
   rentedAt: true, dueAt: true, returnedAt: true, returnedBy: true, productCondition: true,
   depositRetained: true, depositReason: true, chargeTotal: true, rentalDays: true,
   notes: true, createdAt: true, updatedAt: true,
-  product: { select: { sku: true, name: true, unit: true } },
+  product: { select: { sku: true, name: true, unit: true, salePrice: true } },
   branch:  { select: { name: true } },
   client:  { select: { name: true } },
   user:    { select: { name: true } },
@@ -39,6 +39,7 @@ function toApi(r: any) {
     deposit:         num(r.deposit),
     depositRetained: num(r.depositRetained),
     chargeTotal:     numN(r.chargeTotal),
+    product:         r.product ? { ...r.product, salePrice: numN(r.product.salePrice) } : r.product,
   }
 }
 
@@ -67,7 +68,14 @@ export async function getRental(tenantId: string, rentalId: string) {
   const preview = rental.status === 'active'
     ? (() => {
         const { days, chargeTotal } = computeRentalCharge(rental, now)
-        return { daysElapsed: days, chargeTotal, depositLeft: num(rental.deposit) }
+        const sp = numN(rental.product.salePrice)
+        return {
+          daysElapsed: days,
+          chargeTotal,
+          depositLeft: num(rental.deposit),
+          // HU-161 — sugerencia de cobro si el producto no se devuelve (venta): precio × cantidad.
+          saleSuggestion: sp != null ? sp * num(rental.quantity) : null,
+        }
       })()
     : null
   return { ...toApi(rental), preview }
@@ -241,6 +249,102 @@ export async function returnRental(tenantId: string, userId: string, rentalId: s
     }
 
     return { ...toApi(updated), depositReturned: deposit - retained, chargeTotal, daysElapsed: days }
+  })
+}
+
+/**
+ * HU-161 — Producto NO devuelto → se convierte en VENTA (distinto de la devolución de HU-160):
+ *  - El stock TOTAL baja de verdad (la unidad ya no volverá); el alquilado también baja el mismo qty,
+ *    así el disponible no cambia (esa unidad nunca estuvo disponible). Se registra la salida definitiva
+ *    en `stock_movements` (motivo `venta`, append-only) — trazabilidad HU-128.
+ *  - Se cobra el producto completo (precio de venta × cantidad, o un monto indicado); el DEPÓSITO
+ *    se aplica como parte del pago (no vuelve al cliente).
+ *  - VERA: ingreso por la venta (categoría "Ventas"); el depósito aplicado queda reflejado en la nota.
+ *  - El alquiler queda `not_returned` con su trazabilidad.
+ */
+export async function markNotReturned(tenantId: string, userId: string, rentalId: string, input: MarkNotReturnedInput) {
+  return prisma.$transaction(async (tx) => {
+    const rental = await tx.rental.findFirst({
+      where:  { id: rentalId, tenantId },
+      select: {
+        id: true, status: true, productId: true, branchId: true, quantity: true, deposit: true,
+        product: { select: { name: true, salePrice: true, costPrice: true } },
+      },
+    })
+    if (!rental) throw { statusCode: 404, message: 'Alquiler no encontrado', code: 'NOT_FOUND' }
+    if (rental.status !== 'active') throw { statusCode: 409, message: 'Este alquiler ya está cerrado', code: 'RENTAL_CLOSED' }
+
+    const qty       = num(rental.quantity)
+    const deposit   = num(rental.deposit)
+    const salePrice = numN(rental.product.salePrice)
+    const saleTotal = input.saleAmount ?? (salePrice != null ? salePrice * qty : null)
+    if (saleTotal == null || saleTotal <= 0) {
+      throw { statusCode: 400, message: 'Indica el monto de la venta: el producto no tiene precio de venta.', code: 'SALE_AMOUNT_REQUIRED' }
+    }
+
+    const now = new Date()
+
+    // Stock: total y alquilado bajan el mismo qty (disponible sin cambio). Un solo UPDATE
+    // (el CHECK rented ≤ total se evalúa sobre la fila final: (rented−qty) ≤ (total−qty) ✔).
+    const stock = await tx.stock.findUnique({
+      where:  { productId_branchId: { productId: rental.productId, branchId: rental.branchId } },
+      select: { quantity: true, rentedQuantity: true },
+    })
+    const before = stock ? safe(stock.quantity) : 0
+    const after  = before - qty
+    if (after < 0) throw { statusCode: 409, message: 'Inconsistencia de stock al cerrar el alquiler', code: 'INSUFFICIENT_STOCK' }
+    await tx.stock.update({
+      where: { productId_branchId: { productId: rental.productId, branchId: rental.branchId } },
+      data:  { quantity: { decrement: qty }, rentedQuantity: { decrement: qty } },
+    })
+
+    // Salida definitiva en stock_movements (append-only) — la unidad salió por venta.
+    await tx.stockMovement.create({
+      data: {
+        tenantId, productId: rental.productId, branchId: rental.branchId, userId,
+        type: 'salida', reason: 'venta',
+        quantity: qty, quantityBefore: before, quantityAfter: after,
+        referenceType: 'rental', referenceId: rentalId,
+        salePriceFrozen: saleTotal / qty,
+        costPriceFrozen: rental.product.costPrice ?? null,
+        notes: 'Alquiler no devuelto — venta',
+      },
+    })
+
+    // El alquiler pasa a "nunca devuelto"; el depósito se aplica al pago (no vuelve al cliente).
+    const updated = await tx.rental.update({
+      where: { id: rentalId },
+      data:  {
+        status:          'not_returned',
+        returnedAt:      now,
+        returnedBy:      userId,
+        depositRetained: deposit,
+        depositReason:   'Producto no devuelto — aplicado a la venta',
+        chargeTotal:     saleTotal,
+        ...(input.notes !== undefined && input.notes !== null ? { notes: input.notes } : {}),
+      },
+      select: RENTAL_SELECT,
+    })
+
+    // VERA — ingreso por la venta (el depósito ya aplicado queda reflejado en la nota).
+    const cat = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Ventas', isActive: true }, select: { id: true } })
+    await tx.transaction.create({
+      data: {
+        tenantId,
+        branchId:      rental.branchId,
+        categoryId:    cat?.id ?? null,
+        type:          'income',
+        amount:        saleTotal,
+        currency:      'COP',
+        description:   `Venta por alquiler no devuelto — ${rental.product.name}${deposit > 0 ? ` (depósito aplicado $${deposit})` : ''}`,
+        category:      'Ventas',
+        referenceType: 'rental',
+        referenceId:   rentalId,
+        date:          now,
+      },
+    })
+
+    return { ...toApi(updated), saleTotal, depositApplied: deposit, netCollected: Math.max(0, saleTotal - deposit) }
   })
 }
 

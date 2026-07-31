@@ -1070,7 +1070,7 @@ transacción). Base del módulo de alquiler (HU-159–163).
 | `client_id` | VARCHAR(30) NULL | A quién se alquiló (la API lo exige desde HU-159; incluye "Consumidor final") |
 | `user_id` | VARCHAR(30) NULL | Quién registró |
 | `quantity` | DECIMAL(10,2) | Unidades alquiladas (CHECK > 0) |
-| `status` | VARCHAR(20) | `active` \| `returned`. Solo los `active` cuentan como alquilado |
+| `status` | VARCHAR(20) | `active` \| `returned` \| `not_returned` (HU-161). Solo los `active` cuentan como alquilado |
 | `charge_type` | VARCHAR(20) | **HU-159** — `fixed` (monto fijo) \| `daily` (tarifa por día) |
 | `fixed_amount` / `daily_rate` | DECIMAL(15,2) NULL | **HU-159** — precio según el tipo de cobro (CHECK ≥ 0) |
 | `deposit` | DECIMAL(15,2) | **HU-159** — depósito del cliente (NO es ingreso aún — HU-162). CHECK ≥ 0 |

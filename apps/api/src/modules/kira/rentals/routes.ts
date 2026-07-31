@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { CreateRentalSchema, ReturnRentalSchema, RentalQuerySchema } from './schema'
-import { createRental, returnRental, listRentals, listRentalClients, getRental } from './service'
+import { CreateRentalSchema, ReturnRentalSchema, MarkNotReturnedSchema, RentalQuerySchema } from './schema'
+import { createRental, returnRental, markNotReturned, listRentals, listRentalClients, getRental } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { z2j, listRes, objRes, idParam, stdErrors, bearerAuth } from '../../../lib/openapi'
 
@@ -60,6 +60,20 @@ export async function rentalsRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const result = await listRentalClients(request.user.tenantId)
     return reply.code(200).send(result)
+  })
+
+  /** POST /v1/kira/rentals/:id/not-returned — producto no devuelto: se convierte en venta (baja el total). */
+  app.post('/:id/not-returned', {
+    schema: { tags: ['KIRA'], summary: 'Alquiler no devuelto (venta)', security: bearerAuth, params: idParam, body: z2j(MarkNotReturnedSchema), response: { 200: objRes, ...stdErrors } },
+    preHandler: requireRoleAndModule('OPERATIVE', 'KIRA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = MarkNotReturnedSchema.safeParse(request.body ?? {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const rental = await markNotReturned(request.user.tenantId, request.user.userId, id, parsed.data)
+      return reply.code(200).send({ success: true, data: rental })
+    } catch (err) { return errReply(reply, err) }
   })
 
   /** GET /v1/kira/rentals — historial de alquileres (filtros: status/producto/sucursal/cliente). */

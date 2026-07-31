@@ -234,6 +234,16 @@ El alquiler queda `returned` con `returned_at`, `returned_by`, estado del produc
 (`charge_total`/`rental_days`) — trazabilidad completa. `GET /v1/kira/rentals/:id` devuelve el detalle + un
 *preview* (días transcurridos y total a cobrar) para la pantalla de devolución.
 
+**Producto no devuelto → venta (HU-161)**  
+Si el producto **no se devuelve**, se cierra el alquiler como venta (`POST /v1/kira/rentals/:id/not-returned`):
+a diferencia de la devolución normal, aquí **el stock total baja de verdad** (la unidad ya no volverá) y hay
+**ingreso por venta**. Se cobra el producto completo (precio de venta × cantidad, o un monto indicado) y el
+**depósito se aplica** como parte del pago (no vuelve al cliente). El total y el alquilado bajan el mismo
+`qty` (el disponible no cambia: esa unidad nunca estuvo disponible). Se registra la **salida definitiva** en
+`stock_movements` (`type=salida`, `reason=venta`, con precio congelado, append-only — HU-128) y el **ingreso**
+en VERA (categoría "Ventas", con el depósito aplicado en la nota). El alquiler queda `not_returned` con su
+trazabilidad (`returned_by`, `charge_total`, depósito aplicado).
+
 **Quién mueve el stock (auditoría HU-128):**
 
 | Camino | `type` | `reason` | Referencia |

@@ -48,8 +48,15 @@ export const ReturnRentalSchema = z.object({
   { message: 'Indica el motivo de la retención', path: ['reason'] },
 )
 
+/** HU-161 — Cerrar un alquiler cuyo producto NO fue devuelto (se convierte en venta). */
+export const MarkNotReturnedSchema = z.object({
+  /** Monto de la venta. Si se omite, se usa el precio de venta del producto × cantidad. */
+  saleAmount: z.number().positive('El monto de la venta debe ser positivo').optional(),
+  notes:      z.string().max(1000).nullish(),
+})
+
 export const RentalQuerySchema = z.object({
-  status:    z.enum(['active', 'returned']).optional(),
+  status:    z.enum(['active', 'returned', 'not_returned']).optional(),
   productId: z.string().optional(),
   branchId:  z.string().optional(),
   clientId:  z.string().optional(),
@@ -57,6 +64,7 @@ export const RentalQuerySchema = z.object({
   limit:     z.coerce.number().int().min(1).max(100).default(50),
 })
 
-export type CreateRentalInput = z.infer<typeof CreateRentalSchema>
-export type ReturnRentalInput = z.infer<typeof ReturnRentalSchema>
-export type RentalQuery       = z.infer<typeof RentalQuerySchema>
+export type CreateRentalInput     = z.infer<typeof CreateRentalSchema>
+export type ReturnRentalInput     = z.infer<typeof ReturnRentalSchema>
+export type MarkNotReturnedInput  = z.infer<typeof MarkNotReturnedSchema>
+export type RentalQuery           = z.infer<typeof RentalQuerySchema>

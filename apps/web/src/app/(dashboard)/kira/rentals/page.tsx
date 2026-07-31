@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { RentalFormModal } from '@/components/kira/RentalFormModal'
 import { ReturnRentalModal } from '@/components/kira/ReturnRentalModal'
+import { NotReturnedModal } from '@/components/kira/NotReturnedModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Rental {
   id:          string
   quantity:    number
-  status:      'active' | 'returned'
+  status:      'active' | 'returned' | 'not_returned'
   chargeType:  'fixed' | 'daily'
   fixedAmount: number | null
   dailyRate:   number | null
@@ -25,11 +26,18 @@ interface Rental {
 const money = (n: number | null) => n == null ? '—' : `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
 
+function StatusBadge({ status }: { status: Rental['status'] }) {
+  if (status === 'active')   return <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Alquilado</span>
+  if (status === 'returned') return <span className="inline-flex items-center gap-1 text-xs text-emerald-600">✓ Devuelto</span>
+  return <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">No devuelto</span>
+}
+
 export default function RentalsPage() {
   const [rentals, setRentals] = useState<Rental[] | null>(null)
   const [status, setStatus]   = useState<'active' | 'returned' | ''>('active')
   const [modal, setModal]     = useState(false)
   const [returnId, setReturnId] = useState<string | null>(null)
+  const [lostId, setLostId]     = useState<string | null>(null)
 
   function load() {
     const q = status ? `?status=${status}` : ''
@@ -102,17 +110,19 @@ export default function RentalsPage() {
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{price(r)}</td>
                     <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{money(r.deposit)}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{fmtDate(r.dueAt)}</td>
-                    <td className="px-4 py-3 text-center">
-                      {r.status === 'active'
-                        ? <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Alquilado</span>
-                        : <span className="inline-flex items-center gap-1 text-xs text-emerald-600">✓ Devuelto</span>}
-                    </td>
+                    <td className="px-4 py-3 text-center"><StatusBadge status={r.status} /></td>
                     <td className="px-4 py-3 text-right">
                       {r.status === 'active' && (
-                        <button onClick={() => setReturnId(r.id)}
-                          className="whitespace-nowrap rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
-                          Devolver
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button onClick={() => setReturnId(r.id)}
+                            className="whitespace-nowrap rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
+                            Devolver
+                          </button>
+                          <button onClick={() => setLostId(r.id)}
+                            className="whitespace-nowrap rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                            No devuelto
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -139,9 +149,7 @@ export default function RentalsPage() {
                   <p className="truncate font-medium text-slate-900 dark:text-slate-100">{r.product.name}</p>
                   <p className="mt-0.5 text-xs text-slate-400">{r.client?.name ?? '—'} · {r.quantity} {r.product.unit}</p>
                 </div>
-                {r.status === 'active'
-                  ? <span className="shrink-0 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Alquilado</span>
-                  : <span className="shrink-0 text-xs text-emerald-600">✓ Devuelto</span>}
+                <div className="shrink-0"><StatusBadge status={r.status} /></div>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                 <span>{price(r)}</span>
@@ -149,10 +157,16 @@ export default function RentalsPage() {
                 <span>Retorno {fmtDate(r.dueAt)}</span>
               </div>
               {r.status === 'active' && (
-                <button onClick={() => setReturnId(r.id)}
-                  className="mt-3 w-full rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
-                  Devolver
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setReturnId(r.id)}
+                    className="flex-1 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
+                    Devolver
+                  </button>
+                  <button onClick={() => setLostId(r.id)}
+                    className="flex-1 rounded-lg border border-red-200 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                    No devuelto
+                  </button>
+                </div>
               )}
             </div>
           ))
@@ -161,6 +175,7 @@ export default function RentalsPage() {
 
       {modal && <RentalFormModal onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
       {returnId && <ReturnRentalModal rentalId={returnId} onClose={() => setReturnId(null)} onSuccess={() => { setReturnId(null); load() }} />}
+      {lostId && <NotReturnedModal rentalId={lostId} onClose={() => setLostId(null)} onSuccess={() => { setLostId(null); load() }} />}
     </div>
   )
 }
