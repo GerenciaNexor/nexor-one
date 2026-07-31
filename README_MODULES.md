@@ -356,6 +356,17 @@ Se pueden definir límites de gasto por área o proyecto. NIRA verifica el presu
 **Reportes contables básicos**  
 VERA genera: estado de resultados por período, flujo de caja, y análisis de rentabilidad por línea de negocio o cliente. Suficiente para la dirección de la empresa en V1.
 
+**Ingreso por alquiler y depósitos en retención (HU-162)**  
+El **precio del alquiler** es ingreso de la empresa: al devolver, se registra como transacción `income`
+categoría **"Alquileres"** (junto con el depósito **retenido**, si lo hubo). El **depósito**, en cambio, es
+**dinero del cliente** (un pasivo): mientras el alquiler está activo está en **retención** — dinero en caja
+que la empresa debe devolver— y **NO se registra como ingreso** ni entra a `transactions`. La retención es
+una **vista derivada** de los alquileres activos: `GET /v1/vera/rental-deposits` devuelve el **total
+retenido** con desglose **por cliente** y **por producto** (filtrable por `clientId`/`productId`), y cada
+retención se rastrea a su alquiler. Al cerrar: **devuelto** → sale de la retención sin ingreso; **retenido**
+(HU-160) o **no devuelto** (HU-161) → pasa a ingreso con motivo y trazabilidad. Retención e ingreso **nunca
+se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las muestra lado a lado).
+
 ### Flujos clave
 
 **Flujo 1: Ingreso automático por venta**

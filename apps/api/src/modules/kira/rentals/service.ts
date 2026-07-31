@@ -81,6 +81,25 @@ export async function getRental(tenantId: string, rentalId: string) {
   return { ...toApi(rental), preview }
 }
 
+/**
+ * HU-162 — Categoría de ingreso "Alquileres" (idempotente). Así los ingresos por alquiler
+ * (precio y depósito retenido) se agrupan en los reportes de VERA por su categoría real,
+ * separados del resto. Único por (tenant, name); ante carrera (P2002) se relee.
+ */
+async function ensureRentalCategory(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
+  const existing = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Alquileres' }, select: { id: true } })
+  if (existing) return existing.id
+  try {
+    return (await tx.transactionCategory.create({ data: { tenantId, name: 'Alquileres', type: 'income' }, select: { id: true } })).id
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === 'P2002') {
+      const again = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Alquileres' }, select: { id: true } })
+      if (again) return again.id
+    }
+    throw err
+  }
+}
+
 /** HU-159 — Clientes para el selector de alquiler (accesible desde KIRA, sin depender de ARI).
  *  Garantiza el "Consumidor final" (HU-154) y lo lista primero. */
 export async function listRentalClients(tenantId: string) {
@@ -228,22 +247,28 @@ export async function returnRental(tenantId: string, userId: string, rentalId: s
       data:  { rentedQuantity: Math.max(0, rented - num(rental.quantity)) },
     })
 
-    // VERA (HU-162) — solo lo RETENIDO pasa a ingreso; lo devuelto no genera ingreso.
-    if (retained > 0) {
-      const cat = await tx.transactionCategory.findFirst({ where: { tenantId, name: 'Alquileres', isActive: true }, select: { id: true } })
+    // VERA (HU-162):
+    //  - el PRECIO del alquiler es INGRESO de la empresa (categoría "Alquileres").
+    //  - lo RETENIDO del depósito pasa a INGRESO (con motivo); lo devuelto NO es ingreso.
+    // El depósito NO se registra como ingreso: mientras está activo es RETENCIÓN (derivada de rentals).
+    const catId = await ensureRentalCategory(tx, tenantId)
+    if (chargeTotal > 0) {
       await tx.transaction.create({
         data: {
-          tenantId,
-          branchId:      rental.branchId,
-          categoryId:    cat?.id ?? null,
-          type:          'income',
-          amount:        retained,
-          currency:      'COP',
-          description:   `Depósito retenido — ${rental.product.name}${input.reason ? `: ${input.reason}` : ''}`,
-          category:      'Alquileres',
-          referenceType: 'rental',
-          referenceId:   rentalId,
-          date:          now,
+          tenantId, branchId: rental.branchId, categoryId: catId, type: 'income',
+          amount: chargeTotal, currency: 'COP',
+          description: `Alquiler — ${rental.product.name}`,
+          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: now,
+        },
+      })
+    }
+    if (retained > 0) {
+      await tx.transaction.create({
+        data: {
+          tenantId, branchId: rental.branchId, categoryId: catId, type: 'income',
+          amount: retained, currency: 'COP',
+          description: `Depósito retenido — ${rental.product.name}${input.reason ? `: ${input.reason}` : ''}`,
+          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: now,
         },
       })
     }

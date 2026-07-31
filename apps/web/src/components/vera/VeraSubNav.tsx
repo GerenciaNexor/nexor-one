@@ -16,6 +16,7 @@ export function VeraSubNav() {
     { href: '/vera',              label: 'Inicio',        help: 'Un resumen de tus finanzas: ingresos, egresos y saldo del periodo.' },
     { href: '/vera/transactions', label: 'Transacciones', help: 'Registra y consulta tus ingresos y egresos, cada uno con su categoría.' },
     { href: '/vera/reports',      label: 'Reportes',      help: 'Cómo se mueve tu dinero: totales por categoría y su evolución en el tiempo.' },
+    { href: '/vera/deposits',     label: 'Depósitos',     help: 'Los depósitos de alquiler que guardas y debes devolver — dinero que NO es tuyo, separado de tus ingresos.' },
     ...(role && MANAGER_ROLES.includes(role)
       ? [{ href: '/vera/settings', label: 'Configuración', help: 'Define tus categorías, centros de costo y presupuestos mensuales.' }]
       : []),
