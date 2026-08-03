@@ -22,6 +22,8 @@ export interface Product {
   maxStock: number | null
   abcClass: 'A' | 'B' | 'C' | null
   isActive: boolean
+  /** HU-164 — stock disponible (total − alquilado) en las sucursales visibles. Solo lectura en la lista. */
+  availableStock?: number
   preferredSupplierId?: string | null
   preferredSupplier?: { id: string; name: string } | null
   createdAt: string

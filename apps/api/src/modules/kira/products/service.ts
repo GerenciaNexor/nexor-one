@@ -36,7 +36,7 @@ function toApiProduct(p: any) {
   }
 }
 
-export async function listProducts(tenantId: string, query: ProductQuery) {
+export async function listProducts(tenantId: string, query: ProductQuery, branchFilter?: string) {
   // Por defecto solo se muestran productos activos.
   // ?active=false muestra solo los inactivos.
   const isActive = query.active === 'false' ? false : true
@@ -56,11 +56,26 @@ export async function listProducts(tenantId: string, query: ProductQuery) {
           }
         : {}),
     },
-    select: PRODUCT_SELECT,
+    select: {
+      ...PRODUCT_SELECT,
+      // HU-164 — disponible por fila. Se limita a la(s) sucursal(es) que ve el usuario
+      // (getBranchFilter): admin = todas; los demás su sucursal. disponible = total − alquilado (HU-158).
+      stocks: {
+        select: { quantity: true, rentedQuantity: true },
+        ...(branchFilter ? { where: { branchId: branchFilter } } : {}),
+      },
+    },
     orderBy: { name: 'asc' },
   })
 
-  return { data: data.map(toApiProduct), total: data.length }
+  const toNum = (v: unknown) => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
+  const withStock = data.map((p) => {
+    const { stocks, ...rest } = p
+    const availableStock = stocks.reduce((s, st) => s + Math.max(0, toNum(st.quantity) - toNum(st.rentedQuantity)), 0)
+    return { ...toApiProduct(rest), availableStock }
+  })
+
+  return { data: withStock, total: withStock.length }
 }
 
 export async function getProduct(tenantId: string, productId: string) {

@@ -206,6 +206,12 @@ KIRA calcula semanalmente qué productos generan el 80% del valor del inventario
 **Trazabilidad completa (HU-128)**  
 Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
 
+**Disponible en la lista (HU-164)**  
+El **Catálogo** (`GET /v1/kira/products`) muestra el **stock disponible** por fila (total − alquilado, HU-158),
+sin entrar al detalle — en escritorio y en tarjetas móviles. El disponible se acota a la(s) sucursal(es) que
+ve el usuario (`getBranchFilter`: admin = todas; los demás su sucursal). Es solo lectura; el detalle completo
+(total/alquilado, mínimos) sigue en el producto.
+
 **Venta vs. alquiler — disponible ≠ total (HU-158)**  
 Un producto se marca como **de venta, de alquiler o ambos** (al crearlo o editarlo, con tarifa de
 alquiler opcional). El inventario distingue **total / disponible / alquilado**, donde
