@@ -155,6 +155,11 @@ export async function createPurchaseOrder(
   input: CreatePurchaseOrderInput,
 ) {
   await assertDemoLimit(tenantId, 'purchaseOrders') // HU-143 — tope del plan demo
+
+  // HU-165 — la sucursal es obligatoria y debe pertenecer al tenant y estar activa.
+  const branch = await prisma.branch.findFirst({ where: { id: input.branchId, tenantId, isActive: true }, select: { id: true } })
+  if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
+
   const orderNumber           = await generateOrderNumber(tenantId)
   const { subtotal, tax, total } = calculateTotals(input.items, input.taxRate)
 
@@ -197,6 +202,12 @@ export async function updatePurchaseOrder(
   if (!existing) throw { statusCode: 404, message: 'Orden de compra no encontrada', code: 'NOT_FOUND' }
   if (existing.status !== 'draft') {
     throw { statusCode: 409, message: 'Solo se pueden editar órdenes en borrador', code: 'INVALID_STATUS' }
+  }
+
+  // HU-165 — si se cambia la sucursal, debe pertenecer al tenant y estar activa.
+  if (input.branchId !== undefined) {
+    const branch = await prisma.branch.findFirst({ where: { id: input.branchId, tenantId, isActive: true }, select: { id: true } })
+    if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
   }
 
   const totals = input.items

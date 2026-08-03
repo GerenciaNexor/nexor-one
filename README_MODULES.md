@@ -150,6 +150,13 @@ Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo prod
 **Proveedor preferido (HU-123)**  
 Cada producto puede tener un proveedor **preferido**, y la empresa un preferido **global** de respaldo. NIRA lo prioriza: al comparar precios lo marca y lo lista primero, y al proponer una OC lo usa por defecto (queda registrado en las notas del borrador). Resolución: preferido del producto → preferido global del tenant → comportamiento actual. Se gestiona desde el detalle de producto (KIRA) y la página de Proveedores (NIRA). Es una recomendación: el agente puede proponer otro con justificación.
 
+**Sucursal obligatoria al crear la OC (HU-165)**  
+La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
+validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;
+antes era opcional y la OC quedaba **atascada en recepción** con "La OC no tiene sucursal asignada" (`NO_BRANCH`).
+La edición puede cambiar de sucursal pero no vaciarla. *Datos previos:* la única OC demo sin sucursal
+(`OC-2026-001`, aprobada, tenant Nexor) se **corrigió asignándole la sucursal principal** para que pudiera recibirse.
+
 **Integración automática con KIRA**  
 Cuando una OC es marcada como recibida, NIRA genera automáticamente una entrada de stock en KIRA por cada ítem recibido. No hay que registrar la entrada dos veces.
 

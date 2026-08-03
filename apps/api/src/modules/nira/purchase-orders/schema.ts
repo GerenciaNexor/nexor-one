@@ -8,7 +8,9 @@ const PurchaseOrderItemInput = z.object({
 
 export const CreatePurchaseOrderSchema = z.object({
   supplierId:       z.string().min(1, 'El proveedor es requerido'),
-  branchId:         z.string().optional(),
+  // HU-165 — la sucursal es OBLIGAToria desde la creación (el inventario es por sucursal;
+  // la recepción mueve stock a esta sucursal). Antes era opcional y la OC quedaba atascada en recepción.
+  branchId:         z.string({ required_error: 'La sucursal es requerida', invalid_type_error: 'La sucursal es requerida' }).min(1, 'La sucursal es requerida'),
   /** Fecha ISO YYYY-MM-DD */
   expectedDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)').optional(),
   /** Porcentaje de impuesto sobre el subtotal (ej: 19 para IVA 19%). Default 0. */
@@ -19,7 +21,8 @@ export const CreatePurchaseOrderSchema = z.object({
 
 export const UpdatePurchaseOrderSchema = z.object({
   supplierId:       z.string().min(1).optional(),
-  branchId:         z.string().nullable().optional(),
+  // HU-165 — se puede cambiar de sucursal, pero NO vaciarla (evita reintroducir el atasco de recepción).
+  branchId:         z.string().min(1, 'La sucursal es requerida').optional(),
   expectedDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   taxRate:          z.number().min(0).max(100).optional(),
   notes:            z.string().nullable().optional(),
