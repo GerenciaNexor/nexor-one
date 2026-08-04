@@ -4,13 +4,13 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
+import { ProductFormModal, type Product } from '@/components/kira/ProductFormModal'
 
 type Mode = 'purchase' | 'sale'
 interface Opt   { id: string; name: string; isGeneric?: boolean }
 interface Prod  { id: string; sku: string; name: string; unit: string; salePrice: number | null; costPrice: number | null }
 
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
-const EMPTY_NP = { sku: '', name: '', unit: 'unidad', category: '', salePrice: '', minStock: '0', maxStock: '', isSellable: true, isRentable: false, rentalPrice: '' }
 
 export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSuccess }: {
   initialMode?: Mode
@@ -28,12 +28,11 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
   const [affects, setAffects]   = useState<boolean | null>(null)
   const [cpId, setCpId]         = useState('')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
-  // Producto (buscable): existente o crear al vuelo (solo compra).
+  // Producto (buscable): existente o crear al vuelo (solo compra, con el MISMO formulario de KIRA).
   const [pQuery, setPQuery]     = useState('')
   const [pOpen, setPOpen]       = useState(false)
   const [productId, setProductId] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [np, setNp]             = useState({ ...EMPTY_NP })
+  const [showProductForm, setShowProductForm] = useState(false)
   const [quantity, setQuantity] = useState('1')
   const [price, setPrice]       = useState('')   // costo (compra) o precio (venta)
   const [description, setDesc]  = useState('')
@@ -51,31 +50,28 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
     apiClient.get<{ data: Opt[] }>(url).then((r) => { setCP(r.data); setCpId(r.data.find((o) => o.isGeneric)?.id ?? '') }).catch(() => setCP([]))
   }, [mode])
 
-  // Búsqueda de producto (client-side sobre el catálogo cargado).
   const qLow = pQuery.trim().toLowerCase()
-  const matches = (qLow && !productId && !creating)
+  const matches = (qLow && !productId)
     ? products.filter((p) => p.name.toLowerCase().includes(qLow) || p.sku.toLowerCase().includes(qLow)).slice(0, 8)
     : []
-  const noMatch = !!qLow && !productId && !creating && matches.length === 0
+  const noMatch = !!qLow && !productId && matches.length === 0
 
   function pickProduct(p: Prod) {
-    setProductId(p.id); setPQuery(`${p.sku} — ${p.name}`); setPOpen(false); setCreating(false)
+    setProductId(p.id); setPQuery(`${p.sku} — ${p.name}`); setPOpen(false)
     const suggested = mode === 'sale' ? p.salePrice : p.costPrice
     setPrice(suggested != null ? String(suggested) : '')
   }
-  function onQueryChange(v: string) {
-    setPQuery(v); setProductId(''); setCreating(false); setPOpen(true)
-  }
-  function startCreate() {
-    setCreating(true); setPOpen(false)
-    setNp({ ...EMPTY_NP, name: pQuery.trim() })
-  }
-  function resetProduct() {
-    setPQuery(''); setProductId(''); setCreating(false); setPrice('')
-  }
+  function onQueryChange(v: string) { setPQuery(v); setProductId(''); setPOpen(true) }
+  function resetProduct() { setPQuery(''); setProductId(''); setPrice('') }
+  function switchMode(m: Mode) { setMode(m); resetProduct() }
 
-  function switchMode(m: Mode) {
-    setMode(m); resetProduct()
+  // El producto se creó con el MISMO formulario de KIRA → queda seleccionado como existente.
+  function onProductCreated(saved: Product) {
+    const p: Prod = { id: saved.id, sku: saved.sku, name: saved.name, unit: saved.unit, salePrice: saved.salePrice, costPrice: saved.costPrice }
+    setProducts((prev) => [p, ...prev])
+    setShowProductForm(false)
+    pickProduct(p)
+    if (saved.costPrice != null) setPrice(String(saved.costPrice))
   }
 
   const inventoryAmount = (parseFloat(quantity) || 0) * (parseFloat(price) || 0)
@@ -86,12 +82,11 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
     setErr(null)
     if (affects === null) { setErr('Responde si afecta al inventario.'); return }
     if (affects) {
-      if (isSale && !productId) { setErr('Este producto no existe en tu inventario. Agrégalo primero (por ejemplo con una compra).'); return }
-      if (!productId && !creating) { setErr('Selecciona un producto o créalo.'); return }
-      if (creating) {
-        if (!np.sku.trim())  { setErr('Indica el SKU del nuevo producto.'); return }
-        if (!np.name.trim()) { setErr('Indica el nombre del nuevo producto.'); return }
-        if (!np.isSellable && !np.isRentable) { setErr('Marca si el producto es de venta, alquiler o ambos.'); return }
+      if (!productId) {
+        setErr(isSale
+          ? 'Este producto no existe en tu inventario. Agrégalo primero (por ejemplo con una compra).'
+          : 'Selecciona un producto o créalo.')
+        return
       }
       if (!isOperative && !branchId) { setErr('Selecciona la sucursal.'); return }
       if (!(parseFloat(quantity) > 0)) { setErr('Indica la cantidad.'); return }
@@ -107,22 +102,9 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
     }
     if (affects) {
       Object.assign(body, {
-        branchId: branchId || undefined, quantity: parseInt(quantity, 10),
+        productId, branchId: branchId || undefined, quantity: parseInt(quantity, 10),
         ...(isSale ? { unitPrice: parseFloat(price) } : { unitCost: parseFloat(price) }),
       })
-      if (creating) {
-        body.newProduct = {
-          sku: np.sku.trim(), name: np.name.trim(), unit: np.unit.trim() || 'unidad',
-          category: np.category.trim() || undefined,
-          salePrice: np.salePrice !== '' ? parseFloat(np.salePrice) : undefined,
-          minStock: np.minStock !== '' ? parseInt(np.minStock, 10) : 0,
-          maxStock: np.maxStock !== '' ? parseInt(np.maxStock, 10) : undefined,
-          isSellable: np.isSellable, isRentable: np.isRentable,
-          rentalPrice: np.isRentable && np.rentalPrice !== '' ? parseFloat(np.rentalPrice) : undefined,
-        }
-      } else {
-        body.productId = productId
-      }
     } else {
       Object.assign(body, { description: description.trim(), amount: parseFloat(amount) })
     }
@@ -177,7 +159,6 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
 
             {affects === true && (
               <>
-                {/* Buscador de producto */}
                 <div className="relative">
                   <label className={lbl}>Producto *</label>
                   <input type="text" value={pQuery} onChange={(e) => onQueryChange(e.target.value)}
@@ -197,7 +178,7 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
                   {/* No existe → asimetría HU-170 */}
                   {noMatch && !isSale && (
                     <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-                      «{pQuery.trim()}» no existe. <button type="button" onClick={startCreate} className="font-semibold underline">¿Deseas ingresarlo?</button>
+                      «{pQuery.trim()}» no existe. <button type="button" onClick={() => setShowProductForm(true)} className="font-semibold underline">¿Deseas ingresarlo?</button>
                     </div>
                   )}
                   {noMatch && isSale && (
@@ -206,44 +187,6 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
                     </p>
                   )}
                 </div>
-
-                {/* Alta de producto al vuelo (compra) — datos completos */}
-                {creating && (
-                  <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-3 dark:border-blue-800 dark:bg-blue-900/10">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Nuevo producto</p>
-                      <button type="button" onClick={resetProduct} className="text-xs text-slate-500 hover:underline">Cancelar</button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className={lbl}>SKU *</label><input value={np.sku} onChange={(e) => setNp({ ...np, sku: e.target.value })} className={inp} placeholder="CAFE-1" /></div>
-                      <div><label className={lbl}>Unidad *</label><input value={np.unit} onChange={(e) => setNp({ ...np, unit: e.target.value })} className={inp} placeholder="kg, caja…" /></div>
-                    </div>
-                    <div><label className={lbl}>Nombre *</label><input value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} className={inp} /></div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className={lbl}>Categoría</label><input value={np.category} onChange={(e) => setNp({ ...np, category: e.target.value })} className={inp} /></div>
-                      <div><label className={lbl}>Precio venta</label><input type="number" min="0" step="1" value={np.salePrice} onChange={(e) => setNp({ ...np, salePrice: e.target.value })} className={inp} placeholder="0" /></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className={lbl}>Stock mín.</label><input type="number" min="0" step="1" value={np.minStock} onChange={(e) => setNp({ ...np, minStock: e.target.value })} className={inp} /></div>
-                      <div><label className={lbl}>Stock máx.</label><input type="number" min="0" step="1" value={np.maxStock} onChange={(e) => setNp({ ...np, maxStock: e.target.value })} className={inp} placeholder="—" /></div>
-                    </div>
-                    <div>
-                      <label className={lbl}>Modalidad</label>
-                      <div className="flex gap-2">
-                        <label className={`flex flex-1 cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs ${np.isSellable ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'}`}>
-                          <input type="checkbox" checked={np.isSellable} onChange={(e) => setNp({ ...np, isSellable: e.target.checked })} className="h-3.5 w-3.5 accent-blue-600" /> Se vende
-                        </label>
-                        <label className={`flex flex-1 cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs ${np.isRentable ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-slate-300 text-slate-600'}`}>
-                          <input type="checkbox" checked={np.isRentable} onChange={(e) => setNp({ ...np, isRentable: e.target.checked })} className="h-3.5 w-3.5 accent-violet-600" /> Se alquila
-                        </label>
-                      </div>
-                    </div>
-                    {np.isRentable && (
-                      <div><label className={lbl}>Tarifa de alquiler</label><input type="number" min="0" step="1" value={np.rentalPrice} onChange={(e) => setNp({ ...np, rentalPrice: e.target.value })} className={inp} placeholder="0" /></div>
-                    )}
-                    <p className="text-[11px] text-slate-500">El costo se toma del costo de esta compra.</p>
-                  </div>
-                )}
 
                 {!isOperative && (
                   <div>
@@ -305,6 +248,11 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
           </div>
         </div>
       </div>
+
+      {/* HU-170 — alta de producto con el MISMO formulario de KIRA (idéntico al del inventario). */}
+      {showProductForm && (
+        <ProductFormModal mode="create" onClose={() => setShowProductForm(false)} onSuccess={onProductCreated} />
+      )}
     </Portal>
   )
 }
