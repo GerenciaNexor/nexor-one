@@ -72,6 +72,8 @@ const BUSINESS_TABLES = [
   'reminders',
   // HU-158 — alquileres (salida temporal de stock); base del módulo de alquiler.
   'rentals',
+  // HU-175 — alquileres entrantes (producto rentado de un tercero; no entra a KIRA).
+  'incoming_rentals',
 ] as const
 
 async function setupRLS(): Promise<void> {

@@ -183,6 +183,20 @@ ver su **historial** (`GET /v1/quick/registers?kind=purchase`): fecha real (mane
 proveedor, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Compras
 realizadas" (OC recibidas del flujo formal) — son cosas distintas y no se mezclan.
 
+**Alquileres entrantes — rentar de un tercero (HU-175)**  
+NIRA tiene la subsección **"Alquileres entrantes"** (`/nira/incoming-rentals`) para registrar un producto
+que la empresa **renta de un tercero** para un proyecto (no lo compra: lo usa y lo devuelve). Se guarda
+**qué** se rentó, **cantidad**, **proyecto** (texto), **fecha de devolución**, **costo** y **depósito
+opcional**. El tercero puede ser un **proveedor existente** (`supplierId`) o una **entidad nueva suelta**
+(`thirdPartyName` + contacto), sin obligar a registrarla formalmente. **Clave de diseño:** el producto
+**NO es de la empresa** → **no entra a KIRA** (ni stock, ni vendible, ni alquilable); vive en la tabla
+propia **`incoming_rentals`**. El **costo** se asienta como **egreso** en VERA (categoría *Alquileres
+pagados*, `referenceType 'incoming_rental'`); el **depósito** **no es transacción**: queda como
+**retención por cobrar** (dinero propio afuera) derivable del registro — el panel de VERA es HU-177. Cada
+alquiler queda consultable con todos sus datos para su **devolución** (HU-176). Endpoints (todos
+`OPERATIVE`+`NIRA`, tenant/RLS): `POST /v1/nira/incoming-rentals`, `GET /v1/nira/incoming-rentals`
+(filtros `status`/`supplierId`), `GET /v1/nira/incoming-rentals/:id`.
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;
