@@ -107,7 +107,7 @@ export async function quotesRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:        ['ARI'],
       summary:     'Cambiar estado de cotización',
-      description: 'Transición de estado: sent, accepted, rejected. Si accepted → genera ingreso en VERA. Cotización vencida no puede aceptarse.',
+      description: 'Transición de estado: sent, accepted, rejected. Aceptar NO genera ingreso (HU-167): el ingreso se registra al ganar el deal. Cotización vencida no puede aceptarse.',
       security:    bearerAuth,
       params:      idParam,
       body:        z2j(UpdateQuoteStatusSchema),

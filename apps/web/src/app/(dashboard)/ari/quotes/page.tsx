@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { QuoteFormModal, type Quote, type QuoteItem } from '@/components/ari/QuoteFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
@@ -262,7 +263,7 @@ function QuoteDetailModal({
                   {[
                     ['Cliente',        quote.client.name + (quote.client.company ? ` · ${quote.client.company}` : '')],
                     ['Deal',           quote.deal?.title ?? '—'],
-                    ['Válida hasta',   fmtDate(quote.validUntil)],
+                    ['Válida hasta',   fmtCalendarDate(quote.validUntil)],
                     ['Creado por',     quote.creator.name],
                   ].map(([label, value]) => (
                     <div key={label}>
@@ -717,7 +718,7 @@ export default function QuotesPage() {
                             expiryState === 'expired-date' ? 'font-medium text-red-500 line-through' :
                             'text-xs text-slate-500 dark:text-slate-400'
                           }>
-                            {fmtDate(q.validUntil)}
+                            {fmtCalendarDate(q.validUntil)}
                             {expiryState === 'soon' && ' ⚠'}
                           </span>
                         ) : (
@@ -806,7 +807,7 @@ export default function QuotesPage() {
                       expiryState === 'expired-date' ? 'font-medium text-red-500 line-through' :
                       ''
                     }>
-                      Válida: {fmtDate(q.validUntil)}
+                      Válida: {fmtCalendarDate(q.validUntil)}
                       {expiryState === 'soon' && ' ⚠'}
                     </span>
                   )}

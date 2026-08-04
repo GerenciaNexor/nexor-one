@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { Portal } from '@/components/ui/Portal'
 import { ReceiveModal } from '@/components/nira/ReceiveModal'
@@ -396,7 +397,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: { id: stri
                 <>
                   <dt className="text-slate-500">Entrega esperada</dt>
                   <dd className="font-medium text-slate-900">
-                    {new Date(po.expectedDelivery).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {fmtCalendarDate(po.expectedDelivery, { day: '2-digit', month: 'long', year: 'numeric' })}
                   </dd>
                 </>
               )}

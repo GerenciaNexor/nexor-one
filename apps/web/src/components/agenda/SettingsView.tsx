@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { ServiceFormModal } from './ServiceFormModal'
 import type { ServiceType } from './ServiceFormModal'
@@ -237,8 +238,9 @@ export function SettingsView() {
   const inputCls =
     'rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white'
 
+  // `bd.date` es DATE (fecha de calendario) → UTC para no correr el día (util central).
   const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    fmtCalendarDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div className="mx-auto max-w-5xl space-y-10 p-6">

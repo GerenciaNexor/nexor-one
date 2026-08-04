@@ -150,6 +150,46 @@ Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo prod
 **Proveedor preferido (HU-123)**  
 Cada producto puede tener un proveedor **preferido**, y la empresa un preferido **global** de respaldo. NIRA lo prioriza: al comparar precios lo marca y lo lista primero, y al proponer una OC lo usa por defecto (queda registrado en las notas del borrador). Resolución: preferido del producto → preferido global del tenant → comportamiento actual. Se gestiona desde el detalle de producto (KIRA) y la página de Proveedores (NIRA). Es una recomendación: el agente puede proponer otro con justificación.
 
+**Registro rápido de compra/venta (HU-169)**  
+Camino **aparte** del flujo formal (OC con aprobación / deal en pipeline), para transacciones pequeñas que
+**ya ocurrieron**: se marcan **completadas** (sin aprobación). Endpoints en el módulo transversal `quick`:
+`POST /v1/quick/purchases` y `/sales` (+ lookups `/quick/products|suppliers|clients|branches`), protegidos por
+**rol** (mín. OPERATIVE, sin gate de módulo) + tenant/RLS; el OPERATIVE queda fijado a su sucursal. Se pregunta
+de forma **OBLIGATORIA** `affectsInventory` (sí/no):
+- **Sí** → compra suma stock (entrada, motivo `compra`) / venta descuenta del **disponible** (salida, motivo
+  `venta`, precio congelado, sin negativo — HU-128/158) **y** VERA (gasto/ingreso).
+- **No** → solo VERA (servicios/consumos: café, mano de obra…), sin tocar KIRA.
+La contraparte usa el **genérico** (Proveedor ocasional / Consumidor final, HU-154) o una entidad específica.
+El acceso está en **Inicio → Registro rápido** (+ Compra / + Venta).
+
+**Ventas rápidas (subsección ARI — HU-172).** ARI tiene una subsección **"Ventas rápidas"**
+(`/ari/quick-sales`) para **registrar** una venta rápida (reutiliza HU-169/170: pregunta de inventario,
+genéricos, bloqueo si el producto no existe) y ver su **historial** (`GET /v1/quick/registers?kind=sale`):
+fecha real, cliente, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Ventas
+realizadas" (los negocios ganados del pipeline) — caminos distintos, no se mezclan.
+
+**Producto inexistente (HU-170 — asimetría por diseño).** Si afecta inventario y el producto no existe:
+- **Compra:** avisa "no existe, ¿deseas ingresarlo?" y permite **crearlo al vuelo con datos completos**
+  (`newProduct` en `POST /v1/quick/purchases`: SKU, nombre, unidad, categoría, precio, mín./máx., modalidad
+  venta/alquiler; el costo por defecto es el de la compra). Queda como cualquier producto de KIRA (tenant/RLS)
+  y la compra suma su stock. SKU duplicado → `DUPLICATE_SKU`.
+- **Venta:** **bloquea** ("agrégalo primero") — no se vende algo no registrado; sin movimiento huérfano ni
+  stock negativo. Los servicios (no afectan inventario) no pasan por esta regla.
+
+**Compras rápidas (subsección NIRA — HU-171)**  
+NIRA tiene una subsección **"Compras rápidas"** (`/nira/quick-purchases`) para **registrar** una compra
+rápida (reutiliza el flujo de HU-169/170: pregunta de inventario, genéricos, alta de producto al vuelo) y
+ver su **historial** (`GET /v1/quick/registers?kind=purchase`): fecha real (manejo central de fechas),
+proveedor, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Compras
+realizadas" (OC recibidas del flujo formal) — son cosas distintas y no se mezclan.
+
+**Sucursal obligatoria al crear la OC (HU-165)**  
+La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
+validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;
+antes era opcional y la OC quedaba **atascada en recepción** con "La OC no tiene sucursal asignada" (`NO_BRANCH`).
+La edición puede cambiar de sucursal pero no vaciarla. *Datos previos:* la única OC demo sin sucursal
+(`OC-2026-001`, aprobada, tenant Nexor) se **corrigió asignándole la sucursal principal** para que pudiera recibirse.
+
 **Integración automática con KIRA**  
 Cuando una OC es marcada como recibida, NIRA genera automáticamente una entrada de stock en KIRA por cada ítem recibido. No hay que registrar la entrada dos veces.
 
@@ -205,6 +245,12 @@ KIRA calcula semanalmente qué productos generan el 80% del valor del inventario
 
 **Trazabilidad completa (HU-128)**  
 Cada movimiento registra obligatoriamente **quién** (usuario), **cómo** (`type`: entrada/salida/ajuste) y **por qué** (`reason`/motivo: compra/venta/devolución/ajuste/traslado), con referencia al documento de origen (OC, deal). El motivo nunca queda vacío. `stock_movements` es **append-only** y el stock **nunca queda negativo**.
+
+**Disponible en la lista (HU-164)**  
+El **Catálogo** (`GET /v1/kira/products`) muestra el **stock disponible** por fila (total − alquilado, HU-158),
+sin entrar al detalle — en escritorio y en tarjetas móviles. El disponible se acota a la(s) sucursal(es) que
+ve el usuario (`getBranchFilter`: admin = todas; los demás su sucursal). Es solo lectura; el detalle completo
+(total/alquilado, mínimos) sigue en el producto.
 
 **Venta vs. alquiler — disponible ≠ total (HU-158)**  
 Un producto se marca como **de venta, de alquiler o ambos** (al crearlo o editarlo, con tarifa de
@@ -373,13 +419,17 @@ se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las 
 
 ### Flujos clave
 
-**Flujo 1: Ingreso automático por venta**
+**Flujo 1: Ingreso automático por venta (HU-167 — ingreso único)**
 ```
-ARI: cotización cambia a "accepted"
-→ ARI llama: crear_transaccion({ type: 'income', amount, referenceType: 'quote', referenceId })
-→ VERA registra transaction
-→ Dashboard actualizado en tiempo real
+ARI: el deal pasa a etapa GANADA (isFinalWon)  ← único evento que genera ingreso
+→ moveDeal: crear transaction { type:'income', amount: deal.value, referenceType:'deal', referenceId }
+           + fulfillSaleInventory (descuenta stock de los ítems de catálogo — HU-128)
+→ VERA registra el ingreso · Dashboard actualizado
 ```
+> **HU-167:** aceptar una cotización **ya no** genera ingreso (era una segunda ruta `referenceType:'quote'`
+> que podía contar la venta dos veces). El ingreso se registra en un **único evento: ganar el deal**,
+> coherente con HU-126 (venta finalizada al ganar) y HU-128 (ganar mueve el inventario) — ingreso y stock
+> en el mismo momento. Aceptar la cotización sigue funcionando como paso del pipeline (solo cambia su estado).
 
 **Flujo 2: Egreso automático por compra**
 ```
@@ -466,6 +516,17 @@ Los datos salen de un **rollup diario** (job programado
 así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBranchFilter`
 (TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal) y valida el rango. **No** incluye satisfacción
 del cliente ni inventario crítico (fuera de alcance).
+
+**Actualizar — recálculo en vivo (HU-174).** El Dashboard tiene un botón **"Actualizar"**:
+`POST /v1/dashboard/refresh` fuerza el recálculo del rollup del **día en curso** desde las
+transacciones reales (ventas, compras y **registro rápido** HU-169/170) y luego la vista relee los
+valores frescos — **no** es un simple "recargar" (que mostraría el rollup viejo). Reutiliza la misma
+lógica del job (`recalcTodayRollupForTenant` → núcleo compartido `recalcRollupWindow`) acotada a hoy:
+solo recalcula el día en curso, **no toca los días cerrados**. "Hoy" es en la zona del negocio
+(`businessToday`, coherente con el manejo central de fechas). Respeta tenant/sucursal/RLS
+(corre bajo `withTenantContext`). Muestra la **hora del último cálculo** y da feedback (spinner
+"Actualizando…", anti-doble-click). Convive con el job periódico; no lo reemplaza. El eje de las
+gráficas siempre rotula **hoy** y cada punto tiene **tooltip** con fecha y valor (HU-173).
 
 ### Top 10 de productos (HU-130)
 Gráfico de **barras** (ranking, no líneas) con dos vistas seleccionables:

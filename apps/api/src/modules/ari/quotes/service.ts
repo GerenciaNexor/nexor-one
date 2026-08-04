@@ -260,44 +260,17 @@ export async function updateQuoteStatus(
     }
   }
 
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // 1. Actualizar estado
-    const updated = await tx.quote.update({
-      where:  { id: quoteId },
-      data:   { status: input.status },
-      select: QUOTE_DETAIL_SELECT,
-    })
-
-    // 2. Si accepted → generar ingreso en VERA
-    if (input.status === 'accepted') {
-      const amount   = parseFloat(String(quote.total))
-      const branchId = quote.deal?.branchId ?? null
-
-      if (amount > 0) {
-        const ventasCat = await tx.transactionCategory.findFirst({
-          where:  { tenantId, name: 'Ventas', isActive: true },
-          select: { id: true },
-        })
-        await tx.transaction.create({
-          data: {
-            tenantId,
-            branchId,
-            categoryId:    ventasCat?.id ?? null,
-            type:          'income',
-            amount,
-            currency:      'COP',
-            description:   `Cotización aceptada ${quote.quoteNumber} — ${quote.client.name}`,
-            category:      'Ventas',
-            referenceType: 'quote',
-            referenceId:   quoteId,
-            date:          new Date(),
-          },
-        })
-      }
-    }
-
-    return toApiQuote(updated)
+  // HU-167 — Aceptar la cotización SOLO cambia su estado; ya NO postea ingreso en VERA.
+  // El ingreso de la venta se registra en un ÚNICO evento: ganar el deal (isFinalWon, en
+  // `moveDeal`/fulfillSaleInventory), coherente con HU-126 (venta finalizada al ganar) y HU-128
+  // (ganar el deal mueve el inventario). Así ingreso y stock ocurren en el mismo evento y una
+  // venta que pase por aceptar-cotización y luego ganar-deal genera un solo ingreso.
+  const updated = await prisma.quote.update({
+    where:  { id: quoteId },
+    data:   { status: input.status },
+    select: QUOTE_DETAIL_SELECT,
   })
+  return toApiQuote(updated)
 }
 
 // =============================================================================

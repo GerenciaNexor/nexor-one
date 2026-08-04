@@ -176,7 +176,11 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   // ── Cargar datos de referencia ─────────────────────────────────────────────
   useEffect(() => {
     apiClient.get<{ data: Supplier[] }>('/v1/nira/suppliers').then((r) => setSuppliers(r.data)).catch(() => null)
-    apiClient.get<{ data: Branch[] }>('/v1/branches').then((r) => setBranches(r.data)).catch(() => null)
+    apiClient.get<{ data: Branch[] }>('/v1/branches').then((r) => {
+      setBranches(r.data)
+      // HU-165 — si solo hay una sucursal, preseleccionarla (la sucursal es obligatoria).
+      if (r.data.length === 1) setBranchId(r.data[0]!.id)
+    }).catch(() => null)
     apiClient.get<{ data: Product[] }>('/v1/kira/products?pageSize=500').then((r) => setProducts(r.data)).catch(() => null)
   }, [])
 
@@ -280,6 +284,8 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   function validate(): boolean {
     const errs: string[] = []
     if (!supplierId) { setApiError('Selecciona un proveedor'); return false }
+    // HU-165 — la sucursal es obligatoria (el inventario se recibe en una sucursal).
+    if (!branchId)   { setApiError('Selecciona la sucursal destino'); return false }
     lines.forEach((l, i) => {
       if (!l.productId) errs[i] = 'Selecciona un producto'
       else if (!(parseFloat(l.quantityOrdered) > 0)) errs[i] = 'Cantidad inválida'
@@ -298,7 +304,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
 
     const body = {
       supplierId,
-      branchId:         branchId || undefined,
+      branchId,
       expectedDelivery: expectedDelivery || undefined,
       taxRate:          parseFloat(taxRate) || 0,
       notes:            notes.trim() || undefined,
@@ -368,9 +374,10 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
                   )}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Sucursal destino</label>
-                  <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={sel}>
-                    <option value="">Sin sucursal específica</option>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Sucursal destino *</label>
+                  <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+                    className={!branchId && apiError ? inpErr : sel}>
+                    <option value="">Seleccionar sucursal…</option>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
@@ -443,9 +450,10 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
 
                     {/* Cantidad */}
                     <div>
-                      <input type="number" min="0.01" step="0.01"
+                      {/* HU-168 — cantidades enteras: step 1, mín. 1, sin decimales. */}
+                      <input type="number" min="1" step="1"
                         value={line.quantityOrdered}
-                        onChange={(e) => updateLine(idx, 'quantityOrdered', e.target.value)}
+                        onChange={(e) => { const v = e.target.value; if (v === '' || /^\d+$/.test(v)) updateLine(idx, 'quantityOrdered', v) }}
                         className={`${confInp(line._conf?.quantityOrdered)} text-right`}
                         title={line._conf?.quantityOrdered === 'low' ? 'Verificar este valor' : undefined}
                         placeholder="1" />

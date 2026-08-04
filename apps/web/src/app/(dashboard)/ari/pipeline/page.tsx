@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { DealFormModal, type PipelineStage, type Deal } from '@/components/ari/DealFormModal'
 import { DealDetailModal } from '@/components/ari/DealDetailModal'
@@ -281,7 +282,7 @@ function DealCard({
         )}
         {deal.expectedClose && (
           <span className="text-xs text-slate-400">
-            {new Date(deal.expectedClose).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+            {fmtCalendarDate(deal.expectedClose, { day: '2-digit', month: 'short' })}
           </span>
         )}
       </div>

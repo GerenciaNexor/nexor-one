@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { CreateProductSchema, UpdateProductSchema, ProductQuerySchema } from './schema'
 import { listProducts, getProduct, createProduct, updateProduct, deactivateProduct } from './service'
-import { requireRoleAndModule } from '../../../lib/guards'
+import { requireRoleAndModule, getBranchFilter } from '../../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function productsRoutes(app: FastifyInstance): Promise<void> {
@@ -26,7 +26,8 @@ export async function productsRoutes(app: FastifyInstance): Promise<void> {
         code: 'VALIDATION_ERROR',
       })
     }
-    const result = await listProducts(request.user.tenantId, parsed.data)
+    // HU-164 — disponible por rol/sucursal (admin ve todas; los demás su sucursal).
+    const result = await listProducts(request.user.tenantId, parsed.data, getBranchFilter(request.user))
     return reply.code(200).send(result)
   })
 

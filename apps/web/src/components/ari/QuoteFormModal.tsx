@@ -620,12 +620,13 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
                           {/* Cantidad */}
                           <div className="col-span-4 sm:col-span-2">
                             <label className="mb-1 block text-xs text-slate-500">Cantidad</label>
+                            {/* HU-168 — cantidades enteras: step 1, mín. 1, sin decimales. */}
                             <input
                               type="number"
-                              min={0.001}
-                              step={0.001}
+                              min={1}
+                              step={1}
                               value={line.quantity}
-                              onChange={(e) => setLine(idx, { quantity: e.target.value })}
+                              onChange={(e) => { const v = e.target.value; if (v === '' || /^\d+$/.test(v)) setLine(idx, { quantity: v }) }}
                               className={confInp(line._conf?.quantity)}
                               title={line._conf?.quantity === 'low' ? 'Verificar este valor' : undefined}
                             />

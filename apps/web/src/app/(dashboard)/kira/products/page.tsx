@@ -189,6 +189,7 @@ export default function ProductsPage() {
                 <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Unidad</th>
                 <th className="px-4 py-3 text-right">Precio venta</th>
+                <th className="px-4 py-3 text-right">Disponible</th>
                 <th className="px-4 py-3 text-right">Stock mín.</th>
                 <th className="px-4 py-3 text-center">ABC</th>
                 <th className="px-4 py-3 text-center">Estado</th>
@@ -197,10 +198,10 @@ export default function ProductsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <SkeletonRows rows={8} cols={canEdit ? 9 : 8} />
+                <SkeletonRows rows={8} cols={canEdit ? 10 : 9} />
               ) : fetchError ? (
                 <tr>
-                  <td colSpan={canEdit ? 9 : 8} className="py-16 text-center">
+                  <td colSpan={canEdit ? 10 : 9} className="py-16 text-center">
                     <p className="text-sm text-red-500">{fetchError}</p>
                     <button onClick={() => setSearch((s) => s + ' ')} className="mt-3 text-sm text-blue-600 hover:underline">
                       Reintentar
@@ -209,7 +210,7 @@ export default function ProductsPage() {
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 9 : 8} className="p-0">
+                  <td colSpan={canEdit ? 10 : 9} className="p-0">
                     {(search || categoryFilter || abcFilter) ? (
                       <EmptyState
                         bordered={false}
@@ -241,6 +242,11 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-slate-500">{p.unit}</td>
                     <td className="px-4 py-3 text-right text-slate-700">
                       {p.salePrice != null ? `$${p.salePrice.toLocaleString('es-CO')}` : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {p.availableStock != null
+                        ? <span className={`font-semibold ${p.availableStock <= p.minStock ? 'text-red-600' : 'text-emerald-700'}`}>{p.availableStock.toLocaleString('es-CO')}</span>
+                        : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500">{p.minStock}</td>
                     <td className="px-4 py-3 text-center"><AbcBadge cls={p.abcClass} /></td>
@@ -317,7 +323,12 @@ export default function ProductsPage() {
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <p className="text-xs text-slate-400">Stock mín. {p.minStock}</p>
+                <p className="text-xs text-slate-400">
+                  {p.availableStock != null && (
+                    <><span className="font-semibold text-slate-600">Disp. </span><span className={`font-semibold ${p.availableStock <= p.minStock ? 'text-red-600' : 'text-emerald-700'}`}>{p.availableStock.toLocaleString('es-CO')}</span><span className="mx-1.5 text-slate-300">·</span></>
+                  )}
+                  Stock mín. {p.minStock}
+                </p>
                 {canEdit && (
                   <button
                     onClick={(ev) => openEdit(p, ev)}

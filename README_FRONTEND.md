@@ -197,7 +197,7 @@ En [apps/web/src/components/](apps/web/src/components/), agrupados por área:
 | `nira/` | NiraSubNav, SupplierFormModal, PurchaseOrderFormModal, ReceiveModal, RatePurchaseOrderModal |
 | `kira/` | KiraSubNav, ProductFormModal, MovementModal |
 | `agenda/` | AgendaSubNav, CalendarView, AppointmentsView, AppointmentFormModal, ServiceFormModal |
-| `vera/` | VeraSubNav, VeraDashboard, TransactionsView, TransactionFormModal, ReportsView, **LineChart** (genérico: serie única o ingresos/egresos, etiquetas por día/mes — HU-127) |
+| `vera/` | VeraSubNav, VeraDashboard, TransactionsView, TransactionFormModal, ReportsView, **LineChart** (genérico: serie única o ingresos/egresos, etiquetas por día/mes — HU-127; **tooltip al pasar el mouse** con fecha y valor de cada serie, y el eje X **siempre rotula el último punto (hoy)** — HU-173) |
 | `dashboard/` | **BarChart** (ranking horizontal para el Top 10 de productos — HU-130) |
 | `chat/` | FloatingChat, MarkdownMessage |
 | `landing/` | Reveal (animación al hacer scroll), ChatDemo (conversación animada) |

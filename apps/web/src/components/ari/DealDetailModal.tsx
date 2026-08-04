@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { fmtCalendarDate } from '@/lib/format-date'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
@@ -149,7 +150,7 @@ export function DealDetailModal({ dealId, onClose, onChanged }: {
                   <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
                     <Row label="Monto"><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtCOP(deal.value)}</span></Row>
                     <Row label="Probabilidad">{deal.probability != null ? `${deal.probability}%` : '—'}</Row>
-                    <Row label="Cierre estimado">{fmtDate(deal.expectedClose)}</Row>
+                    <Row label="Cierre estimado">{fmtCalendarDate(deal.expectedClose, { day: '2-digit', month: 'short', year: 'numeric' })}</Row>
                     <Row label="Vendedor">{deal.assignedUser?.name ?? '—'}</Row>
                     <Row label={isClosed ? 'Cerrado' : 'Días en la etapa'}>{isClosed ? fmtDate(deal.closedAt) : `${daysSince(deal.updatedAt)} d`}</Row>
                     <Row label="Sucursal">{deal.branch?.name ?? '—'}</Row>
