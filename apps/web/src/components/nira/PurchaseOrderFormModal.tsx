@@ -450,9 +450,10 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
 
                     {/* Cantidad */}
                     <div>
-                      <input type="number" min="0.01" step="0.01"
+                      {/* HU-168 — cantidades enteras: step 1, mín. 1, sin decimales. */}
+                      <input type="number" min="1" step="1"
                         value={line.quantityOrdered}
-                        onChange={(e) => updateLine(idx, 'quantityOrdered', e.target.value)}
+                        onChange={(e) => { const v = e.target.value; if (v === '' || /^\d+$/.test(v)) updateLine(idx, 'quantityOrdered', v) }}
                         className={`${confInp(line._conf?.quantityOrdered)} text-right`}
                         title={line._conf?.quantityOrdered === 'low' ? 'Verificar este valor' : undefined}
                         placeholder="1" />
