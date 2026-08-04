@@ -774,6 +774,10 @@ model IncomingRental {
   status     String    @default("active") @db.VarChar(20)     // active | returned (HU-176)
   returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
   returnedBy String?   @map("returned_by") @db.VarChar(30)
+  // HU-176 — al devolver: parte del depósito PROPIO que el tercero retuvo (se pierde → egreso VERA).
+  // Recuperado = deposit − depositLost. Motivo obligatorio si se pierde algo.
+  depositLost   Decimal @default(0) @map("deposit_lost") @db.Decimal(15, 2)
+  depositReason String? @map("deposit_reason") @db.Text
   notes      String?   @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

@@ -197,6 +197,18 @@ alquiler queda consultable con todos sus datos para su **devolución** (HU-176).
 `OPERATIVE`+`NIRA`, tenant/RLS): `POST /v1/nira/incoming-rentals`, `GET /v1/nira/incoming-rentals`
 (filtros `status`/`supplierId`), `GET /v1/nira/incoming-rentals/:id`.
 
+**Vista global de "lo prestado" y devolución (HU-176)**  
+La misma subsección **NIRA → Alquileres entrantes** es la **vista global de lo prestado**: por defecto
+lista **todos los activos** (sin filtrar por proyecto), ordenados por **fecha de devolución más próxima**,
+con búsqueda (tercero/producto/proyecto) y filtro **"próximos a vencer"** (`dueBefore`); las filas vencidas
+se marcan. Cada activo tiene **"Devolver"** → `POST /v1/nira/incoming-rentals/:id/return`, que **cierra**
+el alquiler (`status 'returned'`, `returnedAt`/`returnedBy` — trazabilidad de quién y cuándo) y **resuelve
+el depósito PROPIO**: **recuperado** (vuelve a la empresa, sin transacción) o **perdido** (el tercero retiene
+`lostAmount ≤ deposit`, con **motivo obligatorio**) → **egreso** en VERA (`referenceType
+'incoming_rental_deposit'`, categoría *Alquileres pagados*). `depositRecovered = deposit − depositLost`. El
+modal muestra **todo lo registrado** (costo, depósito, fecha, proyecto, tercero) antes de confirmar. **No
+toca inventario propio** (el producto nunca fue de la empresa).
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;

@@ -1109,13 +1109,17 @@ existente** (`supplier_id`) o una **entidad nueva suelta** (`third_party_name` +
 | `rental_cost` | DECIMAL(15,2) | Costo del alquiler → **egreso** en VERA (`referenceType 'incoming_rental'`) |
 | `deposit` | DECIMAL(15,2) DEFAULT 0 | Depósito opcional → **retención por cobrar** (dinero propio afuera); no es transacción |
 | `status` | VARCHAR(20) DEFAULT `active` | `active` \| `returned` (HU-176) |
-| `returned_at` / `returned_by` | TIMESTAMPTZ / VARCHAR(30) NULL | Cierre de la devolución (HU-176) |
+| `returned_at` / `returned_by` | TIMESTAMPTZ / VARCHAR(30) NULL | **HU-176** — cierre de la devolución (cuándo · quién, FK → users) |
+| `deposit_lost` | DECIMAL(15,2) DEFAULT 0 | **HU-176** — parte del depósito que el tercero retuvo (se pierde → egreso VERA). Recuperado = `deposit − deposit_lost` |
+| `deposit_reason` | TEXT NULL | **HU-176** — motivo si se pierde algo del depósito |
 | `notes` | TEXT NULL | Notas |
 
 **RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). **Operaciones** (`/v1/nira/incoming-rentals`,
 `OPERATIVE`+`NIRA`): `POST /` registra (costo → egreso VERA *Alquileres pagados*; depósito queda en el
-registro); `GET /` lista (filtros `status`/`supplier_id`); `GET /:id` detalle. **No** toca KIRA ni
-`stock_movements`.
+registro como retención por cobrar); `GET /` es la **vista global de "lo prestado"** (filtros
+`status`/`supplier_id`/`project`/`search`/`dueBefore`, orden por vencimiento); `GET /:id` detalle;
+`POST /:id/return` (**HU-176**) cierra el alquiler y resuelve el depósito propio (recuperado, o perdido →
+egreso `incoming_rental_deposit`). **No** toca KIRA ni `stock_movements`.
 
 ---
 

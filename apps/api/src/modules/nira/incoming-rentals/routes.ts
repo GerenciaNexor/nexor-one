@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { CreateIncomingRentalSchema, IncomingRentalQuerySchema } from './schema'
-import { createIncomingRental, listIncomingRentals, getIncomingRental } from './service'
+import { CreateIncomingRentalSchema, IncomingRentalQuerySchema, ReturnIncomingRentalSchema } from './schema'
+import { createIncomingRental, listIncomingRentals, getIncomingRental, returnIncomingRental } from './service'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { z2j, listRes, objRes, idParam, stdErrors, bearerAuth } from '../../../lib/openapi'
 
@@ -39,7 +39,21 @@ export async function incomingRentalsRoutes(app: FastifyInstance): Promise<void>
     } catch (err) { return errReply(reply, err) }
   })
 
-  /** GET /v1/nira/incoming-rentals — historial de alquileres entrantes (filtros: status/proveedor). */
+  /** POST /v1/nira/incoming-rentals/:id/return — registrar la devolución y resolver el depósito propio. */
+  app.post('/:id/return', {
+    schema: { tags: ['NIRA'], summary: 'Devolver alquiler entrante', security: bearerAuth, params: idParam, body: z2j(ReturnIncomingRentalSchema), response: { 200: objRes, ...stdErrors } },
+    preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = ReturnIncomingRentalSchema.safeParse(request.body ?? {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const rental = await returnIncomingRental(request.user.tenantId, request.user.userId, id, parsed.data)
+      return reply.code(200).send({ success: true, data: rental })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/nira/incoming-rentals — vista global de "lo prestado" (filtros: status/proveedor/proyecto/búsqueda/vencimiento). */
   app.get('/', {
     schema: { tags: ['NIRA'], summary: 'Listar alquileres entrantes', security: bearerAuth, querystring: z2j(IncomingRentalQuerySchema), response: { 200: listRes, ...stdErrors } },
     preHandler: requireRoleAndModule('OPERATIVE', 'NIRA'),

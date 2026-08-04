@@ -1,7 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { businessToday } from '../../../lib/dates'
-import type { CreateIncomingRentalInput, IncomingRentalQuery } from './schema'
+import type { CreateIncomingRentalInput, IncomingRentalQuery, ReturnIncomingRentalInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
 
@@ -25,12 +25,15 @@ interface RentalRow {
   id: string; status: string; description: string; quantity: Prisma.Decimal | number; project: string
   returnDate: Date; rentalCost: Prisma.Decimal | number; deposit: Prisma.Decimal | number
   supplierId: string | null; thirdPartyName: string | null; thirdPartyContact: string | null
-  branchId: string | null; notes: string | null; returnedAt: Date | null; createdAt: Date
-  supplier?: { name: string } | null; branch?: { name: string } | null
+  branchId: string | null; notes: string | null; returnedAt: Date | null
+  depositLost: Prisma.Decimal | number; depositReason: string | null; createdAt: Date
+  supplier?: { name: string } | null; branch?: { name: string } | null; returnedByUser?: { name: string } | null
 }
 
 /** Forma pública de un alquiler entrante: decimales a número y etiqueta del tercero. */
 function shape(r: RentalRow) {
+  const deposit = num(r.deposit)
+  const depositLost = num(r.depositLost)
   return {
     id:                 r.id,
     status:             r.status,
@@ -39,7 +42,7 @@ function shape(r: RentalRow) {
     project:            r.project,
     returnDate:         r.returnDate,
     rentalCost:         num(r.rentalCost),
-    deposit:            num(r.deposit),
+    deposit,
     supplierId:         r.supplierId ?? null,
     thirdParty:         r.supplier?.name ?? r.thirdPartyName ?? null, // proveedor o entidad suelta
     thirdPartyContact:  r.thirdPartyContact ?? null,
@@ -47,10 +50,21 @@ function shape(r: RentalRow) {
     branchId:           r.branchId ?? null,
     branchName:         r.branch?.name ?? null,
     notes:              r.notes ?? null,
+    // Devolución (HU-176)
     returnedAt:         r.returnedAt ?? null,
+    returnedByName:     r.returnedByUser?.name ?? null,
+    depositLost,
+    depositRecovered:   Math.max(0, deposit - depositLost),
+    depositReason:      r.depositReason ?? null,
     createdAt:          r.createdAt,
   }
 }
+
+const LIST_INCLUDE = {
+  supplier:       { select: { name: true } },
+  branch:         { select: { name: true } },
+  returnedByUser: { select: { name: true } },
+} as const
 
 /**
  * HU-175 — Registrar un alquiler entrante. El producto NO entra a KIRA (ni stock, ni vendible,
@@ -115,18 +129,32 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
   })
 }
 
-/** HU-175 — Historial consultable de alquileres entrantes (para la devolución, HU-176). */
+/**
+ * HU-175/176 — Vista global de "lo prestado": historial consultable de alquileres entrantes.
+ * Por defecto (sin `status`) trae todo; filtros opcionales por proyecto, tercero (búsqueda),
+ * proveedor y "próximos a vencer" (`dueBefore`). Ordena por fecha de devolución más próxima.
+ */
 export async function listIncomingRentals(tenantId: string, q: IncomingRentalQuery) {
   const where: Prisma.IncomingRentalWhereInput = {
     tenantId,
     ...(q.status ? { status: q.status } : {}),
     ...(q.supplierId ? { supplierId: q.supplierId } : {}),
+    ...(q.project ? { project: { contains: q.project, mode: 'insensitive' } } : {}),
+    ...(q.dueBefore ? { returnDate: { lte: new Date(`${q.dueBefore}T00:00:00.000Z`) } } : {}),
+    ...(q.search
+      ? { OR: [
+          { description:    { contains: q.search, mode: 'insensitive' } },
+          { thirdPartyName: { contains: q.search, mode: 'insensitive' } },
+          { supplier: { name: { contains: q.search, mode: 'insensitive' } } },
+        ] }
+      : {}),
   }
   const [rows, total] = await Promise.all([
     prisma.incomingRental.findMany({
       where,
-      include: { supplier: { select: { name: true } }, branch: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: LIST_INCLUDE,
+      // "Lo prestado" prioriza lo que vence antes; dentro de eso, lo más reciente.
+      orderBy: [{ returnDate: 'asc' }, { createdAt: 'desc' }],
       skip: (q.page - 1) * q.limit, take: q.limit,
     }),
     prisma.incomingRental.count({ where }),
@@ -134,12 +162,61 @@ export async function listIncomingRentals(tenantId: string, q: IncomingRentalQue
   return { data: rows.map(shape), total, page: q.page, limit: q.limit, totalPages: Math.ceil(total / q.limit) }
 }
 
-/** HU-175 — Detalle de un alquiler entrante (todos sus datos para la devolución). */
+/** HU-175/176 — Detalle de un alquiler entrante (todos sus datos, incl. devolución). */
 export async function getIncomingRental(tenantId: string, id: string) {
-  const r = await prisma.incomingRental.findFirst({
-    where: { id, tenantId },
-    include: { supplier: { select: { name: true } }, branch: { select: { name: true } } },
-  })
+  const r = await prisma.incomingRental.findFirst({ where: { id, tenantId }, include: LIST_INCLUDE })
   if (!r) throw { statusCode: 404, message: 'Alquiler entrante no encontrado', code: 'INCOMING_RENTAL_NOT_FOUND' }
   return shape(r)
+}
+
+/**
+ * HU-176 — Registrar la DEVOLUCIÓN de un alquiler entrante. Cierra el alquiler (status 'returned',
+ * fecha + quién) y resuelve el depósito PROPIO:
+ *  - `recovered`: el tercero nos devuelve todo → sin egreso (nuestro dinero vuelve).
+ *  - `lost`: el tercero retiene `lostAmount` (≤ depósito), con motivo → egreso (pérdida) en VERA.
+ * NO toca inventario propio (el producto nunca fue de la empresa).
+ */
+export async function returnIncomingRental(tenantId: string, userId: string, id: string, input: ReturnIncomingRentalInput) {
+  return prisma.$transaction(async (tx) => {
+    const rental = await tx.incomingRental.findFirst({
+      where: { id, tenantId },
+      include: { supplier: { select: { name: true } } },
+    })
+    if (!rental) throw { statusCode: 404, message: 'Alquiler entrante no encontrado', code: 'INCOMING_RENTAL_NOT_FOUND' }
+    if (rental.status !== 'active') throw { statusCode: 409, message: 'Este alquiler ya fue devuelto', code: 'ALREADY_RETURNED' }
+
+    const deposit = num(rental.deposit)
+    const lost = input.depositResolution === 'lost' ? (input.lostAmount ?? 0) : 0
+    if (lost > deposit) throw { statusCode: 400, message: `No puedes perder más que el depósito ($${deposit})`, code: 'INVALID_LOST_AMOUNT' }
+
+    const updated = await tx.incomingRental.update({
+      where: { id: rental.id },
+      data: {
+        status:        'returned',
+        returnedAt:    new Date(),
+        returnedBy:    userId,
+        depositLost:   lost,
+        depositReason: lost > 0 ? (input.reason ?? null) : null,
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      },
+      include: LIST_INCLUDE,
+    })
+
+    // Depósito perdido → EGRESO (pérdida) en VERA. Recuperado no genera transacción (dinero propio que vuelve).
+    if (lost > 0) {
+      const categoryId = await ensureIncomingRentalCategory(tx, tenantId)
+      const thirdParty = rental.supplier?.name ?? rental.thirdPartyName ?? 'tercero'
+      await tx.transaction.create({
+        data: {
+          tenantId, branchId: rental.branchId, categoryId, type: 'expense', amount: lost, currency: 'COP',
+          description:   `Depósito perdido — ${rental.description} (${thirdParty})${input.reason ? `: ${input.reason}` : ''}`,
+          category:      'Alquileres pagados',
+          referenceType: 'incoming_rental_deposit', referenceId: rental.id,
+          date: businessToday(), isManual: true,
+        },
+      })
+    }
+
+    return shape(updated)
+  })
 }

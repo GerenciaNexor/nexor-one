@@ -30,9 +30,33 @@ export const CreateIncomingRentalSchema = z.object({
 export const IncomingRentalQuerySchema = z.object({
   status:     z.enum(['active', 'returned']).optional(),
   supplierId: z.string().optional(),
+  project:    z.string().optional(),                 // filtro por proyecto (contiene)
+  search:     z.string().optional(),                 // tercero o descripción (contiene)
+  dueBefore:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // próximos a vencer (returnDate ≤ fecha)
   page:       z.coerce.number().int().min(1).default(1),
   limit:      z.coerce.number().int().min(1).max(100).default(50),
 })
 
+export const DEPOSIT_RESOLUTIONS = ['recovered', 'lost'] as const
+
+/**
+ * HU-176 — Devolución del alquiler entrante: cierra el alquiler y resuelve el depósito PROPIO.
+ *  - `recovered`: el tercero nos devuelve el depósito (vuelve a la empresa). Sin egreso.
+ *  - `lost`: el tercero retiene `lostAmount` (≤ depósito), con motivo → egreso (pérdida) en VERA.
+ */
+export const ReturnIncomingRentalSchema = z.object({
+  depositResolution: z.enum(DEPOSIT_RESOLUTIONS, { invalid_type_error: 'Resolución de depósito inválida' }).default('recovered'),
+  lostAmount:        z.number().min(0, 'El monto perdido no puede ser negativo').optional(),
+  reason:            z.string().max(500).nullish(),
+  notes:             z.string().max(1000).nullish(),
+}).refine(
+  (d) => d.depositResolution !== 'lost' || (d.lostAmount !== undefined && d.lostAmount > 0),
+  { message: 'Indica cuánto retuvo el tercero del depósito', path: ['lostAmount'] },
+).refine(
+  (d) => d.depositResolution !== 'lost' || (typeof d.reason === 'string' && d.reason.trim().length > 0),
+  { message: 'Indica el motivo por el que se pierde el depósito', path: ['reason'] },
+)
+
 export type CreateIncomingRentalInput = z.infer<typeof CreateIncomingRentalSchema>
 export type IncomingRentalQuery       = z.infer<typeof IncomingRentalQuerySchema>
+export type ReturnIncomingRentalInput = z.infer<typeof ReturnIncomingRentalSchema>
