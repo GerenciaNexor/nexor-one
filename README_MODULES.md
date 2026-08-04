@@ -162,6 +162,12 @@ de forma **OBLIGATORIA** `affectsInventory` (sí/no):
 La contraparte usa el **genérico** (Proveedor ocasional / Consumidor final, HU-154) o una entidad específica.
 El acceso está en **Inicio → Registro rápido** (+ Compra / + Venta).
 
+**Ventas rápidas (subsección ARI — HU-172).** ARI tiene una subsección **"Ventas rápidas"**
+(`/ari/quick-sales`) para **registrar** una venta rápida (reutiliza HU-169/170: pregunta de inventario,
+genéricos, bloqueo si el producto no existe) y ver su **historial** (`GET /v1/quick/registers?kind=sale`):
+fecha real, cliente, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Ventas
+realizadas" (los negocios ganados del pipeline) — caminos distintos, no se mezclan.
+
 **Producto inexistente (HU-170 — asimetría por diseño).** Si afecta inventario y el producto no existe:
 - **Compra:** avisa "no existe, ¿deseas ingresarlo?" y permite **crearlo al vuelo con datos completos**
   (`newProduct` en `POST /v1/quick/purchases`: SKU, nombre, unidad, categoría, precio, mín./máx., modalidad

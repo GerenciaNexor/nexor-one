@@ -11,6 +11,7 @@ const TABS = [
   { href: '/ari/clients',  label: 'Clientes',          help: 'Tu directorio de clientes: guarda sus datos, revisa su historial y quién los atiende.' },
   { href: '/ari/pipeline', label: 'Negocios en curso', help: 'Tus oportunidades de venta por etapa. Mueve cada negocio a medida que avanza hasta cerrarlo.' },
   { href: '/ari/history',  label: 'Ventas realizadas', help: 'Las ventas que ya cerraste (ganadas o perdidas), para consultar qué pasó con cada una.' },
+  { href: '/ari/quick-sales', label: 'Ventas rápidas', help: 'Registra y consulta ventas pequeñas que ya ocurrieron, sin el pipeline. No se mezclan con los negocios ganados.' },
   { href: '/ari/quotes',   label: 'Cotizaciones',      help: 'Crea y envía cotizaciones a tus clientes y haz seguimiento de si las aceptan.' },
   { href: '/ari/reports',  label: 'Reportes',          help: 'Cómo van tus ventas: cuánto vendiste, tu tasa de conversión y el desempeño por vendedor.' },
 ] as const
