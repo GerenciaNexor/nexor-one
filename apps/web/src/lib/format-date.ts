@@ -34,3 +34,19 @@ export function fmtDateTime(value: string | Date | null | undefined, opts: Intl.
   if (!value) return '—'
   return new Date(value).toLocaleString('es-CO', { ...opts, timeZone: BUSINESS_TZ })
 }
+
+/**
+ * Hoy en la zona del negocio como 'YYYY-MM-DD' (para rangos de fecha del dashboard).
+ * Anclar a la zona del negocio evita que, de tarde en Colombia (UTC-5), `toISOString()`
+ * salte al día siguiente en UTC y el rango "hasta hoy" se desfase. (HU-173)
+ */
+export function businessTodayStr(tz: string = BUSINESS_TZ): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+
+/** Desplaza una fecha 'YYYY-MM-DD' `days` días (negativo = atrás) devolviendo 'YYYY-MM-DD'. */
+export function shiftDayStr(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}

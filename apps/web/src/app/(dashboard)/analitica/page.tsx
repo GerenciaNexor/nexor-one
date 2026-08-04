@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { LineChart, type ChartSeries } from '@/components/vera/LineChart'
 import { BarChart, type BarDatum } from '@/components/dashboard/BarChart'
+import { businessTodayStr, shiftDayStr } from '@/lib/format-date'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -41,8 +42,9 @@ const SHORTCUTS = [
   { label: '90 días', days: 90 },
 ]
 
-function dateStr(d: Date): string { return d.toISOString().slice(0, 10) }
-function daysAgo(n: number): string { return dateStr(new Date(Date.now() - n * 24 * 60 * 60 * 1000)) }
+// Rango anclado a HOY en la zona del negocio (manejo central de fechas, HU-173):
+// evita el desfase de `toISOString()` (UTC) que de tarde en Colombia corría el "hasta hoy".
+function daysAgo(n: number): string { return shiftDayStr(businessTodayStr(), -n) }
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 
