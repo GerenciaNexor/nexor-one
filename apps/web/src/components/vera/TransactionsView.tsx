@@ -356,8 +356,9 @@ export function TransactionsView() {
                     >
                       {/* Fecha */}
                       <td className="px-4 py-3 tabular-nums text-slate-500 dark:text-slate-400">
+                        {/* `date` es DATE (fecha de calendario): se formatea en UTC para no correrla un día. */}
                         {new Date(tx.date).toLocaleDateString('es', {
-                          day: '2-digit', month: 'short', year: '2-digit',
+                          day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC',
                         })}
                       </td>
 
@@ -490,7 +491,7 @@ export function TransactionsView() {
                   <div className="min-w-0">
                     <p className="truncate font-medium text-slate-900 dark:text-white">{tx.description}</p>
                     <p className="mt-0.5 text-xs text-slate-400">
-                      {new Date(tx.date).toLocaleDateString('es', { day: '2-digit', month: 'short', year: '2-digit' })}
+                      {new Date(tx.date).toLocaleDateString('es', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })}
                       {tx.txCategory && ` · ${tx.txCategory.name}`}
                     </p>
                   </div>

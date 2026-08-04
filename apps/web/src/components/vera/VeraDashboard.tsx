@@ -369,7 +369,7 @@ export function VeraDashboard() {
                     <p className="text-xs text-slate-400">
                       {tx.txCategory?.name ?? (tx.referenceType ?? 'Sin categoría')}
                       {' · '}
-                      {new Date(tx.date).toLocaleDateString('es', { day: 'numeric', month: 'short' })}
+                      {new Date(tx.date).toLocaleDateString('es', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
                       {tx.isManual && (
                         <span className="ml-1 text-slate-300 dark:text-slate-600">· Manual</span>
                       )}

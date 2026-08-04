@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import type { Role } from '@nexor/shared'
 import { prisma } from '../../../lib/prisma'
 import { hasMinRole } from '../../../lib/guards'
+import { businessToday } from '../../../lib/dates'
 import type {
   CreateStageInput,
   UpdateStageInput,
@@ -457,7 +458,7 @@ export async function moveDeal(
             category:      'Ventas',
             referenceType: 'deal',
             referenceId:   dealId,
-            date:          new Date(),
+            date:          businessToday(),
           },
         })
       }

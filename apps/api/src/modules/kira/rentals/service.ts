@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { ensureGenericClient } from '../../ari/clients/service'
+import { businessToday } from '../../../lib/dates'
 import type { CreateRentalInput, ReturnRentalInput, MarkNotReturnedInput, RentalQuery } from './schema'
 
 function num(v: unknown): number {
@@ -286,7 +287,7 @@ export async function returnRental(tenantId: string, userId: string, rentalId: s
           tenantId, branchId: rental.branchId, categoryId: catId, type: 'income',
           amount: chargeTotal, currency: 'COP',
           description: `Alquiler — ${rental.product.name}`,
-          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: now,
+          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: businessToday(),
         },
       })
     }
@@ -296,7 +297,7 @@ export async function returnRental(tenantId: string, userId: string, rentalId: s
           tenantId, branchId: rental.branchId, categoryId: catId, type: 'income',
           amount: retained, currency: 'COP',
           description: `Depósito retenido — ${rental.product.name}${input.reason ? `: ${input.reason}` : ''}`,
-          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: now,
+          category: 'Alquileres', referenceType: 'rental', referenceId: rentalId, date: businessToday(),
         },
       })
     }
@@ -396,7 +397,7 @@ export async function markNotReturned(tenantId: string, userId: string, rentalId
         category:      'Ventas',
         referenceType: 'rental',
         referenceId:   rentalId,
-        date:          now,
+        date:          businessToday(),
       },
     })
 

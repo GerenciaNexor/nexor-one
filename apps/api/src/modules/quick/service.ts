@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
+import { businessToday } from '../../lib/dates'
 import type { QuickPurchaseInput, QuickSaleInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
@@ -98,7 +99,7 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
  */
 export async function quickPurchase(tenantId: string, userId: string, input: QuickPurchaseInput) {
   return prisma.$transaction(async (tx) => {
-    const now = input.date ? new Date(input.date) : new Date()
+    const now = input.date ? new Date(input.date) : businessToday()
     const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true, name: true } })
     if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
@@ -191,7 +192,7 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
  */
 export async function quickSale(tenantId: string, userId: string, input: QuickSaleInput) {
   return prisma.$transaction(async (tx) => {
-    const now = input.date ? new Date(input.date) : new Date()
+    const now = input.date ? new Date(input.date) : businessToday()
     const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
     const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true, name: true } })
     if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
