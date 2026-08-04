@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { PurchaseOrderFormModal } from '@/components/nira/PurchaseOrderFormModal'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
@@ -422,7 +423,7 @@ export default function PurchaseOrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-500">
                         {o.expectedDelivery
-                          ? new Date(o.expectedDelivery).toLocaleDateString('es-CO')
+                          ? fmtCalendarDate(o.expectedDelivery)
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-500">{o.creator.name}</td>

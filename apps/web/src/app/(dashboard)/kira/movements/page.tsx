@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { Portal } from '@/components/ui/Portal'
@@ -167,7 +168,7 @@ function MovementDetailModal({ m, onClose }: { m: Movement; onClose: () => void 
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Fecha de caducidad</p>
                     <p className="mt-1 text-sm text-slate-700">
-                      {new Date(m.expiryDate).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      {fmtCalendarDate(m.expiryDate, { year: 'numeric', month: 'short', day: 'numeric' })}
                     </p>
                   </div>
                 )}

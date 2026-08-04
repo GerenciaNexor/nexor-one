@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
@@ -369,7 +370,7 @@ export function VeraDashboard() {
                     <p className="text-xs text-slate-400">
                       {tx.txCategory?.name ?? (tx.referenceType ?? 'Sin categoría')}
                       {' · '}
-                      {new Date(tx.date).toLocaleDateString('es', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
+                      {fmtCalendarDate(tx.date, { day: 'numeric', month: 'short' })}
                       {tx.isManual && (
                         <span className="ml-1 text-slate-300 dark:text-slate-600">· Manual</span>
                       )}

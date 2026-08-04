@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma, withTenantContext } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
+import { businessToday } from '../../../lib/dates'
 import { computeSupplierScore } from '../../../jobs/supplier-scores'
 import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, PurchaseOrderQuery, ReceivePurchaseOrderInput, FromAlertInput, RatePurchaseOrderInput } from './schema'
 
@@ -317,7 +318,7 @@ export async function approvePurchaseOrder(
         category:      'Compras',
         referenceType: 'purchase_order',
         referenceId:   id,
-        date:          new Date(),
+        date:          businessToday(),
       },
     })
 

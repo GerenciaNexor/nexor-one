@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 
@@ -18,7 +19,7 @@ interface Register {
 
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 // `date` es un DATE (fecha de calendario): UTC para no correrla un día en zonas negativas.
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })
+const fmtDate = (iso: string) => fmtCalendarDate(iso)
 
 export default function QuickRegistersPage() {
   const [rows, setRows]   = useState<Register[] | null>(null)

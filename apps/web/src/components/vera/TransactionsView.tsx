@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtCalendarDate } from '@/lib/format-date'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
@@ -356,10 +357,7 @@ export function TransactionsView() {
                     >
                       {/* Fecha */}
                       <td className="px-4 py-3 tabular-nums text-slate-500 dark:text-slate-400">
-                        {/* `date` es DATE (fecha de calendario): se formatea en UTC para no correrla un día. */}
-                        {new Date(tx.date).toLocaleDateString('es', {
-                          day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC',
-                        })}
+                        {fmtCalendarDate(tx.date)}
                       </td>
 
                       {/* Tipo */}
@@ -491,7 +489,7 @@ export function TransactionsView() {
                   <div className="min-w-0">
                     <p className="truncate font-medium text-slate-900 dark:text-white">{tx.description}</p>
                     <p className="mt-0.5 text-xs text-slate-400">
-                      {new Date(tx.date).toLocaleDateString('es', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })}
+                      {fmtCalendarDate(tx.date)}
                       {tx.txCategory && ` · ${tx.txCategory.name}`}
                     </p>
                   </div>
