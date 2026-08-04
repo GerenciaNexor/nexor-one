@@ -150,6 +150,18 @@ Antes de crear una OC, NIRA puede mostrar los precios históricos del mismo prod
 **Proveedor preferido (HU-123)**  
 Cada producto puede tener un proveedor **preferido**, y la empresa un preferido **global** de respaldo. NIRA lo prioriza: al comparar precios lo marca y lo lista primero, y al proponer una OC lo usa por defecto (queda registrado en las notas del borrador). Resolución: preferido del producto → preferido global del tenant → comportamiento actual. Se gestiona desde el detalle de producto (KIRA) y la página de Proveedores (NIRA). Es una recomendación: el agente puede proponer otro con justificación.
 
+**Registro rápido de compra/venta (HU-169)**  
+Camino **aparte** del flujo formal (OC con aprobación / deal en pipeline), para transacciones pequeñas que
+**ya ocurrieron**: se marcan **completadas** (sin aprobación). Endpoints en el módulo transversal `quick`:
+`POST /v1/quick/purchases` y `/sales` (+ lookups `/quick/products|suppliers|clients|branches`), protegidos por
+**rol** (mín. OPERATIVE, sin gate de módulo) + tenant/RLS; el OPERATIVE queda fijado a su sucursal. Se pregunta
+de forma **OBLIGATORIA** `affectsInventory` (sí/no):
+- **Sí** → compra suma stock (entrada, motivo `compra`) / venta descuenta del **disponible** (salida, motivo
+  `venta`, precio congelado, sin negativo — HU-128/158) **y** VERA (gasto/ingreso).
+- **No** → solo VERA (servicios/consumos: café, mano de obra…), sin tocar KIRA.
+La contraparte usa el **genérico** (Proveedor ocasional / Consumidor final, HU-154) o una entidad específica.
+El acceso está en **Inicio → Registro rápido** (+ Compra / + Venta).
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;

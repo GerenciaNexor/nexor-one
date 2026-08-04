@@ -58,6 +58,7 @@ import agentsModule from './modules/agents/index'
 import chatModule from './modules/chat/index'
 import agendaModule from './modules/agenda/index'
 import veraModule from './modules/vera/index'
+import quickModule from './modules/quick/index'
 import dashboardModule from './modules/dashboard/index'
 import bulkUploadModule from './modules/bulk-upload/index'
 import inboxModule from './modules/inbox/index'
@@ -206,6 +207,7 @@ app.register(
     api.register(chatModule,          { prefix: '/chat' })
     api.register(agendaModule,        { prefix: '/agenda' })
     api.register(veraModule,          { prefix: '/vera' })
+    api.register(quickModule,         { prefix: '/quick' })
     api.register(dashboardModule,     { prefix: '/dashboard' })
     api.register(bulkUploadModule,    { prefix: '/bulk-upload' })
     api.register(inboxModule,         { prefix: '/inbox' })

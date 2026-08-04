@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api-client'
 import { getCache, setCache } from '@/lib/page-cache'
 import { RemindersPanel } from '@/components/reminders/RemindersPanel'
+import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +259,8 @@ export default function InicioPage() {
   const [stockAlerts,   setStockAlerts]   = useState<StockAlert[] | null>(null)
   const [appointments,  setAppointments]  = useState<Appointment[] | null>(null)
   const [notifications, setNotifications] = useState<NotificationItem[] | null>(null)
+  // HU-169 — registro rápido (compra/venta ya ocurrida)
+  const [quick, setQuick] = useState<'purchase' | 'sale' | null>(null)
 
   // Un usuario AREA_MANAGER/OPERATIVE solo ve SU módulo; los admins son transversales.
   // Siempre exige que el módulo esté activo en el tenant (feature-flags).
@@ -461,6 +464,22 @@ export default function InicioPage() {
         {/* ─ Columna derecha ──────────────────────────────────────────────── */}
         <div className="space-y-6">
 
+          {/* Registro rápido (HU-169) — una compra/venta que ya ocurrió, sin aprobación */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Registro rápido</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Una compra o venta pequeña que ya ocurrió.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button onClick={() => setQuick('purchase')}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                + Compra
+              </button>
+              <button onClick={() => setQuick('sale')}
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+                + Venta
+              </button>
+            </div>
+          </div>
+
           {/* Recordatorios (HU-156) */}
           <RemindersPanel variant="compact" />
 
@@ -518,6 +537,8 @@ export default function InicioPage() {
           )}
         </div>
       </div>
+
+      {quick && <QuickRegisterModal initialMode={quick} onClose={() => setQuick(null)} onSuccess={() => setQuick(null)} />}
     </div>
   )
 }
