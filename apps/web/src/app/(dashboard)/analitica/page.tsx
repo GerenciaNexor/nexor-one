@@ -26,10 +26,10 @@ interface TopData { from: string; to: string; scope: string; byUnits: TopProduct
 // HU-129 — solo 4 líneas. "OC creadas" y "Cotizaciones realizadas" se retiran de la vista
 // (el rollup las sigue calculando; reversible sin migración).
 const CHARTS = [
-  { key: 'purchasesReceived', title: 'Compras realizadas', color: '#0ea5e9', fmt: 'integer', help: 'OC recibidas, por día' },
-  { key: 'salesCount',        title: 'Ventas realizadas',  color: '#10b981', fmt: 'integer', help: 'Deals ganados, por día' },
-  { key: 'purchasesAmount',   title: 'Monto comprado',     color: '#0284c7', fmt: 'compact', help: 'Suma de OC recibidas, por día' },
-  { key: 'salesAmount',       title: 'Monto vendido',      color: '#059669', fmt: 'compact', help: 'Suma de deals ganados, por día' },
+  { key: 'purchasesReceived', title: 'Compras realizadas', color: '#0ea5e9', fmt: 'integer', help: 'OC recibidas + registro rápido, por día' },
+  { key: 'salesCount',        title: 'Ventas realizadas',  color: '#10b981', fmt: 'integer', help: 'Deals ganados + registro rápido, por día' },
+  { key: 'purchasesAmount',   title: 'Monto comprado',     color: '#0284c7', fmt: 'compact', help: 'Suma de compras (OC recibidas + registro rápido), por día' },
+  { key: 'salesAmount',       title: 'Monto vendido',      color: '#059669', fmt: 'compact', help: 'Suma de ventas (deals ganados + registro rápido), por día' },
 ] as const
 type ChartKey = typeof CHARTS[number]['key']
 const ALL_KEYS = CHARTS.map((c) => c.key) as ChartKey[]

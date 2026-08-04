@@ -50,6 +50,45 @@ export async function listQuickBranches(tenantId: string) {
   return { data, total: data.length }
 }
 
+/**
+ * HU-169/170 — Historial de registros rápidos (panel propio). Deriva de las transacciones VERA
+ * `quick_purchase`/`quick_sale`; enriquece con el movimiento de stock vinculado (si afecta inventario).
+ */
+export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purchase' | 'sale'; page: number; limit: number }) {
+  const refTypes = opts.kind === 'purchase' ? ['quick_purchase'] : opts.kind === 'sale' ? ['quick_sale'] : ['quick_purchase', 'quick_sale']
+  const where = { tenantId, referenceType: { in: refTypes } }
+  const [rows, total] = await Promise.all([
+    prisma.transaction.findMany({
+      where,
+      select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, createdAt: true, branch: { select: { name: true } } },
+      orderBy: { date: 'desc' },
+      skip: (opts.page - 1) * opts.limit, take: opts.limit,
+    }),
+    prisma.transaction.count({ where }),
+  ])
+  const ids = rows.map((r) => r.id)
+  const movs = ids.length
+    ? await prisma.stockMovement.findMany({ where: { tenantId, referenceType: { in: refTypes }, referenceId: { in: ids } }, select: { referenceId: true, quantity: true, product: { select: { sku: true, name: true, unit: true } } } })
+    : []
+  const byTxn = new Map(movs.map((m) => [m.referenceId, m]))
+  return {
+    data: rows.map((r) => {
+      const mov = byTxn.get(r.id)
+      return {
+        id:               r.id,
+        kind:             r.referenceType === 'quick_purchase' ? 'purchase' : 'sale',
+        amount:           num(r.amount),
+        description:      r.description,
+        date:             r.date,
+        branchName:       r.branch?.name ?? null,
+        affectsInventory: !!mov,
+        product:          mov ? { sku: mov.product.sku, name: mov.product.name, unit: mov.product.unit, quantity: num(mov.quantity) } : null,
+      }
+    }),
+    total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
+  }
+}
+
 // ─── Compra rápida ─────────────────────────────────────────────────────────────
 
 /**

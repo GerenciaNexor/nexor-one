@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { QuickPurchaseSchema, QuickSaleSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches } from './service'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters } from './service'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -24,6 +24,19 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
     async (req, reply) => reply.code(200).send(await listQuickClients(req.user.tenantId)))
   app.get('/branches',  { schema: { tags: ['Quick'], summary: 'Sucursales', security: bearerAuth, response: { 200: listRes, ...stdErrors } }, preHandler: [requireRole('OPERATIVE')] },
     async (req, reply) => reply.code(200).send(await listQuickBranches(req.user.tenantId)))
+
+  /** GET /v1/quick/registers — historial de registros rápidos (compras y ventas). */
+  app.get('/registers', {
+    schema: { tags: ['Quick'], summary: 'Historial de registros rápidos', security: bearerAuth,
+      querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['purchase', 'sale'] }, page: { type: 'string' }, limit: { type: 'string' } } },
+      response: { 200: listRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (req, reply) => {
+    const q = req.query as { kind?: 'purchase' | 'sale'; page?: string; limit?: string }
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '50', 10) || 50))
+    return reply.code(200).send(await listQuickRegisters(req.user.tenantId, { kind: q.kind, page, limit }))
+  })
 
   /** POST /v1/quick/purchases — compra rápida (ya completada). */
   app.post('/purchases', {

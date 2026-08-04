@@ -48,6 +48,10 @@ export async function runDashboardRollupForTenant(tenantId: string, windowDays =
     const createdPOs  = await tx.purchaseOrder.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, branchId: true } })
     const wonDeals    = await tx.deal.findMany({ where: { tenantId, closedAt: { gte: from }, stage: { isFinalWon: true } }, select: { closedAt: true, branchId: true, value: true } })
     const quotes      = await tx.quote.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, creator: { select: { branchId: true } } } })
+    // HU-169/170 — registro rápido: compra/venta ya completada (transacción VERA), sin OC/deal.
+    // Cuenta como compra/venta realizada en las tendencias (por fecha de la transacción).
+    const quickPurchases = await tx.transaction.findMany({ where: { tenantId, type: 'expense', referenceType: 'quick_purchase', date: { gte: from } }, select: { date: true, branchId: true, amount: true } })
+    const quickSales     = await tx.transaction.findMany({ where: { tenantId, type: 'income',  referenceType: 'quick_sale',     date: { gte: from } }, select: { date: true, branchId: true, amount: true } })
 
     // Map<`${date}|${branchKey}`, Acc>. Cada evento suma a su sucursal (si tiene) y a la consolidada.
     const map = new Map<string, Acc>()
@@ -70,6 +74,8 @@ export async function runDashboardRollupForTenant(tenantId: string, windowDays =
       bump(dayStr(d.closedAt!), d.branchId, (a) => { a.salesCount += 1; a.salesAmount += amt })
     }
     for (const q of quotes) bump(dayStr(q.createdAt), q.creator?.branchId ?? null, (a) => { a.quotesCreated += 1 })
+    for (const t of quickPurchases) { const amt = parseFloat(String(t.amount)); bump(dayStr(t.date), t.branchId, (a) => { a.purchasesReceived += 1; a.purchasesAmount += amt }) }
+    for (const t of quickSales)     { const amt = parseFloat(String(t.amount)); bump(dayStr(t.date), t.branchId, (a) => { a.salesCount += 1; a.salesAmount += amt }) }
 
     const rows = [...map.entries()].map(([key, a]) => {
       const [date, branchKey] = key.split('|')

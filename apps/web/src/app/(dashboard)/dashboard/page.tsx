@@ -466,7 +466,10 @@ export default function InicioPage() {
 
           {/* Registro rápido (HU-169) — una compra/venta que ya ocurrió, sin aprobación */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Registro rápido</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Registro rápido</h2>
+              <Link href="/quick" className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">Ver registros →</Link>
+            </div>
             <p className="mt-0.5 text-xs text-slate-500">Una compra o venta pequeña que ya ocurrió.</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button onClick={() => setQuick('purchase')}
