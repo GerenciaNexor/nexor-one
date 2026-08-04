@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { directPrisma } from '../../lib/prisma'
 import { getDashboardKpis, getDashboardTimeseries, getTopProducts } from './service'
+import { recalcTodayRollupForTenant } from '../../jobs/dashboard-rollup'
 import { requireRole } from '../../lib/guards'
 import { bearerAuth, objRes, stdErrors, z2j } from '../../lib/openapi'
 
@@ -121,5 +122,29 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
     const data = await getTopProducts(request.user.tenantId, request.user, range.from, range.to)
     return reply.send({ success: true, data })
+  })
+
+  /**
+   * POST /v1/dashboard/refresh — HU-174
+   * Recálculo a demanda del rollup del DÍA EN CURSO desde las transacciones reales
+   * (ventas, compras y registro rápido), reutilizando la lógica del job. NO recarga: recalcula.
+   * - "Hoy" en la zona del negocio (businessToday) → no toca los días pasados.
+   * - Respeta tenant/sucursal/RLS: recalcTodayRollupForTenant corre bajo withTenantContext
+   *   (SET LOCAL app.current_tenant_id) y las lecturas posteriores aplican el filtro por rol.
+   * Sale del wrapper por-request (tenantTx:false): el recálculo abre su propia transacción.
+   */
+  app.post('/refresh', {
+    schema: {
+      tags:        ['Dashboard'],
+      summary:     'Recalcular el rollup del día en curso (a demanda)',
+      description: 'Fuerza el recálculo del rollup de hoy desde las transacciones reales y devuelve la marca de tiempo del cálculo. Solo recalcula el día en curso; no altera días pasados.',
+      security:    bearerAuth,
+      response:    { 200: objRes, ...stdErrors },
+    },
+    config:     { tenantTx: false },
+    preHandler: requireRole('OPERATIVE'),
+  }, async (request, reply) => {
+    const { rows, date } = await recalcTodayRollupForTenant(request.user.tenantId)
+    return reply.send({ success: true, data: { recalculatedAt: new Date().toISOString(), date, rows } })
   })
 }

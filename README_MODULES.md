@@ -517,6 +517,17 @@ así las consultas pesadas no corren en cada carga. Respeta el rol vía `getBran
 (TENANT_ADMIN consolidado; BRANCH_ADMIN su sucursal) y valida el rango. **No** incluye satisfacción
 del cliente ni inventario crítico (fuera de alcance).
 
+**Actualizar — recálculo en vivo (HU-174).** El Dashboard tiene un botón **"Actualizar"**:
+`POST /v1/dashboard/refresh` fuerza el recálculo del rollup del **día en curso** desde las
+transacciones reales (ventas, compras y **registro rápido** HU-169/170) y luego la vista relee los
+valores frescos — **no** es un simple "recargar" (que mostraría el rollup viejo). Reutiliza la misma
+lógica del job (`recalcTodayRollupForTenant` → núcleo compartido `recalcRollupWindow`) acotada a hoy:
+solo recalcula el día en curso, **no toca los días cerrados**. "Hoy" es en la zona del negocio
+(`businessToday`, coherente con el manejo central de fechas). Respeta tenant/sucursal/RLS
+(corre bajo `withTenantContext`). Muestra la **hora del último cálculo** y da feedback (spinner
+"Actualizando…", anti-doble-click). Convive con el job periódico; no lo reemplaza. El eje de las
+gráficas siempre rotula **hoy** y cada punto tiene **tooltip** con fecha y valor (HU-173).
+
 ### Top 10 de productos (HU-130)
 Gráfico de **barras** (ranking, no líneas) con dos vistas seleccionables:
 - **Más vendidos** — suma de **unidades** salidas con motivo `venta`.

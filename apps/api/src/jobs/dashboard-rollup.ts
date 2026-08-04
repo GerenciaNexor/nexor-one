@@ -18,6 +18,7 @@
  * El job hace delete+insert por (tenant, ventana) → idempotente, sin UNIQUE.
  */
 import { prisma, withTenantContext } from '../lib/prisma'
+import { businessToday } from '../lib/dates'
 
 const ONE_DAY_MS    = 24 * 60 * 60 * 1000
 const WINDOW_DAYS   = 120          // ventana que se recalcula en cada corrida
@@ -35,23 +36,28 @@ interface Acc {
 const emptyAcc = (): Acc => ({ purchasesReceived: 0, purchasesAmount: 0, salesCount: 0, salesAmount: 0, purchaseOrdersCreated: 0, quotesCreated: 0 })
 const dayStr   = (d: Date): string => d.toISOString().slice(0, 10)
 
-/** Recalcula el rollup de un tenant para la ventana [hoy-WINDOW_DAYS, hoy]. */
-export async function runDashboardRollupForTenant(tenantId: string, windowDays = WINDOW_DAYS): Promise<{ rows: number }> {
-  const from = new Date()
-  from.setUTCDate(from.getUTCDate() - windowDays)
-  from.setUTCHours(0, 0, 0, 0)
+/**
+ * Núcleo del rollup: recalcula la ventana `[from, toExclusive)` (o `[from, ∞)` si toExclusive es null)
+ * con delete+insert idempotente, acotado a esa misma ventana. Lo comparten:
+ *   - el job diario (ventana amplia, toExclusive=null)
+ *   - el recálculo a demanda del día en curso (HU-174: ventana = solo hoy)
+ * Así el botón "Actualizar" usa EXACTAMENTE la misma lógica de cálculo que el job.
+ */
+async function recalcRollupWindow(tenantId: string, from: Date, toExclusive: Date | null): Promise<{ rows: number }> {
+  // Filtro de fecha para las queries: [from, toExclusive) o [from, ∞).
+  const range = toExclusive ? { gte: from, lt: toExclusive } : { gte: from }
 
   return withTenantContext(tenantId, async (tx) => {
     // Secuencial (no Promise.all): una transacción interactiva usa UNA conexión;
     // lanzar queries concurrentes sobre el mismo `tx` es un anti-patrón en Prisma.
-    const receivedPOs = await tx.purchaseOrder.findMany({ where: { tenantId, status: 'received', deliveredAt: { gte: from } }, select: { deliveredAt: true, branchId: true, total: true } })
-    const createdPOs  = await tx.purchaseOrder.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, branchId: true } })
-    const wonDeals    = await tx.deal.findMany({ where: { tenantId, closedAt: { gte: from }, stage: { isFinalWon: true } }, select: { closedAt: true, branchId: true, value: true } })
-    const quotes      = await tx.quote.findMany({ where: { tenantId, createdAt: { gte: from } }, select: { createdAt: true, creator: { select: { branchId: true } } } })
+    const receivedPOs = await tx.purchaseOrder.findMany({ where: { tenantId, status: 'received', deliveredAt: range }, select: { deliveredAt: true, branchId: true, total: true } })
+    const createdPOs  = await tx.purchaseOrder.findMany({ where: { tenantId, createdAt: range }, select: { createdAt: true, branchId: true } })
+    const wonDeals    = await tx.deal.findMany({ where: { tenantId, closedAt: range, stage: { isFinalWon: true } }, select: { closedAt: true, branchId: true, value: true } })
+    const quotes      = await tx.quote.findMany({ where: { tenantId, createdAt: range }, select: { createdAt: true, creator: { select: { branchId: true } } } })
     // HU-169/170 — registro rápido: compra/venta ya completada (transacción VERA), sin OC/deal.
     // Cuenta como compra/venta realizada en las tendencias (por fecha de la transacción).
-    const quickPurchases = await tx.transaction.findMany({ where: { tenantId, type: 'expense', referenceType: 'quick_purchase', date: { gte: from } }, select: { date: true, branchId: true, amount: true } })
-    const quickSales     = await tx.transaction.findMany({ where: { tenantId, type: 'income',  referenceType: 'quick_sale',     date: { gte: from } }, select: { date: true, branchId: true, amount: true } })
+    const quickPurchases = await tx.transaction.findMany({ where: { tenantId, type: 'expense', referenceType: 'quick_purchase', date: range }, select: { date: true, branchId: true, amount: true } })
+    const quickSales     = await tx.transaction.findMany({ where: { tenantId, type: 'income',  referenceType: 'quick_sale',     date: range }, select: { date: true, branchId: true, amount: true } })
 
     // Map<`${date}|${branchKey}`, Acc>. Cada evento suma a su sucursal (si tiene) y a la consolidada.
     const map = new Map<string, Acc>()
@@ -92,10 +98,31 @@ export async function runDashboardRollupForTenant(tenantId: string, windowDays =
       }
     })
 
-    await tx.dashboardDailyRollup.deleteMany({ where: { tenantId, date: { gte: from } } })
+    // El delete se ACOTA a la misma ventana: recalcular "hoy" no toca los días cerrados.
+    await tx.dashboardDailyRollup.deleteMany({ where: { tenantId, date: range } })
     if (rows.length > 0) await tx.dashboardDailyRollup.createMany({ data: rows })
     return { rows: rows.length }
   })
+}
+
+/** Recalcula el rollup de un tenant para la ventana [hoy-WINDOW_DAYS, hoy] (job diario). */
+export async function runDashboardRollupForTenant(tenantId: string, windowDays = WINDOW_DAYS): Promise<{ rows: number }> {
+  const from = new Date()
+  from.setUTCDate(from.getUTCDate() - windowDays)
+  from.setUTCHours(0, 0, 0, 0)
+  return recalcRollupWindow(tenantId, from, null)
+}
+
+/**
+ * Recálculo a demanda del DÍA EN CURSO (HU-174). "Hoy" en la zona del negocio (businessToday),
+ * ventana = solo hoy → no altera los rollups de días pasados. Misma lógica que el job.
+ */
+export async function recalcTodayRollupForTenant(tenantId: string): Promise<{ rows: number; date: string }> {
+  const from = businessToday()
+  const toExclusive = new Date(from)
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1)
+  const { rows } = await recalcRollupWindow(tenantId, from, toExclusive)
+  return { rows, date: dayStr(from) }
 }
 
 async function runForAllTenants(): Promise<void> {

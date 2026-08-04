@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { LineChart, type ChartSeries } from '@/components/vera/LineChart'
 import { BarChart, type BarDatum } from '@/components/dashboard/BarChart'
-import { businessTodayStr, shiftDayStr } from '@/lib/format-date'
+import { businessTodayStr, shiftDayStr, BUSINESS_TZ } from '@/lib/format-date'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,8 @@ export default function AnaliticaPage() {
   const [topView, setTopView] = useState<'units' | 'profit'>('units')
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)          // HU-174: estado del botón "Actualizar"
+  const [lastRefresh, setLastRefresh] = useState<string | null>(null) // instante del último recálculo forzado
 
   const storageKey = user?.id ? `nexor-dashboard-charts:${user.id}` : null
 
@@ -97,6 +99,28 @@ export default function AnaliticaPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // HU-174 — Actualizar: fuerza el recálculo del rollup del día en curso en el backend
+  // (desde las transacciones reales) y RECIÉN entonces recarga los datos frescos. No es
+  // un simple "recargar la vista": primero recalcula, luego lee. Anti-doble-click con `refreshing`.
+  async function handleRefresh(): Promise<void> {
+    if (refreshing) return
+    setRefreshing(true); setError(null)
+    try {
+      const r = await apiClient.post<{ data: { recalculatedAt: string } }>('/v1/dashboard/refresh', {})
+      await new Promise<void>((resolve) => {
+        Promise.all([
+          apiClient.get<{ data: Timeseries }>(`/v1/dashboard/timeseries?from=${from}&to=${to}`).then((x) => setTs(x.data)),
+          apiClient.get<{ data: TopData }>(`/v1/dashboard/top-products?from=${from}&to=${to}`).then((x) => setTopData(x.data)),
+        ]).finally(() => resolve())
+      })
+      setLastRefresh(r.data.recalculatedAt)
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'No se pudo actualizar el dashboard')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   function applyShortcut(days: number): void { setFrom(daysAgo(days - 1)); setTo(daysAgo(0)) }
   function clearFilters(): void {
     setFrom(daysAgo(29)); setTo(daysAgo(0))   // rango por defecto (30 días)
@@ -117,16 +141,36 @@ export default function AnaliticaPage() {
   return (
     <div className="p-6 pb-28">{/* pb-28: deja espacio para que el botón flotante de chat (bottom-6 h-14) no tape el Top 10 */}
       {/* Encabezado */}
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
-        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-          Tendencias de compras y ventas en el tiempo.
-          {ts && (
-            <span className="ml-1 text-slate-400">
-              {ts.scope === 'consolidado' ? 'Vista consolidada (todas las sucursales).' : 'Vista de tu sucursal.'}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            Tendencias de compras y ventas en el tiempo.
+            {ts && (
+              <span className="ml-1 text-slate-400">
+                {ts.scope === 'consolidado' ? 'Vista consolidada (todas las sucursales).' : 'Vista de tu sucursal.'}
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* HU-174 — Actualizar: recalcula el día en curso y muestra la hora del último cálculo. */}
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Recalcula lo de hoy (ventas, compras y registro rápido) y muestra los valores frescos"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? 'animate-spin' : ''}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            {refreshing ? 'Actualizando…' : 'Actualizar'}
+          </button>
+          {lastRefresh && !refreshing && (
+            <span className="text-xs text-slate-400">
+              Actualizado a las {new Date(lastRefresh).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: BUSINESS_TZ })}
             </span>
           )}
-        </p>
+        </div>
       </div>
 
       {/* Controles: rango de fechas + atajos + selección de gráficos */}
