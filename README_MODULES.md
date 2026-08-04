@@ -386,13 +386,17 @@ se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las 
 
 ### Flujos clave
 
-**Flujo 1: Ingreso automático por venta**
+**Flujo 1: Ingreso automático por venta (HU-167 — ingreso único)**
 ```
-ARI: cotización cambia a "accepted"
-→ ARI llama: crear_transaccion({ type: 'income', amount, referenceType: 'quote', referenceId })
-→ VERA registra transaction
-→ Dashboard actualizado en tiempo real
+ARI: el deal pasa a etapa GANADA (isFinalWon)  ← único evento que genera ingreso
+→ moveDeal: crear transaction { type:'income', amount: deal.value, referenceType:'deal', referenceId }
+           + fulfillSaleInventory (descuenta stock de los ítems de catálogo — HU-128)
+→ VERA registra el ingreso · Dashboard actualizado
 ```
+> **HU-167:** aceptar una cotización **ya no** genera ingreso (era una segunda ruta `referenceType:'quote'`
+> que podía contar la venta dos veces). El ingreso se registra en un **único evento: ganar el deal**,
+> coherente con HU-126 (venta finalizada al ganar) y HU-128 (ganar mueve el inventario) — ingreso y stock
+> en el mismo momento. Aceptar la cotización sigue funcionando como paso del pipeline (solo cambia su estado).
 
 **Flujo 2: Egreso automático por compra**
 ```
