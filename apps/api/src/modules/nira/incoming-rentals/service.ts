@@ -92,6 +92,8 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
     }
 
     const thirdPartyLabel = supplierName ?? input.thirdPartyName!.trim()
+    const returnDateObj = new Date(`${input.returnDate}T00:00:00.000Z`)
+    const description = input.description.trim()
 
     const rental = await tx.incomingRental.create({
       data: {
@@ -99,14 +101,30 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
         supplierId,
         thirdPartyName:    supplierId ? null : input.thirdPartyName!.trim(),
         thirdPartyContact: supplierId ? null : (input.thirdPartyContact ?? null),
-        description: input.description.trim(),
+        description,
         quantity:    input.quantity,
         project:     input.project.trim(),
-        returnDate:  new Date(`${input.returnDate}T00:00:00.000Z`),
+        returnDate:  returnDateObj,
         rentalCost:  input.rentalCost,
         deposit:     input.deposit ?? 0,
         status:      'active',
         notes:       input.notes ?? null,
+      },
+    })
+
+    // HU-178 — recordatorio AUTOMÁTICO de devolución (reutiliza el motor HU-156/157), espejo de
+    // HU-163 pero en el otro sentido: aquí la empresa es quien DEBE devolver al tercero. Se asocia
+    // al alquiler vía relatedType/relatedId; aparece en Inicio, Notificaciones y se gestiona en Agenda.
+    await tx.reminder.create({
+      data: {
+        tenantId, userId,
+        title:       `Devolver alquiler entrante: ${description}`,
+        description: `${input.quantity} und — devolver a ${thirdPartyLabel} (proyecto: ${input.project.trim()})`,
+        remindAt:    returnDateObj,
+        alertLevel:  'urgent',
+        recurrence:  'none',
+        relatedType: 'incoming_rental',
+        relatedId:   rental.id,
       },
     })
 
@@ -200,6 +218,12 @@ export async function returnIncomingRental(tenantId: string, userId: string, id:
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
       },
       include: LIST_INCLUDE,
+    })
+
+    // HU-178 — al devolver, el recordatorio de devolución se cierra automáticamente (hecho).
+    await tx.reminder.updateMany({
+      where: { tenantId, relatedType: 'incoming_rental', relatedId: rental.id, isActive: true },
+      data:  { status: 'done', isActive: false, completedAt: new Date() },
     })
 
     // Depósito perdido → EGRESO (pérdida) en VERA. Recuperado no genera transacción (dinero propio que vuelve).

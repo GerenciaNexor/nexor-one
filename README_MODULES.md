@@ -456,6 +456,14 @@ el **gasto real** (costo `incoming_rental` + depósitos perdidos `incoming_renta
 con motivo) → **egreso** `incoming_rental_deposit`. La **retención por cobrar nunca se suma con el gasto
 real** — la pantalla VERA → **Depósitos afuera** las muestra como dos figuras separadas.
 
+**Recordatorio automático de devolución del entrante (HU-178 — espejo de HU-163)**  
+Al registrar un alquiler entrante con fecha de devolución, se crea **automáticamente** un recordatorio
+(reutiliza el motor HU-156/157; **no** hay mecanismo nuevo) para esa fecha, con `alertLevel 'urgent'` por
+defecto, asociado al alquiler vía `relatedType 'incoming_rental'` + `relatedId`. Aparece en **Inicio** y
+**Notificaciones** y se gestiona desde **Agenda** como cualquier recordatorio. Al registrar la **devolución**
+(HU-176) el recordatorio se **cierra automáticamente** (`status 'done'`, `isActive false`, `completedAt`).
+Es el espejo de HU-163 pero en el otro sentido: aquí la empresa es quien debe **devolver** al tercero.
+
 ### Flujos clave
 
 **Flujo 1: Ingreso automático por venta (HU-167 — ingreso único)**
