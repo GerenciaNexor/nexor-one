@@ -76,6 +76,7 @@ test.beforeAll(async () => {
 
   const po = await c.post<WithId>('/v1/nira/purchase-orders', {
     supplierId,
+    branchId: branchAId, // HU-165 — sucursal obligatoria al crear la OC
     notes: 'OC seguridad HU-086',
     items: [{ productId: 'seed-e2e-product-001', quantityOrdered: 1, unitCost: 10000 }],
   })
