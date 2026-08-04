@@ -162,6 +162,14 @@ de forma **OBLIGATORIA** `affectsInventory` (sí/no):
 La contraparte usa el **genérico** (Proveedor ocasional / Consumidor final, HU-154) o una entidad específica.
 El acceso está en **Inicio → Registro rápido** (+ Compra / + Venta).
 
+**Producto inexistente (HU-170 — asimetría por diseño).** Si afecta inventario y el producto no existe:
+- **Compra:** avisa "no existe, ¿deseas ingresarlo?" y permite **crearlo al vuelo con datos completos**
+  (`newProduct` en `POST /v1/quick/purchases`: SKU, nombre, unidad, categoría, precio, mín./máx., modalidad
+  venta/alquiler; el costo por defecto es el de la compra). Queda como cualquier producto de KIRA (tenant/RLS)
+  y la compra suma su stock. SKU duplicado → `DUPLICATE_SKU`.
+- **Venta:** **bloquea** ("agrégalo primero") — no se vende algo no registrado; sin movimiento huérfano ni
+  stock negativo. Los servicios (no afectan inventario) no pasan por esta regla.
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;

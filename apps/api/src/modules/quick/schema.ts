@@ -11,13 +11,34 @@ const REQUIRED_BOOL = z.boolean({
   invalid_type_error: 'Indica si afecta al inventario (sí/no)',
 })
 
+/**
+ * HU-170 — Datos COMPLETOS para crear un producto al vuelo desde la compra rápida
+ * (un producto nace cuando se compra). Queda como cualquier producto de KIRA (tenant/RLS).
+ */
+export const NewProductInput = z.object({
+  sku:         z.string().min(1, 'El SKU es requerido').max(100),
+  name:        z.string().min(1, 'El nombre es requerido').max(255),
+  description: z.string().max(1000).nullish(),
+  category:    z.string().max(100).nullish(),
+  unit:        z.string().min(1).max(50).default('unidad'),
+  salePrice:   z.number().positive('El precio de venta debe ser positivo').optional(),
+  costPrice:   z.number().positive('El costo debe ser positivo').optional(),
+  minStock:    z.number().int().min(0).default(0),
+  maxStock:    z.number().int().positive().optional(),
+  isSellable:  z.boolean().default(true),
+  isRentable:  z.boolean().default(false),
+  rentalPrice: z.number().positive().optional(),
+}).refine((d) => d.isSellable || d.isRentable, { message: 'El producto debe ser de venta, de alquiler o ambos', path: ['isSellable'] })
+
 export const QuickPurchaseSchema = z.object({
   affectsInventory: REQUIRED_BOOL,
   /** Proveedor específico; si se omite/null → genérico "Proveedor ocasional" (HU-154). */
   supplierId: z.string().min(1).nullish(),
   branchId:   z.string().min(1).nullish(),
-  // Caso inventario:
+  // Caso inventario: producto EXISTENTE…
   productId:  z.string().min(1).optional(),
+  // …o crear uno NUEVO al vuelo (HU-170 — un producto nace cuando se compra).
+  newProduct: NewProductInput.optional(),
   quantity:   z.number().int('La cantidad debe ser entera').positive('La cantidad debe ser mayor a 0').optional(),
   unitCost:   z.number().nonnegative('El costo no puede ser negativo').optional(),
   // Caso servicio (sin inventario):
@@ -27,7 +48,7 @@ export const QuickPurchaseSchema = z.object({
   date:        z.string().optional(),
 }).superRefine((d, ctx) => {
   if (d.affectsInventory) {
-    if (!d.productId) ctx.addIssue({ code: 'custom', message: 'Selecciona el producto', path: ['productId'] })
+    if (!d.productId && !d.newProduct) ctx.addIssue({ code: 'custom', message: 'Selecciona un producto existente o crea uno nuevo', path: ['productId'] })
     if (!d.branchId)  ctx.addIssue({ code: 'custom', message: 'Selecciona la sucursal', path: ['branchId'] })
     if (d.quantity === undefined) ctx.addIssue({ code: 'custom', message: 'Indica la cantidad', path: ['quantity'] })
     if (d.unitCost === undefined) ctx.addIssue({ code: 'custom', message: 'Indica el costo unitario', path: ['unitCost'] })

@@ -68,10 +68,44 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
     if (input.affectsInventory) {
       const branch = await tx.branch.findFirst({ where: { id: input.branchId!, tenantId, isActive: true }, select: { id: true } })
       if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
-      const product = await tx.product.findFirst({ where: { id: input.productId!, tenantId, isActive: true }, select: { id: true, name: true } })
-      if (!product) throw { statusCode: 404, message: 'Producto no encontrado o inactivo', code: 'PRODUCT_NOT_FOUND' }
 
       const qty = input.quantity!, cost = input.unitCost!
+
+      // HU-170 — el producto puede ser EXISTENTE o crearse al vuelo (un producto nace cuando se compra).
+      let product: { id: string; name: string }
+      if (input.newProduct) {
+        const np = input.newProduct
+        try {
+          product = await tx.product.create({
+            data: {
+              tenantId,
+              sku:         np.sku,
+              name:        np.name,
+              description: np.description ?? null,
+              category:    np.category ?? null,
+              unit:        np.unit,
+              salePrice:   np.salePrice,
+              costPrice:   np.costPrice ?? cost, // por defecto, el costo de esta compra
+              minStock:    np.minStock,
+              maxStock:    np.maxStock,
+              isSellable:  np.isSellable,
+              isRentable:  np.isRentable,
+              rentalPrice: np.isRentable ? np.rentalPrice : null,
+            },
+            select: { id: true, name: true },
+          })
+        } catch (err: unknown) {
+          if ((err as { code?: string }).code === 'P2002') {
+            throw { statusCode: 409, message: `Ya existe un producto con el SKU '${np.sku}'. Selecciónalo en vez de crearlo.`, code: 'DUPLICATE_SKU' }
+          }
+          throw err
+        }
+      } else {
+        const found = await tx.product.findFirst({ where: { id: input.productId!, tenantId, isActive: true }, select: { id: true, name: true } })
+        if (!found) throw { statusCode: 404, message: 'Producto no encontrado o inactivo', code: 'PRODUCT_NOT_FOUND' }
+        product = found
+      }
+
       const amount = qty * cost
       const stock = await tx.stock.findUnique({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, select: { quantity: true } })
       const before = stock ? num(stock.quantity) : 0
@@ -127,8 +161,9 @@ export async function quickSale(tenantId: string, userId: string, input: QuickSa
     if (input.affectsInventory) {
       const branch = await tx.branch.findFirst({ where: { id: input.branchId!, tenantId, isActive: true }, select: { id: true } })
       if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
+      // HU-170 — en venta el producto DEBE existir (no se vende algo no registrado): se bloquea.
       const product = await tx.product.findFirst({ where: { id: input.productId!, tenantId, isActive: true }, select: { id: true, name: true, costPrice: true } })
-      if (!product) throw { statusCode: 404, message: 'Producto no encontrado o inactivo', code: 'PRODUCT_NOT_FOUND' }
+      if (!product) throw { statusCode: 404, message: 'Este producto no existe en tu inventario. Agrégalo primero (por ejemplo con una compra) antes de venderlo.', code: 'PRODUCT_NOT_FOUND' }
 
       const qty = input.quantity!, price = input.unitPrice!
       const amount = qty * price
