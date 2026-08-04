@@ -6,6 +6,7 @@ import { transactionsRoutes } from './transactions/routes'
 import { budgetsRoutes }      from './budgets/routes'
 import { reportsRoutes }      from './reports/routes'
 import { depositsRoutes }     from './deposits/routes'
+import { incomingDepositsRoutes } from './incoming-deposits/routes'
 
 export default async function veraModule(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireFeatureFlag('VERA'))
@@ -15,4 +16,5 @@ export default async function veraModule(app: FastifyInstance): Promise<void> {
   app.register(budgetsRoutes,      { prefix: '/budgets'        })
   app.register(reportsRoutes,      { prefix: '/reports'        })
   app.register(depositsRoutes,     { prefix: '/rental-deposits' })
+  app.register(incomingDepositsRoutes, { prefix: '/incoming-rental-deposits' })
 }

@@ -443,6 +443,19 @@ retención se rastrea a su alquiler. Al cerrar: **devuelto** → sale de la rete
 (HU-160) o **no devuelto** (HU-161) → pasa a ingreso con motivo y trazabilidad. Retención e ingreso **nunca
 se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las muestra lado a lado).
 
+**Egreso del alquiler entrante y depósito propio como retención por cobrar (HU-177 — espejo de HU-162)**  
+El alquiler **entrante** (rentar de un tercero, HU-175/176) tiene dos efectos, espejo del saliente pero del
+lado del **dinero propio**: el **costo** es un **egreso real** (transacción `expense`, categoría **"Alquileres
+pagados"**, `referenceType 'incoming_rental'`); el **depósito** que la empresa deja en garantía es **dinero
+propio afuera** que se espera recuperar — una **"retención por cobrar"** (activo recuperable), **no gasto** y
+**no** una transacción. La retención es una **vista derivada** de los alquileres entrantes **activos** con
+`deposit > 0`: `GET /v1/vera/incoming-rental-deposits` devuelve el **total afuera** con desglose **por
+proyecto** y **por tercero** (filtrable por `project`/`supplierId`), rastreable a su alquiler; y, **separado**,
+el **gasto real** (costo `incoming_rental` + depósitos perdidos `incoming_rental_deposit`). Al devolver
+(HU-176): **recuperado** → sale de la retención **sin** volverse gasto; **perdido** (el tercero lo retiene,
+con motivo) → **egreso** `incoming_rental_deposit`. La **retención por cobrar nunca se suma con el gasto
+real** — la pantalla VERA → **Depósitos afuera** las muestra como dos figuras separadas.
+
 ### Flujos clave
 
 **Flujo 1: Ingreso automático por venta (HU-167 — ingreso único)**
