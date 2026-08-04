@@ -72,14 +72,23 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
     ? await prisma.stockMovement.findMany({ where: { tenantId, referenceType: { in: refTypes }, referenceId: { in: ids } }, select: { referenceId: true, quantity: true, product: { select: { sku: true, name: true, unit: true } } } })
     : []
   const byTxn = new Map(movs.map((m) => [m.referenceId, m]))
+  // La descripción tiene el formato "Compra/Venta rápida — <detalle> (<contraparte>)".
+  const parse = (desc: string) => {
+    const cp = desc.match(/\(([^()]+)\)\s*$/)?.[1] ?? null
+    const detail = desc.replace(/^(Compra|Venta) rápida —\s*/, '').replace(/\s*\([^()]*\)\s*$/, '').trim()
+    return { counterparty: cp, detail }
+  }
   return {
     data: rows.map((r) => {
       const mov = byTxn.get(r.id)
+      const { counterparty, detail } = parse(r.description)
       return {
         id:               r.id,
         kind:             r.referenceType === 'quick_purchase' ? 'purchase' : 'sale',
         amount:           num(r.amount),
         description:      r.description,
+        detail,           // producto o descripción, sin prefijo ni contraparte
+        counterparty,     // proveedor (compra) / cliente (venta)
         date:             r.date,
         branchName:       r.branch?.name ?? null,
         affectsInventory: !!mov,

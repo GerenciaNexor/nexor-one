@@ -11,6 +11,7 @@ const TABS = [
   { href: '/nira/suppliers',       label: 'Proveedores',        help: 'Tu lista de proveedores con sus datos, condiciones de pago y calificación.' },
   { href: '/nira/purchase-orders', label: 'Órdenes de compra',  help: 'Crea y gestiona tus pedidos a proveedores, desde el borrador hasta la recepción.' },
   { href: '/nira/history',         label: 'Compras realizadas', help: 'Las compras ya realizadas o en proceso, para revisar tu historial de pedidos.' },
+  { href: '/nira/quick-purchases', label: 'Compras rápidas',    help: 'Registra y consulta compras pequeñas que ya ocurrieron, sin el proceso formal de OC. No se mezclan con las OC recibidas.' },
   { href: '/nira/compare',         label: 'Comparar precios',   help: 'Compara el precio del mismo producto entre proveedores y elige el más conveniente.' },
   { href: '/nira/ranking',         label: 'Mejores proveedores',help: 'Tus proveedores ordenados por desempeño: precio, cumplimiento de entrega y calidad.' },
   { href: '/nira/reports',         label: 'Reportes',           help: 'Cuánto gastaste en compras, con el detalle por proveedor y por categoría de producto.' },

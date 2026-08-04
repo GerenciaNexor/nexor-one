@@ -170,6 +170,13 @@ El acceso está en **Inicio → Registro rápido** (+ Compra / + Venta).
 - **Venta:** **bloquea** ("agrégalo primero") — no se vende algo no registrado; sin movimiento huérfano ni
   stock negativo. Los servicios (no afectan inventario) no pasan por esta regla.
 
+**Compras rápidas (subsección NIRA — HU-171)**  
+NIRA tiene una subsección **"Compras rápidas"** (`/nira/quick-purchases`) para **registrar** una compra
+rápida (reutiliza el flujo de HU-169/170: pregunta de inventario, genéricos, alta de producto al vuelo) y
+ver su **historial** (`GET /v1/quick/registers?kind=purchase`): fecha real (manejo central de fechas),
+proveedor, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Compras
+realizadas" (OC recibidas del flujo formal) — son cosas distintas y no se mezclan.
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;

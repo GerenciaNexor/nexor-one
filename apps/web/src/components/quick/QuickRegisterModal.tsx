@@ -12,8 +12,10 @@ interface Prod  { id: string; sku: string; name: string; unit: string; salePrice
 
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 
-export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSuccess }: {
+export function QuickRegisterModal({ initialMode = 'purchase', lockMode = false, onClose, onSuccess }: {
   initialMode?: Mode
+  /** Si es true, no muestra el toggle compra/venta (fija el modo — p. ej. "Compras rápidas" en NIRA). */
+  lockMode?: boolean
   onClose:  () => void
   onSuccess: () => void
 }) {
@@ -126,14 +128,16 @@ export function QuickRegisterModal({ initialMode = 'purchase', onClose, onSucces
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Registro rápido</h3>
           <p className="mt-0.5 text-xs text-slate-500">Una compra o venta que ya ocurrió — se registra completada, sin aprobación.</p>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {(['purchase', 'sale'] as const).map((m) => (
-              <button key={m} onClick={() => switchMode(m)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${mode === m ? (m === 'sale' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300') : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>
-                {m === 'purchase' ? 'Compra' : 'Venta'}
-              </button>
-            ))}
-          </div>
+          {!lockMode && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {(['purchase', 'sale'] as const).map((m) => (
+                <button key={m} onClick={() => switchMode(m)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${mode === m ? (m === 'sale' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300') : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>
+                  {m === 'purchase' ? 'Compra' : 'Venta'}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="mt-4 max-h-[62vh] space-y-3 overflow-y-auto pr-1">
             <div>
