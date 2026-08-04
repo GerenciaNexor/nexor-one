@@ -11,7 +11,7 @@ export interface Reminder {
   remindAt:    string
   alertLevel:  'normal' | 'urgent' | 'critical'
   recurrence:  'none' | 'hourly' | 'daily' | 'weekly' | 'monthly'
-  relatedType: 'appointment' | 'client' | 'deal' | 'purchase_order' | 'rental' | null
+  relatedType: 'appointment' | 'client' | 'deal' | 'purchase_order' | 'rental' | 'incoming_rental' | null
   relatedId:   string | null
   isActive:    boolean
   status:      'pending' | 'done'
@@ -41,6 +41,7 @@ const RELATED: { value: '' | NonNullable<Reminder['relatedType']>; label: string
   { value: 'deal',           label: 'Una venta / negocio' },
   { value: 'purchase_order', label: 'Una compra' },
   { value: 'rental',         label: 'Un alquiler' },
+  { value: 'incoming_rental', label: 'Un alquiler entrante' },
 ]
 
 // ISO → valor para <input type="datetime-local"> (hora local).

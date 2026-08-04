@@ -50,17 +50,17 @@ pnpm --filter @nexor/api db:studio
 `prisma migrate` y los seeds **no** disparan RLS automáticamente: `setup-rls.ts` debe correrse
 aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo siempre.
 
-`setup-rls.ts` cubre **33 tablas de negocio** (incluye bandeja, carga masiva y chat —
+`setup-rls.ts` cubre **34 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
 desde HU-127; `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
-`cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156; y
-`rentals` desde HU-158).
+`cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156;
+`rentals` desde HU-158; e `incoming_rentals` desde HU-175).
 Además habilita RLS
 **deny-all** en las tablas de plataforma `platform_admins` (HU-134) y `platform_audit_logs` (HU-136)
 — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
 del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
-cross-tenant de las 33 tablas bajo el rol real `nexor_app` en una BD temporal.
+cross-tenant de las 34 tablas bajo el rol real `nexor_app` en una BD temporal.
 
 ### E2E (un proyecto/archivo concreto)
 

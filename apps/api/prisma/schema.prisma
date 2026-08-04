@@ -91,6 +91,7 @@ model Tenant {
   notifications         Notification[]
   reminders             Reminder[]
   rentals               Rental[]
+  incomingRentals       IncomingRental[]
   clients               Client[]
   clientRatings         ClientRating[]
   pipelineStages        PipelineStage[]
@@ -145,6 +146,7 @@ model Branch {
   stocks           Stock[]
   stockMovements   StockMovement[]
   rentals          Rental[]
+  incomingRentals  IncomingRental[]
   purchaseOrders   PurchaseOrder[]
   serviceTypes     ServiceType[]
   availability     Availability[]
@@ -183,6 +185,8 @@ model User {
   reminders                Reminder[]
   rentals                  Rental[]              @relation("RentalCreatedBy")
   returnedRentals          Rental[]              @relation("RentalReturnedBy")
+  incomingRentals          IncomingRental[]      @relation("IncomingRentalCreatedBy")
+  returnedIncomingRentals  IncomingRental[]      @relation("IncomingRentalReturnedBy")
   assignedClients          Client[]              @relation("ClientAssignee")
   assignedDeals            Deal[]                @relation("DealAssignee")
   interactions             Interaction[]
@@ -742,6 +746,55 @@ model Rental {
   @@map("rentals")
 }
 
+/// HU-175 — Alquiler ENTRANTE: la empresa renta un producto de un TERCERO para un proyecto.
+/// Clave de diseño: el producto NO es de la empresa → NO entra a KIRA (ni stock, ni vendible,
+/// ni alquilable). Es un registro APARTE de "lo prestado", con todo lo necesario para cerrarlo
+/// (devolución, HU-176). El tercero puede ser un proveedor de NIRA (`supplierId`) o una entidad
+/// nueva suelta (`thirdPartyName` + `thirdPartyContact`), sin obligar a registrarla formalmente.
+/// Costo → egreso en VERA (referenceType 'incoming_rental'). Depósito → retención POR COBRAR
+/// (dinero propio afuera): se guarda aquí y la vista de VERA lo deriva (HU-177), no es transacción.
+model IncomingRental {
+  id       String  @id @default(cuid()) @db.VarChar(30)
+  tenantId String  @map("tenant_id") @db.VarChar(30)
+  branchId String? @map("branch_id") @db.VarChar(30)
+  userId   String? @map("user_id") @db.VarChar(30)
+
+  // Tercero de quien se renta: proveedor existente O entidad nueva suelta (uno de los dos).
+  supplierId        String? @map("supplier_id") @db.VarChar(30)
+  thirdPartyName    String? @map("third_party_name") @db.VarChar(255)
+  thirdPartyContact String? @map("third_party_contact") @db.VarChar(255)
+
+  description String  @db.VarChar(500)              // qué se rentó
+  quantity    Decimal @db.Decimal(10, 2)
+  project     String  @db.VarChar(255)              // texto simple (a futuro: vínculo a Proyectos)
+  returnDate  DateTime @map("return_date") @db.Date // fecha de devolución (calendario)
+  rentalCost  Decimal @map("rental_cost") @db.Decimal(15, 2)  // egreso
+  deposit     Decimal @default(0) @db.Decimal(15, 2)          // retención por cobrar (opcional)
+
+  status     String    @default("active") @db.VarChar(20)     // active | returned (HU-176)
+  returnedAt DateTime? @map("returned_at") @db.Timestamptz(6)
+  returnedBy String?   @map("returned_by") @db.VarChar(30)
+  // HU-176 — al devolver: parte del depósito PROPIO que el tercero retuvo (se pierde → egreso VERA).
+  // Recuperado = deposit − depositLost. Motivo obligatorio si se pierde algo.
+  depositLost   Decimal @default(0) @map("deposit_lost") @db.Decimal(15, 2)
+  depositReason String? @map("deposit_reason") @db.Text
+  notes      String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch         Branch?   @relation(fields: [branchId], references: [id])
+  supplier       Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user           User?     @relation("IncomingRentalCreatedBy",  fields: [userId],     references: [id])
+  returnedByUser User?     @relation("IncomingRentalReturnedBy", fields: [returnedBy], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@index([supplierId])
+  @@map("incoming_rentals")
+}
+
 /// Historial INMUTABLE de cada cambio en el inventario.
 /// APPEND-ONLY: nunca se modifica ni elimina un movimiento.
 model StockMovement {
@@ -811,6 +864,7 @@ model Supplier {
   score                SupplierScore?
   ratings              SupplierRating[]
   purchaseOrders       PurchaseOrder[]
+  incomingRentals      IncomingRental[]
   preferredForProducts Product[]        @relation("ProductPreferredSupplier")
   defaultForTenants    Tenant[]         @relation("TenantDefaultSupplier")
 

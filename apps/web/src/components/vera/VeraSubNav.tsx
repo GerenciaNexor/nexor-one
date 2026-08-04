@@ -17,6 +17,7 @@ export function VeraSubNav() {
     { href: '/vera/transactions', label: 'Transacciones', help: 'Registra y consulta tus ingresos y egresos, cada uno con su categoría.' },
     { href: '/vera/reports',      label: 'Reportes',      help: 'Cómo se mueve tu dinero: totales por categoría y su evolución en el tiempo.' },
     { href: '/vera/deposits',     label: 'Depósitos',     help: 'Los depósitos de alquiler que guardas y debes devolver — dinero que NO es tuyo, separado de tus ingresos.' },
+    { href: '/vera/incoming-deposits', label: 'Depósitos afuera', help: 'El dinero PROPIO que dejaste en depósito al rentar de terceros — recuperable, separado de tus gastos. Y cuánto llevas gastado en esos alquileres.' },
     ...(role && MANAGER_ROLES.includes(role)
       ? [{ href: '/vera/settings', label: 'Configuración', help: 'Define tus categorías, centros de costo y presupuestos mensuales.' }]
       : []),

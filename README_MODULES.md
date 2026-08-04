@@ -183,6 +183,32 @@ ver su **historial** (`GET /v1/quick/registers?kind=purchase`): fecha real (mane
 proveedor, si afectó inventario, producto/descripción y monto. Se mantiene **separada** de "Compras
 realizadas" (OC recibidas del flujo formal) — son cosas distintas y no se mezclan.
 
+**Alquileres entrantes — rentar de un tercero (HU-175)**  
+NIRA tiene la subsección **"Alquileres entrantes"** (`/nira/incoming-rentals`) para registrar un producto
+que la empresa **renta de un tercero** para un proyecto (no lo compra: lo usa y lo devuelve). Se guarda
+**qué** se rentó, **cantidad**, **proyecto** (texto), **fecha de devolución**, **costo** y **depósito
+opcional**. El tercero puede ser un **proveedor existente** (`supplierId`) o una **entidad nueva suelta**
+(`thirdPartyName` + contacto), sin obligar a registrarla formalmente. **Clave de diseño:** el producto
+**NO es de la empresa** → **no entra a KIRA** (ni stock, ni vendible, ni alquilable); vive en la tabla
+propia **`incoming_rentals`**. El **costo** se asienta como **egreso** en VERA (categoría *Alquileres
+pagados*, `referenceType 'incoming_rental'`); el **depósito** **no es transacción**: queda como
+**retención por cobrar** (dinero propio afuera) derivable del registro — el panel de VERA es HU-177. Cada
+alquiler queda consultable con todos sus datos para su **devolución** (HU-176). Endpoints (todos
+`OPERATIVE`+`NIRA`, tenant/RLS): `POST /v1/nira/incoming-rentals`, `GET /v1/nira/incoming-rentals`
+(filtros `status`/`supplierId`), `GET /v1/nira/incoming-rentals/:id`.
+
+**Vista global de "lo prestado" y devolución (HU-176)**  
+La misma subsección **NIRA → Alquileres entrantes** es la **vista global de lo prestado**: por defecto
+lista **todos los activos** (sin filtrar por proyecto), ordenados por **fecha de devolución más próxima**,
+con búsqueda (tercero/producto/proyecto) y filtro **"próximos a vencer"** (`dueBefore`); las filas vencidas
+se marcan. Cada activo tiene **"Devolver"** → `POST /v1/nira/incoming-rentals/:id/return`, que **cierra**
+el alquiler (`status 'returned'`, `returnedAt`/`returnedBy` — trazabilidad de quién y cuándo) y **resuelve
+el depósito PROPIO**: **recuperado** (vuelve a la empresa, sin transacción) o **perdido** (el tercero retiene
+`lostAmount ≤ deposit`, con **motivo obligatorio**) → **egreso** en VERA (`referenceType
+'incoming_rental_deposit'`, categoría *Alquileres pagados*). `depositRecovered = deposit − depositLost`. El
+modal muestra **todo lo registrado** (costo, depósito, fecha, proyecto, tercero) antes de confirmar. **No
+toca inventario propio** (el producto nunca fue de la empresa).
+
 **Sucursal obligatoria al crear la OC (HU-165)**  
 La **sucursal es obligatoria desde la creación** de la OC (`POST /v1/nira/purchase-orders` exige `branchId`,
 validado contra el tenant). El inventario es por sucursal y la recepción mueve stock a la sucursal de la OC;
@@ -416,6 +442,27 @@ retenido** con desglose **por cliente** y **por producto** (filtrable por `clien
 retención se rastrea a su alquiler. Al cerrar: **devuelto** → sale de la retención sin ingreso; **retenido**
 (HU-160) o **no devuelto** (HU-161) → pasa a ingreso con motivo y trazabilidad. Retención e ingreso **nunca
 se mezclan**: son magnitudes separadas (la pantalla VERA → **Depósitos** las muestra lado a lado).
+
+**Egreso del alquiler entrante y depósito propio como retención por cobrar (HU-177 — espejo de HU-162)**  
+El alquiler **entrante** (rentar de un tercero, HU-175/176) tiene dos efectos, espejo del saliente pero del
+lado del **dinero propio**: el **costo** es un **egreso real** (transacción `expense`, categoría **"Alquileres
+pagados"**, `referenceType 'incoming_rental'`); el **depósito** que la empresa deja en garantía es **dinero
+propio afuera** que se espera recuperar — una **"retención por cobrar"** (activo recuperable), **no gasto** y
+**no** una transacción. La retención es una **vista derivada** de los alquileres entrantes **activos** con
+`deposit > 0`: `GET /v1/vera/incoming-rental-deposits` devuelve el **total afuera** con desglose **por
+proyecto** y **por tercero** (filtrable por `project`/`supplierId`), rastreable a su alquiler; y, **separado**,
+el **gasto real** (costo `incoming_rental` + depósitos perdidos `incoming_rental_deposit`). Al devolver
+(HU-176): **recuperado** → sale de la retención **sin** volverse gasto; **perdido** (el tercero lo retiene,
+con motivo) → **egreso** `incoming_rental_deposit`. La **retención por cobrar nunca se suma con el gasto
+real** — la pantalla VERA → **Depósitos afuera** las muestra como dos figuras separadas.
+
+**Recordatorio automático de devolución del entrante (HU-178 — espejo de HU-163)**  
+Al registrar un alquiler entrante con fecha de devolución, se crea **automáticamente** un recordatorio
+(reutiliza el motor HU-156/157; **no** hay mecanismo nuevo) para esa fecha, con `alertLevel 'urgent'` por
+defecto, asociado al alquiler vía `relatedType 'incoming_rental'` + `relatedId`. Aparece en **Inicio** y
+**Notificaciones** y se gestiona desde **Agenda** como cualquier recordatorio. Al registrar la **devolución**
+(HU-176) el recordatorio se **cierra automáticamente** (`status 'done'`, `isActive false`, `completedAt`).
+Es el espejo de HU-163 pero en el otro sentido: aquí la empresa es quien debe **devolver** al tercero.
 
 ### Flujos clave
 

@@ -6,6 +6,7 @@
  *   /purchase-orders → OC con flujo de aprobación (HU-040, HU-041)
  *   /compare         → Comparador de precios por proveedor (HU-042)
  *   /reports         → Ranking de proveedores por score (HU-043)
+ *   /incoming-rentals → Alquileres entrantes de un tercero (HU-175)
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -15,6 +16,7 @@ import { purchaseOrdersRoutes } from './purchase-orders/routes'
 import { compareRoutes }        from './compare/routes'
 import { reportsRoutes }        from './reports/routes'
 import { preferredSupplierRoutes } from './preferred/routes'
+import { incomingRentalsRoutes } from './incoming-rentals/routes'
 
 export default async function niraModule(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireFeatureFlag('NIRA'))
@@ -23,4 +25,5 @@ export default async function niraModule(app: FastifyInstance): Promise<void> {
   await app.register(compareRoutes,           { prefix: '/compare' })
   await app.register(reportsRoutes,           { prefix: '/reports' })
   await app.register(preferredSupplierRoutes, { prefix: '/preferred-supplier' })
+  await app.register(incomingRentalsRoutes,   { prefix: '/incoming-rentals' })
 }

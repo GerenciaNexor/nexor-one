@@ -18,7 +18,8 @@ export const RECUR_LABEL: Record<Reminder['recurrence'], string> = {
 }
 
 export const RELATED_LABEL: Record<NonNullable<Reminder['relatedType']>, string> = {
-  appointment: 'Cita', client: 'Cliente', deal: 'Venta / negocio', purchase_order: 'Compra', rental: 'Alquiler',
+  appointment: 'Cita', client: 'Cliente', deal: 'Venta / negocio', purchase_order: 'Compra',
+  rental: 'Alquiler', incoming_rental: 'Alquiler entrante',
 }
 
 export function fmtWhen(iso: string): string {

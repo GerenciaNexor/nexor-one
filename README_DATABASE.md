@@ -1087,15 +1087,49 @@ transacción). Base del módulo de alquiler (HU-159–163).
 total); `POST /:id/return` devuelve (baja `rented_quantity`, total intacto); `GET /` lista. **No** escribe
 en `stock_movements` (la trazabilidad de HU-128 queda intacta); el total solo cambia por venta/compra/ajuste.
 
+#### `incoming_rentals` (HU-175)
+
+Alquiler **entrante**: la empresa **renta un producto de un tercero** para un proyecto. **No es de la
+empresa** → **no entra a KIRA** (ni stock, ni vendible, ni alquilable): es un registro **aparte** de "lo
+prestado", con todo lo necesario para cerrarlo (devolución, HU-176). El tercero puede ser un **proveedor
+existente** (`supplier_id`) o una **entidad nueva suelta** (`third_party_name` + `third_party_contact`).
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | VARCHAR(30) PK | CUID |
+| `tenant_id` | VARCHAR(30) FK | Empresa (RLS) |
+| `branch_id` | VARCHAR(30) NULL FK | Sucursal (opcional; el OPERATIVE queda atado a la suya) |
+| `user_id` | VARCHAR(30) NULL FK | Quién registró |
+| `supplier_id` | VARCHAR(30) NULL FK → suppliers | Proveedor existente (o NULL si es tercero suelto) |
+| `third_party_name` / `third_party_contact` | VARCHAR(255) NULL | Tercero suelto (nombre + contacto), sin registro formal |
+| `description` | VARCHAR(500) | Qué se rentó |
+| `quantity` | DECIMAL(10,2) | Cantidad |
+| `project` | VARCHAR(255) | Proyecto (texto; a futuro, vínculo al módulo de Proyectos) |
+| `return_date` | DATE | Fecha de devolución (calendario) |
+| `rental_cost` | DECIMAL(15,2) | Costo del alquiler → **egreso** en VERA (`referenceType 'incoming_rental'`) |
+| `deposit` | DECIMAL(15,2) DEFAULT 0 | Depósito opcional → **retención por cobrar** (dinero propio afuera); no es transacción |
+| `status` | VARCHAR(20) DEFAULT `active` | `active` \| `returned` (HU-176) |
+| `returned_at` / `returned_by` | TIMESTAMPTZ / VARCHAR(30) NULL | **HU-176** — cierre de la devolución (cuándo · quién, FK → users) |
+| `deposit_lost` | DECIMAL(15,2) DEFAULT 0 | **HU-176** — parte del depósito que el tercero retuvo (se pierde → egreso VERA). Recuperado = `deposit − deposit_lost` |
+| `deposit_reason` | TEXT NULL | **HU-176** — motivo si se pierde algo del depósito |
+| `notes` | TEXT NULL | Notas |
+
+**RLS:** SÍ (`tenant_isolation`, alta en `setup-rls`). **Operaciones** (`/v1/nira/incoming-rentals`,
+`OPERATIVE`+`NIRA`): `POST /` registra (costo → egreso VERA *Alquileres pagados*; depósito queda en el
+registro como retención por cobrar); `GET /` es la **vista global de "lo prestado"** (filtros
+`status`/`supplier_id`/`project`/`search`/`dueBefore`, orden por vencimiento); `GET /:id` detalle;
+`POST /:id/return` (**HU-176**) cierra el alquiler y resuelve el depósito propio (recuperado, o perdido →
+egreso `incoming_rental_deposit`). **No** toca KIRA ni `stock_movements`.
+
 ---
 
 El `tenant_id` se inyecta en cada conexión desde el middleware de Fastify antes de ejecutar cualquier query.
 
 En la práctica no se aplica a mano: **`setup-rls.ts` (`pnpm --filter @nexor/api db:rls`) es la fuente
 única de verdad** y debe correrse tras cada migración y tras cualquier restore de backup (RLS no se
-preserva en un `pg_restore`). Cubre **33 tablas de negocio** con la política `tenant_isolation`
-(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). `reminders` (HU-156) y `rentals` (HU-158) son
-las más recientes; antes, las 5 de **HU-135-fix**
+preserva en un `pg_restore`). Cubre **34 tablas de negocio** con la política `tenant_isolation`
+(USING + WITH CHECK, fail-safe: sin contexto ⇒ 0 filas). `incoming_rentals` (HU-175) es la más reciente;
+antes, `reminders` (HU-156) y `rentals` (HU-158); y las 5 de **HU-135-fix**
 (cierre de cobertura 26→31): `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
 `cost_centers`, `monthly_budgets` — forzadas también por la migración
 `20260703120000_rls_remaining_tables`. Antes de forzarlas se verificó que ningún job ni ruta las
