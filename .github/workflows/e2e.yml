@@ -91,6 +91,16 @@ jobs:
             GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO nexor_app;
           "
 
+      - name: Tests de integración API (vitest — incluye AgentRunner bajo RLS real)
+        # Corre bajo nexor_app (NOSUPERUSER/NOBYPASSRLS) para que el test del camino
+        # worker→AgentRunner ejercite el aislamiento cross-tenant con RLS real (no mocks).
+        # El test crea su propia BD temporal (guard anti-prod) — no toca nexor_test.
+        run: pnpm --filter @nexor/api test
+        env:
+          DATABASE_URL:        postgresql://nexor_app:nexor_app_test@localhost:5432/nexor_test
+          DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexor_test
+          ANTHROPIC_API_KEY:   sk-ant-test
+
       - name: Aplicar RLS (db:rls) — HU-134 incluye platform_admins deny-all
         run: pnpm --filter @nexor/api exec tsx prisma/setup-rls.ts
 

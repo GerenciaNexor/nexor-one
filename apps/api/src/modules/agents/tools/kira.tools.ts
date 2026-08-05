@@ -166,8 +166,11 @@ const registrarMovimiento: AgentTool = {
 
     const absQty = Math.abs(qty)
 
-    await prisma.$transaction([
-      prisma.stockMovement.create({
+    // Forma INTERACTIVA (no array): el agente ejecuta esta tool dentro de runInTenantTransaction
+    // (HU-122), donde el proxy `prisma` reusa la tx del tenant. La forma `$transaction([array])`
+    // no está soportada en ese contexto (prisma.ts) → rompería la tool en el camino del worker.
+    await prisma.$transaction(async (tx) => {
+      await tx.stockMovement.create({
         data: {
           tenantId,
           productId:      productId as string,
@@ -180,18 +183,20 @@ const registrarMovimiento: AgentTool = {
           quantityAfter:  after,
           notes:          notas as string | undefined,
         },
-      }),
-      tipo_ === 'SALIDA'
-        ? prisma.stock.update({
-            where: { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-            data:  { quantity: { decrement: absQty } },
-          })
-        : prisma.stock.upsert({
-            where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
-            create: { productId: productId as string, branchId: branchId as string, quantity: after },
-            update: { quantity: after },
-          }),
-    ])
+      })
+      if (tipo_ === 'SALIDA') {
+        await tx.stock.update({
+          where: { productId_branchId: { productId: productId as string, branchId: branchId as string } },
+          data:  { quantity: { decrement: absQty } },
+        })
+      } else {
+        await tx.stock.upsert({
+          where:  { productId_branchId: { productId: productId as string, branchId: branchId as string } },
+          create: { productId: productId as string, branchId: branchId as string, quantity: after },
+          update: { quantity: after },
+        })
+      }
+    })
 
     // Notificar al equipo de KIRA sobre la acción del agente.
     // La notificación es independiente de la transacción: si falla, el movimiento ya quedó registrado.
