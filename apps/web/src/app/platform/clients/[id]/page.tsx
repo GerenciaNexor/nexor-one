@@ -72,6 +72,7 @@ function channelBadge(channel: 'WHATSAPP' | 'GMAIL', status: ChannelStatus): { l
 type ChannelModalState = {
   kind: 'wa-connect' | 'wa-disconnect' | 'gmail-prepare' | 'gmail-disconnect'
   integrationId?: string
+  prefill?: Record<string, string>   // pre-rellena campos (p. ej. actualizar solo el token)
 }
 
 // ─── Prompt de motivo (acciones sensibles) ──────────────────────────────────────
@@ -485,8 +486,9 @@ export default function PlatformClientDetailPage() {
                           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10">
                           {testing === wa.id ? 'Verificando…' : 'Verificar'}
                         </button>
-                        {/* Actualizar token sin desconectar: reutiliza "Conectar" (el backend hace update si el Phone Number ID ya existe). */}
-                        <button onClick={() => setChannelModal({ kind: 'wa-connect' })}
+                        {/* Actualizar token sin desconectar: reutiliza "Conectar" (el backend hace update si el
+                            Phone Number ID ya existe). Pre-rellena el Phone Number ID → solo escribes el token nuevo. */}
+                        <button onClick={() => setChannelModal({ kind: 'wa-connect', prefill: { phoneNumberId: wa.identifier } })}
                           className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20">
                           Actualizar token
                         </button>
@@ -603,7 +605,7 @@ export default function PlatformClientDetailPage() {
           'wa-connect':      { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
             fields: [
               { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
-              { name: 'wabaId',        label: 'WABA ID (para recibir mensajes)', placeholder: '2690949021302786' },
+              { name: 'wabaId',        label: 'WABA ID (para recibir mensajes · opcional al actualizar)', placeholder: '2690949021302786', optional: true },
               { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
             ] },
           'gmail-prepare':   { title: `Preparar Gmail de ${t.name}`, confirmLabel: 'Preparar', danger: false,
@@ -619,6 +621,7 @@ export default function PlatformClientDetailPage() {
             confirmLabel={cfg.confirmLabel}
             danger={cfg.danger}
             fields={cfg.fields}
+            initialValues={channelModal.prefill}
             onConfirm={submitChannelModal}
             onCancel={() => setChannelModal(null)}
           />
@@ -630,15 +633,16 @@ export default function PlatformClientDetailPage() {
 
 // ─── Modal de canales (conectar / preparar / desconectar) ───────────────────────
 
-function ChannelModal({ title, confirmLabel, danger, fields, onConfirm, onCancel }: {
+function ChannelModal({ title, confirmLabel, danger, fields, initialValues, onConfirm, onCancel }: {
   title: string
   confirmLabel: string
   danger?: boolean
-  fields: { name: string; label: string; placeholder?: string; type?: string }[]
+  fields: { name: string; label: string; placeholder?: string; type?: string; optional?: boolean }[]
+  initialValues?: Record<string, string>
   onConfirm: (values: Record<string, string>) => Promise<void>
   onCancel: () => void
 }) {
-  const [values, setValues] = useState<Record<string, string>>({})
+  const [values, setValues] = useState<Record<string, string>>(initialValues ?? {})
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -646,7 +650,7 @@ function ChannelModal({ title, confirmLabel, danger, fields, onConfirm, onCancel
   async function submit(): Promise<void> {
     setErr(null)
     for (const f of fields) {
-      if (!(values[f.name] ?? '').trim()) { setErr(`${f.label} es obligatorio.`); return }
+      if (!f.optional && !(values[f.name] ?? '').trim()) { setErr(`${f.label} es obligatorio.`); return }
     }
     if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
     setSaving(true)
