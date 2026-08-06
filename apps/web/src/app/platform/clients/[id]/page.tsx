@@ -485,6 +485,11 @@ export default function PlatformClientDetailPage() {
                           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10">
                           {testing === wa.id ? 'Verificando…' : 'Verificar'}
                         </button>
+                        {/* Actualizar token sin desconectar: reutiliza "Conectar" (el backend hace update si el Phone Number ID ya existe). */}
+                        <button onClick={() => setChannelModal({ kind: 'wa-connect' })}
+                          className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20">
+                          Actualizar token
+                        </button>
                         <button onClick={() => setChannelModal({ kind: 'wa-disconnect', integrationId: wa.id })}
                           className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20">
                           Desconectar
