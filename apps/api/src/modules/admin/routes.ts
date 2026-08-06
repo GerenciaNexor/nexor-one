@@ -80,6 +80,7 @@ const AiQuotaSchema = z.object({
 const ConnectWhatsAppSchema = z.object({
   phoneNumberId: z.string().min(1, 'Phone Number ID requerido'),
   accessToken:   z.string().min(1, 'Access Token requerido'),
+  wabaId:        z.string().optional(), // WABA ID → suscribe la app para RECIBIR mensajes entrantes
   branchId:      z.string().optional(),
   reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
 })
