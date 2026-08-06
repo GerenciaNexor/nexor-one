@@ -519,6 +519,14 @@ export default function LandingPage() {
             </div>
             <p className="text-sm text-slate-500">Gestión empresarial con IA · ARI · NIRA · KIRA · REI · VERA</p>
           </div>
+          <div className="mx-auto max-w-6xl border-t border-white/5 px-6 py-5">
+            <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-400 sm:justify-start">
+              <Link href="/privacidad" className="transition-colors hover:text-white">Política de Privacidad</Link>
+              <Link href="/terminos" className="transition-colors hover:text-white">Términos del Servicio</Link>
+              <Link href="/eliminacion-datos" className="transition-colors hover:text-white">Eliminación de datos</Link>
+              <a href="mailto:gerencia@nexor-one.com" className="transition-colors hover:text-white">gerencia@nexor-one.com</a>
+            </nav>
+          </div>
         </footer>
       </div>
     </div>
