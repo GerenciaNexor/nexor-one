@@ -601,13 +601,21 @@ export default function PlatformClientDetailPage() {
       )}
 
       {channelModal && (() => {
+        // Modo "actualizar token": el Phone Number ID y el WABA ya están guardados y no cambian,
+        // así que solo pedimos el token nuevo (el backend actualiza por Phone Number ID y conserva el WABA).
+        const isTokenUpdate = channelModal.kind === 'wa-connect' && !!channelModal.prefill?.phoneNumberId
         const cfg = {
-          'wa-connect':      { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
-            fields: [
-              { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
-              { name: 'wabaId',        label: 'WABA ID (para recibir mensajes · opcional al actualizar)', placeholder: '2690949021302786', optional: true },
-              { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
-            ] },
+          'wa-connect': isTokenUpdate
+            ? { title: `Actualizar token de WhatsApp de ${t.name}`, confirmLabel: 'Actualizar', danger: false,
+                fields: [
+                  { name: 'accessToken', label: 'Nuevo Access Token', placeholder: 'EAAxxxxxx…', type: 'password' },
+                ] }
+            : { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
+                fields: [
+                  { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
+                  { name: 'wabaId',        label: 'WABA ID (para recibir mensajes)', placeholder: '2690949021302786' },
+                  { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
+                ] },
           'gmail-prepare':   { title: `Preparar Gmail de ${t.name}`, confirmLabel: 'Preparar', danger: false,
             fields: [
               { name: 'email', label: 'Email', placeholder: 'ventas@empresa.com', type: 'email' },
@@ -655,7 +663,8 @@ function ChannelModal({ title, confirmLabel, danger, fields, initialValues, onCo
     if (!reason.trim()) { setErr('El motivo es obligatorio.'); return }
     setSaving(true)
     try {
-      const payload: Record<string, string> = { reason: reason.trim() }
+      // Incluye los valores pre-rellenados (p. ej. phoneNumberId al actualizar el token) además de los campos visibles.
+      const payload: Record<string, string> = { ...values, reason: reason.trim() }
       for (const f of fields) payload[f.name] = (values[f.name] ?? '').trim()
       await onConfirm(payload)
     } catch (e: unknown) {
