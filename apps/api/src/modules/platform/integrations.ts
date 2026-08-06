@@ -122,6 +122,8 @@ export async function testTenantIntegration(tenantId: string, integrationId: str
 export async function disconnectTenantIntegration(tenantId: string, integrationId: string, actorId: string, reason: string, ip?: string) {
   const integration = await directPrisma.integration.findFirst({ where: { id: integrationId, tenantId }, select: { id: true, channel: true, identifier: true } })
   if (!integration) throw Object.assign(new Error('Integración no encontrada.'), { statusCode: 404, code: 'NOT_FOUND' })
-  await directPrisma.integration.update({ where: { id: integration.id }, data: { tokenEncrypted: null, isActive: false } })
+  // Desconectar ELIMINA la integración (la tarjeta desaparece y libera el Phone Number ID para
+  // reconectar). El historial queda en platform_audit_logs vía logPlatformAction.
+  await directPrisma.integration.delete({ where: { id: integration.id } })
   await logPlatformAction({ platformAdminId: actorId, tenantId, action: 'channel.disconnect', reason, ip, metadata: { channel: integration.channel, identifier: integration.identifier } })
 }
