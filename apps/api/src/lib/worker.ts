@@ -19,6 +19,7 @@ import type { ModuleName } from '@prisma/client'
 import { QUEUE_NAME, redisConnection, type IncomingMessageJob } from './queue'
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
+import { markIntegrationDown } from './integration-status'
 import { runAgent } from '../modules/agents/agent.runner'
 import type { AgentModule } from '../modules/agents/types'
 import { extractDocument } from '../modules/ocr/service'
@@ -832,17 +833,28 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       }
     }
 
-    // Enviar respuesta al remitente
-    await sendWhatsAppReply(d.phoneNumberId, d.from, result.reply, accessToken)
+    // Enviar respuesta al remitente. Si Meta rechaza el envío (token vencido, canal caído…),
+    // marcamos el canal como CAÍDO y notificamos a plataforma+cliente — SIN relanzar el error
+    // (así el job no se reintenta 3 veces re-ejecutando al agente y duplicando respuestas).
+    try {
+      await sendWhatsAppReply(d.phoneNumberId, d.from, result.reply, accessToken)
 
-    // Marcar conversación como replied si el agente respondió sin fallback
-    if (conversationId && !result.hitMaxTurns) {
-      directPrisma.conversation.update({
-        where: { id: conversationId },
-        data:  { status: 'replied' },
-      }).catch((err: unknown) => {
-        console.error(JSON.stringify({ event: 'worker_status_update_failed', error: String(err) }))
-      })
+      // Marcar conversación como replied si el agente respondió sin fallback
+      if (conversationId && !result.hitMaxTurns) {
+        directPrisma.conversation.update({
+          where: { id: conversationId },
+          data:  { status: 'replied' },
+        }).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: 'worker_status_update_failed', error: String(err) }))
+        })
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      console.error(JSON.stringify({ event: 'worker_whatsapp_send_failed', tenantId: d.tenantId, integrationId: d.integrationId, detail }))
+      await markIntegrationDown(
+        { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP', identifier: d.phoneNumberId },
+        `Fallo al enviar por WhatsApp: ${detail}`,
+      ).catch(() => {})
     }
 
   // ── Gmail ─────────────────────────────────────────────────────────────────

@@ -6,11 +6,14 @@
  */
 import { directPrisma } from '../../lib/prisma'
 import { encrypt } from '../../lib/encryption'
+import { markIntegrationDown, markIntegrationHealthy } from '../../lib/integration-status'
 import { logPlatformAction } from './audit'
 
 // Nunca incluye tokenEncrypted → los secretos jamás salen de la API.
+// Sí incluye el estado de salud (status/lastError/…) para el badge de la consola SUPER_ADMIN.
 const SAFE = {
   id: true, channel: true, identifier: true, isActive: true,
+  status: true, lastError: true, lastErrorAt: true, tokenExpiresAt: true,
   lastVerifiedAt: true, branchId: true, createdAt: true, updatedAt: true,
 } as const
 
@@ -41,7 +44,7 @@ export async function subscribeAppToWaba(wabaId: string, accessToken: string): P
 
 export async function connectWhatsAppForTenant(
   tenantId: string,
-  input: { phoneNumberId: string; accessToken: string; wabaId?: string; branchId?: string },
+  input: { phoneNumberId: string; accessToken: string; wabaId?: string; branchId?: string; tokenExpiresAt?: string },
   actorId: string, reason: string, ip?: string,
 ) {
   // phone_number_id es único globalmente (un número no puede estar en dos empresas).
@@ -52,8 +55,14 @@ export async function connectWhatsAppForTenant(
     throw Object.assign(new Error('Ese Phone Number ID ya está registrado en otra empresa.'), { statusCode: 409, code: 'PHONE_NUMBER_ID_TAKEN' })
   }
   const tokenEncrypted = encrypt(input.accessToken)
-  // El WABA ID se guarda para poder (re)suscribir la app a sus webhooks en "Probar conexión".
-  const data = { tokenEncrypted, isActive: false, branchId: input.branchId ?? null, ...(input.wabaId ? { metadata: { wabaId: input.wabaId } } : {}) }
+  // El WABA ID se guarda para (re)suscribir la app en "Verificar". Reconectar resetea el estado a
+  // 'pending' y limpia el último error (token nuevo, aún sin verificar). tokenExpiresAt: opcional (temporal).
+  const data = {
+    tokenEncrypted, isActive: false, status: 'pending', lastError: null, lastErrorAt: null,
+    branchId: input.branchId ?? null,
+    ...(input.wabaId ? { metadata: { wabaId: input.wabaId } } : {}),
+    ...(input.tokenExpiresAt ? { tokenExpiresAt: new Date(input.tokenExpiresAt) } : { tokenExpiresAt: null }),
+  }
   const integration = conflict
     ? await directPrisma.integration.update({ where: { id: conflict.id }, data, select: SAFE })
     : await directPrisma.integration.create({ data: { tenantId, channel: 'WHATSAPP', identifier: input.phoneNumberId, ...data }, select: SAFE })
@@ -115,7 +124,11 @@ export async function testTenantIntegration(tenantId: string, integrationId: str
     webhookMsg = ' Nota: falta el WABA ID para suscribir los mensajes entrantes — reconéctalo incluyéndolo.'
   }
 
-  await directPrisma.integration.update({ where: { id: integration.id }, data: { isActive: passed, lastVerifiedAt: passed ? new Date() : undefined } })
+  // Refleja el estado de salud + notifica (a plataforma y cliente) si cayó; resuelve alertas si sanó.
+  const ref = { id: integration.id, tenantId, channel: integration.channel, identifier: integration.identifier }
+  if (passed) await markIntegrationHealthy(ref)
+  else        await markIntegrationDown(ref, message || 'Verificación manual fallida')
+
   return { success: passed, message: (passed ? 'Conexión con WhatsApp verificada.' : `Verificación fallida: ${message}`) + webhookMsg }
 }
 

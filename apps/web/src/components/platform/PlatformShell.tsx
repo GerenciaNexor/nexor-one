@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
 import { useTheme } from '@/hooks/useTheme'
+import { PlatformNotificationBell } from '@/components/platform/PlatformNotificationBell'
 
 const NAV: { href: string; label: string; exact?: boolean }[] = [
   { href: '/platform',               label: 'Inicio',        exact: true },
@@ -151,6 +152,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           </span>
 
           <div className="flex-1" />
+
+          {/* Campanita de alertas de canales (WhatsApp/Gmail caídos, token por vencer) */}
+          <PlatformNotificationBell />
 
           {/* Toggle de tema claro / oscuro */}
           <button

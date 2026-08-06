@@ -62,7 +62,8 @@ desde HU-127; `blocked_dates`, `appointment_cancel_tokens`, `transaction_categor
 `cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156;
 `rentals` desde HU-158; e `incoming_rentals` desde HU-175).
 Además habilita RLS
-**deny-all** en las tablas de plataforma `platform_admins` (HU-134) y `platform_audit_logs` (HU-136)
+**deny-all** en las tablas de plataforma `platform_admins` (HU-134), `platform_audit_logs` (HU-136),
+`subscriptions` y `platform_notifications` (bandeja de la consola SUPER_ADMIN)
 — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
 del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
 cross-tenant de las 34 tablas bajo el rol real `nexor_app` en una BD temporal.

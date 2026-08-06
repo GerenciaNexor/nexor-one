@@ -50,22 +50,32 @@ interface ChannelIntegration {
   identifier:     string
   isActive:       boolean
   lastVerifiedAt: string | null
+  status?:        string        // connected | pending | error | expiring
+  lastError?:     string | null
+  tokenExpiresAt?: string | null
 }
 
-type ChannelStatus = 'connected' | 'pending' | 'none'
+type ChannelStatus = 'connected' | 'pending' | 'error' | 'expiring' | 'none'
 
 function channelStatus(i: ChannelIntegration | undefined): ChannelStatus {
   if (!i) return 'none'
+  const s = i.status
+  if (s === 'error' || s === 'expiring') return s
   return i.isActive ? 'connected' : 'pending'
 }
 
-function channelBadge(channel: 'WHATSAPP' | 'GMAIL', status: ChannelStatus): { label: string; cls: string } {
+const AMBER = 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+const RED   = 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+
+function channelBadge(channel: 'WHATSAPP' | 'GMAIL', status: ChannelStatus, lastError?: string | null): { label: string; cls: string } {
   if (status === 'connected') return { label: 'Conectado', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' }
-  if (status === 'pending') {
-    return channel === 'WHATSAPP'
-      ? { label: 'Pendiente',  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' }
-      : { label: 'Preparado',  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' }
+  if (status === 'error') {
+    // Distingue token vencido de un error genérico, con el detalle disponible para reconectar.
+    const expired = !!lastError && /expired|#190|validating access token|OAuthException|session/i.test(lastError)
+    return { label: expired ? 'Token vencido — Reconectar' : 'Error de conexión', cls: RED }
   }
+  if (status === 'expiring') return { label: 'Token por vencer', cls: AMBER }
+  if (status === 'pending')  return { label: channel === 'WHATSAPP' ? 'Pendiente' : 'Preparado', cls: AMBER }
   return { label: 'No conectado', cls: 'bg-slate-200 text-slate-500 dark:bg-white/10 dark:text-slate-400' }
 }
 
@@ -164,7 +174,8 @@ export default function PlatformClientDetailPage() {
     const { kind, integrationId } = channelModal
     if (kind === 'wa-connect') {
       await apiClient.post(`/v1/admin/tenants/${id}/integrations/whatsapp`, {
-        phoneNumberId: values.phoneNumberId, accessToken: values.accessToken, wabaId: values.wabaId, reason: values.reason,
+        phoneNumberId: values.phoneNumberId, accessToken: values.accessToken, wabaId: values.wabaId,
+        tokenExpiresAt: values.tokenExpiresAt || undefined, reason: values.reason,
       })
     } else if (kind === 'gmail-prepare') {
       await apiClient.post(`/v1/admin/tenants/${id}/integrations/gmail`, {
@@ -462,7 +473,7 @@ export default function PlatformClientDetailPage() {
             {(() => {
               const wa     = integrations.find((i) => i.channel === 'WHATSAPP')
               const status = channelStatus(wa)
-              const badge  = channelBadge('WHATSAPP', status)
+              const badge  = channelBadge('WHATSAPP', status, wa?.lastError)
               return (
                 <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2">
@@ -472,6 +483,12 @@ export default function PlatformClientDetailPage() {
                   {wa ? (
                     <div className="mt-2 space-y-1">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Phone Number ID: <span className="font-mono text-slate-700 dark:text-slate-300">{wa.identifier}</span></p>
+                      {status === 'error' && wa.lastError && (
+                        <p className="text-xs text-red-600 dark:text-red-400">Detalle: {wa.lastError.slice(0, 160)}</p>
+                      )}
+                      {status === 'expiring' && wa.tokenExpiresAt && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">El token vence el {fmtDate(wa.tokenExpiresAt)} — reconéctalo antes.</p>
+                      )}
                       {wa.lastVerifiedAt && (
                         <p className="text-xs text-slate-500">Última verificación: {fmtDate(wa.lastVerifiedAt)}</p>
                       )}
@@ -512,7 +529,7 @@ export default function PlatformClientDetailPage() {
             {(() => {
               const gm     = integrations.find((i) => i.channel === 'GMAIL')
               const status = channelStatus(gm)
-              const badge  = channelBadge('GMAIL', status)
+              const badge  = channelBadge('GMAIL', status, gm?.lastError)
               return (
                 <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2">
@@ -608,13 +625,15 @@ export default function PlatformClientDetailPage() {
           'wa-connect': isTokenUpdate
             ? { title: `Actualizar token de WhatsApp de ${t.name}`, confirmLabel: 'Actualizar', danger: false,
                 fields: [
-                  { name: 'accessToken', label: 'Nuevo Access Token', placeholder: 'EAAxxxxxx…', type: 'password' },
+                  { name: 'accessToken',    label: 'Nuevo Access Token', placeholder: 'EAAxxxxxx…', type: 'password' },
+                  { name: 'tokenExpiresAt', label: 'Vence el (opcional · tokens temporales)', type: 'date', optional: true },
                 ] }
             : { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
                 fields: [
-                  { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
-                  { name: 'wabaId',        label: 'WABA ID (para recibir mensajes)', placeholder: '2690949021302786' },
-                  { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
+                  { name: 'phoneNumberId',  label: 'Phone Number ID', placeholder: '123456789012345' },
+                  { name: 'wabaId',         label: 'WABA ID (para recibir mensajes)', placeholder: '2690949021302786' },
+                  { name: 'accessToken',    label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
+                  { name: 'tokenExpiresAt', label: 'Vence el (opcional · tokens temporales)', type: 'date', optional: true },
                 ] },
           'gmail-prepare':   { title: `Preparar Gmail de ${t.name}`, confirmLabel: 'Preparar', danger: false,
             fields: [
