@@ -18,9 +18,30 @@ export async function listTenantIntegrations(tenantId: string) {
   return directPrisma.integration.findMany({ where: { tenantId }, select: SAFE, orderBy: { createdAt: 'desc' } })
 }
 
+const GRAPH_VERSION = 'v21.0'
+
+/**
+ * Suscribe la app de NEXOR a los webhooks del WABA (`POST /{waba}/subscribed_apps`).
+ * SIN ESTO Meta NUNCA envía los mensajes ENTRANTES, aunque la app esté publicada, el número
+ * conectado y el campo `messages` marcado (la salida y la verificación no lo requieren). Es el
+ * paso que faltaba: por eso llegaban las respuestas pero no las entradas.
+ */
+export async function subscribeAppToWaba(wabaId: string, accessToken: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    const resp = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${wabaId}/subscribed_apps`, {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const body = await resp.json().catch(() => ({})) as { success?: boolean; error?: { message?: string } }
+    if (resp.ok && body.success !== false) return { ok: true, message: 'App suscrita al WABA — recibirá mensajes entrantes.' }
+    return { ok: false, message: body.error?.message ?? `HTTP ${resp.status}` }
+  } catch {
+    return { ok: false, message: 'No se pudo contactar la Graph API de Meta para suscribir el WABA.' }
+  }
+}
+
 export async function connectWhatsAppForTenant(
   tenantId: string,
-  input: { phoneNumberId: string; accessToken: string; branchId?: string },
+  input: { phoneNumberId: string; accessToken: string; wabaId?: string; branchId?: string },
   actorId: string, reason: string, ip?: string,
 ) {
   // phone_number_id es único globalmente (un número no puede estar en dos empresas).
@@ -31,13 +52,18 @@ export async function connectWhatsAppForTenant(
     throw Object.assign(new Error('Ese Phone Number ID ya está registrado en otra empresa.'), { statusCode: 409, code: 'PHONE_NUMBER_ID_TAKEN' })
   }
   const tokenEncrypted = encrypt(input.accessToken)
-  const data = { tokenEncrypted, isActive: false, branchId: input.branchId ?? null }
+  // El WABA ID se guarda para poder (re)suscribir la app a sus webhooks en "Probar conexión".
+  const data = { tokenEncrypted, isActive: false, branchId: input.branchId ?? null, ...(input.wabaId ? { metadata: { wabaId: input.wabaId } } : {}) }
   const integration = conflict
     ? await directPrisma.integration.update({ where: { id: conflict.id }, data, select: SAFE })
     : await directPrisma.integration.create({ data: { tenantId, channel: 'WHATSAPP', identifier: input.phoneNumberId, ...data }, select: SAFE })
 
-  await logPlatformAction({ platformAdminId: actorId, tenantId, action: 'channel.connect', reason, ip, metadata: { channel: 'WHATSAPP', identifier: input.phoneNumberId } })
-  return integration
+  // Suscribir la app al WABA para RECIBIR mensajes entrantes (paso clave, best-effort).
+  let webhook: { ok: boolean; message: string } | undefined
+  if (input.wabaId) webhook = await subscribeAppToWaba(input.wabaId, input.accessToken)
+
+  await logPlatformAction({ platformAdminId: actorId, tenantId, action: 'channel.connect', reason, ip, metadata: { channel: 'WHATSAPP', identifier: input.phoneNumberId, wabaSubscribed: webhook?.ok ?? null } })
+  return { ...integration, webhookSubscribed: webhook?.ok ?? null, webhookMessage: webhook?.message }
 }
 
 export async function connectGmailForTenant(
@@ -57,7 +83,7 @@ export async function connectGmailForTenant(
 /** Verifica el token de una integración contra el proveedor. WhatsApp: Graph API de Meta. */
 export async function testTenantIntegration(tenantId: string, integrationId: string) {
   const integration = await directPrisma.integration.findFirst({
-    where: { id: integrationId, tenantId }, select: { id: true, identifier: true, tokenEncrypted: true, channel: true },
+    where: { id: integrationId, tenantId }, select: { id: true, identifier: true, tokenEncrypted: true, channel: true, metadata: true },
   })
   if (!integration) throw Object.assign(new Error('Integración no encontrada.'), { statusCode: 404, code: 'NOT_FOUND' })
 
@@ -73,13 +99,24 @@ export async function testTenantIntegration(tenantId: string, integrationId: str
   const accessToken = decrypt(integration.tokenEncrypted)
   let passed = false, message = ''
   try {
-    const resp = await fetch(`https://graph.facebook.com/v19.0/${integration.identifier}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+    const resp = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${integration.identifier}`, { headers: { Authorization: `Bearer ${accessToken}` } })
     if (resp.ok) passed = true
     else { const b = await resp.json() as { error?: { message?: string } }; message = b?.error?.message ?? `HTTP ${resp.status}` }
   } catch { message = 'No se pudo conectar con la API de Meta.' }
 
+  // Si el token es válido y tenemos el WABA ID, (re)suscribimos la app a sus webhooks para
+  // RECIBIR mensajes entrantes — sin esto Meta no envía las entradas (arregla la conexión actual).
+  let webhookMsg = ''
+  const wabaId = (integration.metadata as { wabaId?: string } | null)?.wabaId
+  if (passed && wabaId) {
+    const sub = await subscribeAppToWaba(wabaId, accessToken)
+    webhookMsg = sub.ok ? ' App suscrita al WABA (recibirá mensajes entrantes).' : ` Aviso: no se pudo suscribir el WABA (${sub.message}).`
+  } else if (passed && !wabaId) {
+    webhookMsg = ' Nota: falta el WABA ID para suscribir los mensajes entrantes — reconéctalo incluyéndolo.'
+  }
+
   await directPrisma.integration.update({ where: { id: integration.id }, data: { isActive: passed, lastVerifiedAt: passed ? new Date() : undefined } })
-  return { success: passed, message: passed ? 'Conexión con WhatsApp verificada.' : `Verificación fallida: ${message}` }
+  return { success: passed, message: (passed ? 'Conexión con WhatsApp verificada.' : `Verificación fallida: ${message}`) + webhookMsg }
 }
 
 export async function disconnectTenantIntegration(tenantId: string, integrationId: string, actorId: string, reason: string, ip?: string) {

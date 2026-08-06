@@ -163,7 +163,7 @@ export default function PlatformClientDetailPage() {
     const { kind, integrationId } = channelModal
     if (kind === 'wa-connect') {
       await apiClient.post(`/v1/admin/tenants/${id}/integrations/whatsapp`, {
-        phoneNumberId: values.phoneNumberId, accessToken: values.accessToken, reason: values.reason,
+        phoneNumberId: values.phoneNumberId, accessToken: values.accessToken, wabaId: values.wabaId, reason: values.reason,
       })
     } else if (kind === 'gmail-prepare') {
       await apiClient.post(`/v1/admin/tenants/${id}/integrations/gmail`, {
@@ -598,6 +598,7 @@ export default function PlatformClientDetailPage() {
           'wa-connect':      { title: `Conectar WhatsApp de ${t.name}`, confirmLabel: 'Conectar', danger: false,
             fields: [
               { name: 'phoneNumberId', label: 'Phone Number ID', placeholder: '123456789012345' },
+              { name: 'wabaId',        label: 'WABA ID (para recibir mensajes)', placeholder: '2690949021302786' },
               { name: 'accessToken',   label: 'Access Token',     placeholder: 'EAAxxxxxx…', type: 'password' },
             ] },
           'gmail-prepare':   { title: `Preparar Gmail de ${t.name}`, confirmLabel: 'Preparar', danger: false,
