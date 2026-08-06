@@ -50,6 +50,11 @@ pnpm --filter @nexor/api db:studio
 `prisma migrate` y los seeds **no** disparan RLS automáticamente: `setup-rls.ts` debe correrse
 aparte. Tras restaurar un backup en Railway, RLS no se preserva — re-aplícalo siempre.
 
+El historial de migraciones se **consolidó en un baseline** (`prisma/migrations/00000000000000_baseline`,
+Sprint 19) que reproduce EXACTAMENTE el esquema de prod — ver su `README.md` para el diagnóstico del
+drift resuelto. Un `migrate reset` desde cero == prod, y `migrate dev` no propone cambios fantasma. Para
+aplicar migraciones nuevas a prod usa **`prisma migrate deploy`** (nunca `migrate dev`, que re-diffea).
+
 `setup-rls.ts` cubre **34 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`

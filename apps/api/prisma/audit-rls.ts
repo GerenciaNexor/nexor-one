@@ -23,6 +23,8 @@ const TABLES = [
   'reminders',
   // HU-158 — alquileres (salida temporal de stock).
   'rentals',
+  // HU-175 — alquileres entrantes (de un tercero).
+  'incoming_rentals',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -64,6 +66,7 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.monthlyBudget.create({ data: { tenantId: t, year: 2026, month: 1, amount: new Prisma.Decimal(1000) } })
   await db.reminder.create({ data: { tenantId: t, userId: u, title: 'R', remindAt: new Date() } })
   await db.rental.create({ data: { tenantId: t, productId: p, branchId: br, userId: u, quantity: new Prisma.Decimal(1) } })
+  await db.incomingRental.create({ data: { tenantId: t, supplierId: sp, userId: u, branchId: br, description: 'IR', quantity: new Prisma.Decimal(1), project: 'Proj', returnDate: new Date(), rentalCost: new Prisma.Decimal(100) } })
 }
 
 async function main(): Promise<void> {
