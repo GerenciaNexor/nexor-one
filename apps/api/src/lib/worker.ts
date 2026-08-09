@@ -1139,12 +1139,22 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
                 })
               }
             } catch (err) {
+              const detail = String((err as { message?: string })?.message ?? err)
               console.error(JSON.stringify({
                 event:    'worker_gmail_reply_failed',
                 jobId:    job.id,
                 tenantId: d.tenantId,
-                error:    String(err),
+                error:    detail,
               }))
+              // HU-182 — el envío ya NO falla en silencio: si es un problema de scope/permiso/token
+              // (p. ej. falta gmail.send), se marca el canal caído (alerta a SUPER_ADMIN + cliente)
+              // para que se reconecte. Un fallo transitorio de red no dispara la alerta.
+              if (/insufficient|scope|permission|invalid_grant|unauthorized|forbidden|\b401\b|\b403\b/i.test(detail)) {
+                await markIntegrationDown(
+                  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL', identifier: integration.identifier ?? '' },
+                  `No se pudo enviar la respuesta por Gmail: ${detail.slice(0, 300)}`,
+                ).catch(() => {})
+              }
             }
           })()
         } else {
