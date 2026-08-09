@@ -42,7 +42,7 @@ async function notifyPlatform(n: { type: string; title: string; message: string;
 }
 
 // ─── Notificación del CLIENTE (TENANT_ADMIN, lenguaje NO técnico) ──────────────
-async function notifyTenantChannelDown(tenantId: string, channel: Channel, identifier: string): Promise<void> {
+async function notifyTenantChannelDown(tenantId: string, channel: Channel): Promise<void> {
   const type = tenantType(channel)
   const title = `Tu ${label(channel)} está desconectado`
   const message = channel === 'WHATSAPP'
@@ -80,7 +80,7 @@ export async function markIntegrationDown(integ: IntegRef, detail: string): Prom
     link:     `/platform/clients/${integ.tenantId}`,
     metadata: { channel, identifier: integ.identifier, expired },
   })
-  await notifyTenantChannelDown(integ.tenantId, channel, integ.identifier)
+  await notifyTenantChannelDown(integ.tenantId, channel)
 }
 
 // ─── Marcar canal SANO (verificación OK / reconexión) → resuelve alertas ───────
