@@ -23,6 +23,11 @@ import type { AgentTool } from '../types'
 import { consultarSucursales } from './empresa.tools'
 import { verServicios, verHorarios } from './agenda.tools'
 
+/** Minúsculas + sin acentos — para buscar productos sin importar tildes ni mayúsculas. */
+function normalize(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+}
+
 // ─── consultar_disponibilidad ─────────────────────────────────────────────────
 // Reemplazo de cara al cliente de consultar_stock_producto: nunca revela el inventario crudo.
 
@@ -30,14 +35,14 @@ const consultarDisponibilidad: AgentTool = {
   definition: {
     name:        'consultar_disponibilidad',
     description:
-      'Consulta si un producto está disponible para la venta y su precio público, para informar o cotizar a un cliente. ' +
-      'Devuelve SOLO información pública/comercial: si está disponible, el precio de venta al público, el precio de alquiler (si aplica) y las características del producto. ' +
-      'NUNCA devuelve el inventario total ni por sucursal, ni el costo. ' +
+      'Consulta el catálogo para informar disponibilidad y precio público a un cliente (o listar qué referencias hay que coincidan con lo que pregunta). ' +
+      'Devuelve SOLO información pública/comercial: si está disponible, el precio de venta al público, el precio de alquiler (si aplica), las características, y una lista de referencias que coinciden. ' +
+      'NUNCA devuelve el inventario total ni por sucursal, ni el costo. La búsqueda ignora tildes y mayúsculas. ' +
       'Si el cliente indica una cantidad, informa cuánto se le puede ofrecer, LIMITADO a lo que pide (nunca el total en bodega).',
     input_schema: {
       type: 'object',
       properties: {
-        producto: { type: 'string', description: 'Nombre o SKU del producto que pregunta el cliente' },
+        producto: { type: 'string', description: 'Nombre, tipo o SKU de lo que pregunta el cliente (ej. "audífonos"). Puede ser general.' },
         cantidad: { type: 'number', description: 'Cantidad que el cliente quiere (opcional). Si se indica, se informa cuánto se puede ofrecer, limitado a lo pedido.' },
       },
       required: ['producto'],
@@ -45,52 +50,73 @@ const consultarDisponibilidad: AgentTool = {
   },
 
   async execute({ producto, cantidad }, tenantId) {
-    const term = String(producto ?? '').trim()
-    if (!term) return { error: 'Indica el nombre o SKU del producto.' }
+    const raw = String(producto ?? '').trim()
+    if (!raw) return { error: 'Indica el nombre o SKU del producto.' }
+    const term  = normalize(raw)
+    const words = term.split(/\s+/).filter((w) => w.length >= 3)
 
-    const p = await prisma.product.findFirst({
-      where: {
-        tenantId,
-        isActive: true,
-        OR: [
-          { sku:  { equals: term, mode: 'insensitive' } },
-          { name: { contains: term, mode: 'insensitive' } },
-        ],
-      },
-      // Se seleccionan SOLO campos públicos. Nunca costPrice, minStock, abcClass, preferredSupplier.
+    // Se traen los productos vendibles/alquilables del tenant (acotado) y se busca SIN acentos y por
+    // palabras — así "audifonos", "audífonos" o "audífonos inalámbricos" encuentran "Audífonos diadema".
+    // Solo campos PÚBLICOS (nunca costPrice, minStock, abcClass, preferredSupplier).
+    const products = await prisma.product.findMany({
+      where:  { tenantId, isActive: true, OR: [{ isSellable: true }, { isRentable: true }] },
+      take:   1000,
       select: {
-        name: true, description: true, category: true, unit: true,
+        name: true, sku: true, description: true, category: true, unit: true,
         salePrice: true, rentalPrice: true, isSellable: true, isRentable: true,
         stocks: { select: { quantity: true, rentedQuantity: true } },
       },
     })
+    if (products.length === 0) return { disponible: false, mensaje: 'Aún no hay productos en el catálogo.' }
 
-    if (!p) return { disponible: false, mensaje: `No encontré un producto que coincida con "${term}".` }
+    const scored = products
+      .map((p) => {
+        const n = normalize(p.name), sku = normalize(p.sku)
+        let score = 0
+        if (sku === term || n === term)          score = 100
+        else if (n.includes(term))               score = 80
+        else if (term.includes(n) && n.length >= 4) score = 60
+        else                                     score = words.filter((w) => n.includes(w)).length * 20
+        return { p, score }
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
 
-    // disponible = Σ(quantity − rentedQuantity) en todas las sucursales (HU-158).
-    // Se calcula INTERNAMENTE; el total crudo NUNCA se devuelve al agente. Solo se revela un número
-    // cuando el cliente pide una cantidad y hay menos ("solo puedo ofrecerte 15").
-    const disponibleTotal = p.stocks.reduce(
-      (s, st) => s + (Number(st.quantity) - Number(st.rentedQuantity)), 0,
-    )
-    const hayDisponible = disponibleTotal > 0
+    if (scored.length === 0) return { disponible: false, mensaje: `No encontré un producto que coincida con "${raw}".` }
+
+    // disponible = Σ(quantity − rentedQuantity) en todas las sucursales (HU-158). Se calcula
+    // INTERNAMENTE; el total crudo NUNCA se devuelve. Solo se revela un número con el "cap" por pedido.
+    const disponibleDe = (p: (typeof products)[number]) =>
+      p.stocks.reduce((s, st) => s + (Number(st.quantity) - Number(st.rentedQuantity)), 0)
+
+    const top = scored[0]!.p
+    const disponibleTotal = disponibleDe(top)
 
     const res: Record<string, unknown> = {
-      producto:        p.name,
-      caracteristicas: p.description ?? null,
-      categoria:       p.category ?? null,
-      unidad:          p.unit,
-      disponible:      hayDisponible,
+      producto:        top.name,
+      caracteristicas: top.description ?? null,
+      categoria:       top.category ?? null,
+      unidad:          top.unit,
+      disponible:      disponibleTotal > 0,
     }
-    if (p.isSellable  && p.salePrice   != null) res['precioVenta']    = Number(p.salePrice)
-    if (p.isRentable  && p.rentalPrice != null) res['precioAlquiler'] = Number(p.rentalPrice)
+    if (top.isSellable && top.salePrice   != null) res['precioVenta']    = Number(top.salePrice)
+    if (top.isRentable && top.rentalPrice != null) res['precioAlquiler'] = Number(top.rentalPrice)
 
-    // Frontera: sin cantidad → solo disponible/no disponible (nunca un número de inventario).
-    // Con cantidad → cuánto se puede ofrecer, limitado a lo pedido.
+    // Con cantidad → cuánto se puede ofrecer, limitado a lo pedido (nunca el total en bodega).
     if (typeof cantidad === 'number' && cantidad > 0) {
       const puedoOfrecer = Math.max(0, Math.min(Math.floor(cantidad), Math.floor(disponibleTotal)))
       res['puedoOfrecer']      = puedoOfrecer
       res['cubreLoSolicitado'] = puedoOfrecer >= Math.floor(cantidad)
+    }
+
+    // Referencias que coinciden (para "¿qué tienes?"): nombre + precio público + disponible sí/no.
+    // NUNCA cantidades — respeta la frontera de información.
+    if (scored.length > 1) {
+      res['coincidencias'] = scored.slice(0, 6).map(({ p }) => ({
+        producto:   p.name,
+        disponible: disponibleDe(p) > 0,
+        ...(p.isSellable && p.salePrice != null ? { precioVenta: Number(p.salePrice) } : {}),
+      }))
     }
 
     return res
