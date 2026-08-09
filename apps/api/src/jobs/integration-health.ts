@@ -19,6 +19,7 @@ import { google } from 'googleapis'
 import { directPrisma } from '../lib/prisma'
 import { decrypt } from '../lib/encryption'
 import { markIntegrationDown, markIntegrationHealthy, warnIntegrationExpiring } from '../lib/integration-status'
+import { renewGmailWatch } from '../modules/integrations/service'
 
 const ONE_DAY_MS       = 24 * 60 * 60 * 1000
 const EXPIRY_WARN_DAYS = 3          // avisar cuando falten ≤ 3 días para vencer
@@ -68,6 +69,12 @@ async function verifyIntegration(integ: {
       if (daysLeft <= EXPIRY_WARN_DAYS && daysLeft > 0) { await warnIntegrationExpiring(ref, integ.tokenExpiresAt); return { healthy: true } }
     }
     await markIntegrationHealthy(ref)
+    // Gmail expira el watch cada 7 días — renovarlo en cada chequeo diario evita que el correo
+    // entrante deje de notificar. No bloquea la salud si falla (setupGmailWatch ya loguea el error).
+    if (channel === 'GMAIL') {
+      await renewGmailWatch(integ.tenantId, integ.tokenEncrypted).catch((err) =>
+        console.error(JSON.stringify({ event: 'gmail_watch_renew_error', tenantId: integ.tenantId, error: err instanceof Error ? err.message : String(err) })))
+    }
     console.info(JSON.stringify({ event: 'integration_health_ok', channel, tenantId: integ.tenantId, id: integ.id }))
     return { healthy: true }
   }
