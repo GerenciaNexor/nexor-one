@@ -118,21 +118,129 @@ export async function resolveModuleForChat(
 // ─── Operaciones de chat_messages ─────────────────────────────────────────────
 
 export async function saveChatMessage(params: {
-  tenantId: string
-  userId:   string
-  role:     'user' | 'assistant'
-  content:  string
-  module?:  AgentModule
+  tenantId:      string
+  userId:        string
+  chatSessionId: string
+  role:          'user' | 'assistant'
+  content:       string
+  module?:       AgentModule
 }): Promise<void> {
   await prisma.chatMessage.create({
     data: {
-      tenantId: params.tenantId,
-      userId:   params.userId,
-      role:     params.role,
-      content:  params.content,
-      module:   params.module ?? null,
+      tenantId:      params.tenantId,
+      userId:        params.userId,
+      chatSessionId: params.chatSessionId,
+      role:          params.role,
+      content:       params.content,
+      module:        params.module ?? null,
     },
   })
+}
+
+// ─── Sesiones de chat (HU-183) ────────────────────────────────────────────────
+// Cada usuario puede tener varios chats separados; cada uno con su propio historial y contexto.
+// Todo por (tenantId, userId) — RLS por tenant + filtro por usuario en la capa de aplicación.
+
+const MAX_TITLE   = 80
+/** Cuántos mensajes previos de la sesión recuerda el agente (memoria por chat). */
+const MEMORY_SIZE = 20
+
+/** Lista los chats del usuario, más recientes primero. */
+export async function listChatSessions(tenantId: string, userId: string) {
+  return prisma.chatSession.findMany({
+    where:   { tenantId, userId },
+    orderBy: { updatedAt: 'desc' },
+    select:  { id: true, title: true, createdAt: true, updatedAt: true },
+  })
+}
+
+/** Crea un chat nuevo (título opcional; si no, 'Nuevo chat' hasta el primer mensaje). */
+export async function createChatSession(tenantId: string, userId: string, title?: string) {
+  const clean = (title ?? '').trim().slice(0, MAX_TITLE)
+  return prisma.chatSession.create({
+    data:   { tenantId, userId, title: clean || 'Nuevo chat' },
+    select: { id: true, title: true, createdAt: true, updatedAt: true },
+  })
+}
+
+/** Verifica que la sesión exista y pertenezca al usuario+tenant (aislamiento). */
+export async function getOwnedSession(sessionId: string, tenantId: string, userId: string) {
+  return prisma.chatSession.findFirst({
+    where:  { id: sessionId, tenantId, userId },
+    select: { id: true, title: true },
+  })
+}
+
+/** Renombra un chat (solo su dueño). Devuelve null si no existe o no es del usuario. */
+export async function renameChatSession(sessionId: string, tenantId: string, userId: string, title: string) {
+  const clean = title.trim().slice(0, MAX_TITLE)
+  if (!clean) return null
+  const owned = await getOwnedSession(sessionId, tenantId, userId)
+  if (!owned) return null
+  return prisma.chatSession.update({
+    where:  { id: sessionId },
+    data:   { title: clean },
+    select: { id: true, title: true, createdAt: true, updatedAt: true },
+  })
+}
+
+/** Elimina un chat y sus mensajes (cascade). Devuelve false si no es del usuario. */
+export async function deleteChatSession(sessionId: string, tenantId: string, userId: string): Promise<boolean> {
+  const owned = await getOwnedSession(sessionId, tenantId, userId)
+  if (!owned) return false
+  await prisma.chatSession.delete({ where: { id: sessionId } })
+  return true
+}
+
+/** Historial paginado de UNA sesión (valida pertenencia). Devuelve null si no es del usuario. */
+export async function getSessionMessages(
+  sessionId: string, tenantId: string, userId: string,
+  page = 1, limit = 50, sort: 'asc' | 'desc' = 'asc',
+) {
+  const owned = await getOwnedSession(sessionId, tenantId, userId)
+  if (!owned) return null
+
+  const safeLimit = Math.min(100, Math.max(1, limit))
+  const safePage  = Math.max(1, page)
+  const skip      = (safePage - 1) * safeLimit
+
+  const [messages, total] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where:   { chatSessionId: sessionId, tenantId },
+      orderBy: { createdAt: sort },
+      skip, take: safeLimit,
+      select:  { id: true, role: true, content: true, module: true, createdAt: true },
+    }),
+    prisma.chatMessage.count({ where: { chatSessionId: sessionId, tenantId } }),
+  ])
+
+  return { data: messages, pagination: { page: safePage, limit: safeLimit, total, pages: Math.ceil(total / safeLimit) } }
+}
+
+/** Últimos N mensajes de la sesión, en orden cronológico — memoria conversacional del agente. */
+export async function getSessionMemory(sessionId: string, tenantId: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  const rows = await prisma.chatMessage.findMany({
+    where:   { chatSessionId: sessionId, tenantId },
+    orderBy: { createdAt: 'desc' },
+    take:    MEMORY_SIZE,
+    select:  { role: true, content: true },
+  })
+  return rows.reverse().map((r) => ({ role: r.role === 'assistant' ? 'assistant' : 'user', content: r.content }))
+}
+
+/** Si el chat aún tiene el título por defecto, lo fija con el primer mensaje del usuario. */
+export async function autoTitleFromFirstMessage(sessionId: string, message: string): Promise<void> {
+  const title = message.trim().slice(0, MAX_TITLE)
+  if (!title) return
+  await prisma.chatSession.updateMany({
+    where: { id: sessionId, title: 'Nuevo chat' },
+    data:  { title },
+  }).catch(() => {})
+}
+
+/** Marca el chat como recién usado (lo sube en la lista). */
+export async function touchChatSession(sessionId: string): Promise<void> {
+  await prisma.chatSession.update({ where: { id: sessionId }, data: {} }).catch(() => {})
 }
 
 /**

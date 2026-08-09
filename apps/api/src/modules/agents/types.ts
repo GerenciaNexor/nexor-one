@@ -25,6 +25,12 @@ export interface AgentRunnerInput {
   userId?:       string
   /** Rol del usuario — permite a las tools aplicar restricciones de acceso */
   userRole?:     string
+  /**
+   * Historial previo de la conversación (memoria por sesión — HU-183). Solo lo usa el canal
+   * internal (chat del dashboard): son los mensajes anteriores del mismo chat, en orden
+   * cronológico, para que el agente recuerde el contexto. WhatsApp/Gmail no lo envían.
+   */
+  history?:      { role: 'user' | 'assistant'; content: string }[]
 }
 
 export interface AgentRunnerResult {

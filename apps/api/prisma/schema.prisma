@@ -115,6 +115,7 @@ model Tenant {
   costCenters           CostCenter[]
   monthlyBudgets        MonthlyBudget[]
   chatMessages          ChatMessage[]
+  chatSessions          ChatSession[]
   bulkUploadLogs        BulkUploadLog[]
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
@@ -200,6 +201,7 @@ model User {
   serviceProfessionals     ServiceProfessional[]
   refreshTokens            RefreshToken[]
   chatMessages             ChatMessage[]
+  chatSessions             ChatSession[]
   assignedConversations    Conversation[]        @relation("ConversationAssignee")
   conversationMessages     ConversationMessage[]
   supplierRatings          SupplierRating[]      @relation("SupplierRatingAuthor")
@@ -1297,12 +1299,36 @@ model BulkUploadLog {
   @@map("bulk_upload_logs")
 }
 
+/// HU-183 — Chat del dashboard: cada usuario puede tener varios chats separados.
+/// Una sesión agrupa los mensajes de un hilo/tema; su historial y contexto son propios.
+/// Por usuario y por tenant (RLS por tenant_id).
+model ChatSession {
+  id       String @id @default(cuid()) @db.VarChar(30)
+  tenantId String @map("tenant_id") @db.VarChar(30)
+  userId   String @map("user_id") @db.VarChar(30)
+  /// Título del chat (autogenerado del primer mensaje o editable por el usuario)
+  title    String @default("Nuevo chat") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  /// Lista de chats del usuario, más recientes primero
+  @@index([tenantId, userId, updatedAt(sort: Desc)])
+  @@map("chat_sessions")
+}
+
 /// Historial de conversación del chat interno del dashboard.
-/// Un registro por mensaje (user o assistant). Append-only.
+/// Un registro por mensaje (user o assistant). Append-only. Pertenece a una ChatSession.
 model ChatMessage {
-  id       String      @id @default(cuid()) @db.VarChar(30)
-  tenantId String      @map("tenant_id") @db.VarChar(30)
-  userId   String      @map("user_id") @db.VarChar(30)
+  id            String      @id @default(cuid()) @db.VarChar(30)
+  tenantId      String      @map("tenant_id") @db.VarChar(30)
+  userId        String      @map("user_id") @db.VarChar(30)
+  /// HU-183 — sesión/chat a la que pertenece el mensaje
+  chatSessionId String      @map("chat_session_id") @db.VarChar(30)
   /// 'user' = mensaje del empleado, 'assistant' = respuesta del agente
   role     String      @db.VarChar(20)
   content  String      @db.Text
@@ -1311,11 +1337,14 @@ model ChatMessage {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 
   /// Índice compuesto principal — historial paginado por usuario
   @@index([tenantId, userId, createdAt(sort: Desc)])
+  /// HU-183 — historial cronológico de un chat
+  @@index([chatSessionId, createdAt(sort: Asc)])
   @@map("chat_messages")
 }
 

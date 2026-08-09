@@ -276,7 +276,10 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel)
 
   // ── 3. Bucle de conversación ───────────────────────────────────────────────
+  // El historial previo (memoria por sesión, HU-183) se antepone al mensaje actual. Solo llega
+  // por el canal internal; los agentes de atención al cliente (WhatsApp/Gmail) no lo envían.
   const messages: Anthropic.MessageParam[] = [
+    ...(input.history ?? []).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: input.message },
   ]
 
