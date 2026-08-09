@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../../lib/prisma', () => ({
   prisma: {
-    product:       { findFirst: vi.fn() },
+    product:       { findMany: vi.fn() },
     client:        { findFirst: vi.fn(), create: vi.fn() },
     pipelineStage: { findFirst: vi.fn() },
     deal:          { create: vi.fn() },
@@ -31,7 +31,7 @@ const mock = prisma as any
 // Producto "adversarial": el mock DEVUELVE campos internos a propósito. La tool NO debe propagarlos.
 function fakeProduct(disponible: number) {
   return {
-    name: 'Audífonos X', description: 'Inalámbricos, 20h batería', category: 'Audio', unit: 'unidad',
+    name: 'Audífonos X', sku: 'NX-005', description: 'Inalámbricos, 20h batería', category: 'Audio', unit: 'unidad',
     salePrice: 150000, rentalPrice: null, isSellable: true, isRentable: false,
     costPrice: 80000, minStock: 5, abcClass: 'A', preferredSupplierId: 'sup1', // internos
     stocks: [{ quantity: disponible + 5, rentedQuantity: 5 }],                  // disponible neto
@@ -45,7 +45,7 @@ describe('HU-180 — consultar_disponibilidad respeta la frontera', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('devuelve precio público y disponibilidad, SIN filtrar datos internos', async () => {
-    mock.product.findFirst.mockResolvedValue(fakeProduct(15))
+    mock.product.findMany.mockResolvedValue([fakeProduct(15)])
     const out = await disponibilidad.execute({ producto: 'Audífonos' }, 't1') as Record<string, unknown>
     expect(out.disponible).toBe(true)
     expect(out.precioVenta).toBe(150000)
@@ -54,7 +54,7 @@ describe('HU-180 — consultar_disponibilidad respeta la frontera', () => {
   })
 
   it('sin cantidad NO revela ningún número de inventario', async () => {
-    mock.product.findFirst.mockResolvedValue(fakeProduct(15))
+    mock.product.findMany.mockResolvedValue([fakeProduct(15)])
     const out = await disponibilidad.execute({ producto: 'Audífonos' }, 't1') as Record<string, unknown>
     expect(out).not.toHaveProperty('puedoOfrecer')
     // El único número expuesto es el precio público; nada delata el inventario (15).
@@ -63,23 +63,36 @@ describe('HU-180 — consultar_disponibilidad respeta la frontera', () => {
   })
 
   it('con cantidad MAYOR a lo disponible, revela solo el tope real (cap)', async () => {
-    mock.product.findFirst.mockResolvedValue(fakeProduct(15))
+    mock.product.findMany.mockResolvedValue([fakeProduct(15)])
     const out = await disponibilidad.execute({ producto: 'Audífonos', cantidad: 100 }, 't1') as Record<string, unknown>
     expect(out.puedoOfrecer).toBe(15)
     expect(out.cubreLoSolicitado).toBe(false)
   })
 
   it('con cantidad MENOR/igual a lo disponible, NO revela el total (solo lo pedido)', async () => {
-    mock.product.findFirst.mockResolvedValue(fakeProduct(15))
+    mock.product.findMany.mockResolvedValue([fakeProduct(15)])
     const out = await disponibilidad.execute({ producto: 'Audífonos', cantidad: 10 }, 't1') as Record<string, unknown>
     expect(out.puedoOfrecer).toBe(10)   // no 15
     expect(out.cubreLoSolicitado).toBe(true)
   })
 
   it('producto inexistente → no disponible', async () => {
-    mock.product.findFirst.mockResolvedValue(null)
+    mock.product.findMany.mockResolvedValue([])
     const out = await disponibilidad.execute({ producto: 'zzz' }, 't1') as Record<string, unknown>
     expect(out.disponible).toBe(false)
+  })
+
+  // HU-182/bug — el término sin tildes debe encontrar el producto con tildes.
+  it('encuentra el producto aunque el término venga SIN tildes (audifonos → Audífonos diadema)', async () => {
+    mock.product.findMany.mockResolvedValue([{
+      name: 'Audífonos diadema', sku: 'NX-005', description: 'Diadema, 20h', category: 'Audio', unit: 'unidad',
+      salePrice: 175000, rentalPrice: null, isSellable: true, isRentable: false,
+      stocks: [{ quantity: 49, rentedQuantity: 0 }],
+    }])
+    const out = await disponibilidad.execute({ producto: 'audifonos' }, 't1') as Record<string, unknown>
+    expect(out.disponible).toBe(true)
+    expect(out.producto).toBe('Audífonos diadema')
+    expect(out.precioVenta).toBe(175000)
   })
 })
 
