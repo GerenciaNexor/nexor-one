@@ -17,7 +17,7 @@ import type { AgentTool } from '../types'
 
 // ─── ver_servicios ────────────────────────────────────────────────────────────
 
-const verServicios: AgentTool = {
+export const verServicios: AgentTool = {
   definition: {
     name:        'ver_servicios',
     description: 'Returns the list of active services offered by the tenant. Optionally filtered by branch. Use this first so the client can choose a service before checking availability.',
@@ -122,7 +122,7 @@ const verProfesionales: AgentTool = {
 
 // ─── ver_horarios ─────────────────────────────────────────────────────────────
 
-const verHorarios: AgentTool = {
+export const verHorarios: AgentTool = {
   definition: {
     name:        'ver_horarios',
     description: 'Returns available time slots for a service on a given date. Always call this before crear_cita to show the client their options and get the exact startAt value.',

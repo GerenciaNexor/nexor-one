@@ -24,7 +24,8 @@ import { getSystemPrompt, type TenantContext } from './prompts'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
 import { NIRA_TOOLS    } from './tools/nira.tools'
-import { ARI_TOOLS, ATENCION_TOOLS } from './tools/ari.tools'
+import { ARI_TOOLS     } from './tools/ari.tools'
+import { ATENCION_TOOLS } from './tools/atencion.tools'
 import { AGENDA_TOOLS  } from './tools/agenda.tools'
 import { VERA_TOOLS    } from './tools/vera.tools'
 import { EMPRESA_TOOLS } from './tools/empresa.tools'
@@ -39,6 +40,11 @@ const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un ases
 // ─── Selector de tools por módulo ─────────────────────────────────────────────
 
 function getToolsForModule(module: AgentModule): AgentTool[] {
+  // ATENCION (HU-180) es de cara al CLIENTE: NO hereda EMPRESA_TOOLS en bloque, porque
+  // consultar_usuarios expone datos de empleados (frontera de información). Su catálogo ya
+  // es autosuficiente e incluye consultar_sucursales (público).
+  if (module === 'ATENCION') return ATENCION_TOOLS
+
   const moduleTools: AgentTool[] = (() => {
     switch (module) {
       case 'KIRA':     return KIRA_TOOLS
@@ -46,10 +52,9 @@ function getToolsForModule(module: AgentModule): AgentTool[] {
       case 'ARI':      return ARI_TOOLS
       case 'AGENDA':   return AGENDA_TOOLS
       case 'VERA':     return VERA_TOOLS
-      case 'ATENCION': return ATENCION_TOOLS
     }
   })()
-  // Las tools de empresa (sucursales, usuarios) se agregan a todos los módulos
+  // Las tools de empresa (sucursales, usuarios) se agregan a los módulos INTERNOS.
   return [...moduleTools, ...EMPRESA_TOOLS]
 }
 

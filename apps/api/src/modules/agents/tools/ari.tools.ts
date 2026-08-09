@@ -688,15 +688,3 @@ export const ARI_TOOLS: AgentTool[] = [
   consultarCotizaciones,
   consultarReporteVentas,
 ]
-
-// ─── Catálogo ATENCIÓN (HU-180) ───────────────────────────────────────────────
-// Tools del agente de atención al cliente para canales externos (WhatsApp/Gmail).
-// Reutiliza SOLO las tools seguras de cara al cliente: consultar stock (read-only),
-// buscar/registrar el lead y notificar a un asesor humano (handoff). NO incluye
-// ninguna tool de escritura de inventario/compras.
-export const ATENCION_TOOLS: AgentTool[] = [
-  buscarCliente,
-  consultarStockProducto,
-  crearLead,
-  notificarVendedor,
-]
