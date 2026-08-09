@@ -536,30 +536,18 @@ export default function PlatformClientDetailPage() {
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Gmail</span>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                   </div>
+                  {/* Gmail es SOLO LECTURA en la consola: la vinculación la hace el cliente por OAuth
+                      (solo el dueño de la cuenta puede autorizar en Google). Aquí solo se ve el estado. */}
                   {gm ? (
                     <div className="mt-2 space-y-1">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Cuenta: <span className="font-mono text-slate-700 dark:text-slate-300">{gm.identifier}</span></p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Cuenta vinculada: <span className="font-mono text-slate-700 dark:text-slate-300">{gm.identifier}</span></p>
                       {gm.lastVerifiedAt && (
                         <p className="text-xs text-slate-500">Última verificación: {fmtDate(gm.lastVerifiedAt)}</p>
                       )}
                     </div>
                   ) : (
-                    <p className="mt-2 text-xs text-slate-500">Sin cuenta preparada.</p>
+                    <p className="mt-2 text-xs text-slate-500">Sin cuenta vinculada. El cliente la conecta desde su panel (Ajustes → Integraciones).</p>
                   )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {gm ? (
-                      <button onClick={() => setChannelModal({ kind: 'gmail-disconnect', integrationId: gm.id })}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20">
-                        Desconectar
-                      </button>
-                    ) : (
-                      <button onClick={() => setChannelModal({ kind: 'gmail-prepare' })}
-                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
-                        Preparar Gmail
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-3 text-xs text-slate-500">Gmail: consumo entrante pendiente de permisos de Google.</p>
                 </div>
               )
             })()}
