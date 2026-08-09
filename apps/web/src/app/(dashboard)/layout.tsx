@@ -36,7 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShell>
-      <div key={pathname} className="page-enter">
+      <div key={pathname} className="page-enter h-full">
         {children}
       </div>
     </AppShell>

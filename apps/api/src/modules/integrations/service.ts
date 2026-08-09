@@ -270,6 +270,18 @@ async function setupGmailWatch(
   }
 }
 
+/**
+ * Renueva el watch de Gmail de un tenant. Gmail EXPIRA el watch cada 7 días; sin renovación,
+ * el correo entrante deja de notificar. Reconstruye el cliente OAuth desde el refresh_token
+ * cifrado y vuelve a llamar users.watch (refresca watchExpiry/historyId en metadata).
+ * Lo invoca el chequeo diario de salud de integraciones.
+ */
+export async function renewGmailWatch(tenantId: string, encryptedRefreshToken: string): Promise<void> {
+  const client = createOAuth2Client()
+  client.setCredentials({ refresh_token: decrypt(encryptedRefreshToken) })
+  await setupGmailWatch(client, tenantId)
+}
+
 // ─── Generar access_token fresco desde refresh_token ─────────────────────────
 
 /**
