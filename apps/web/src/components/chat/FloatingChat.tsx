@@ -14,21 +14,17 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { useChatStore, type ChatMessage } from '@/store/chat'
+import { useChatStore, type ChatMessage, type ChatSession } from '@/store/chat'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { MarkdownMessage } from '@/components/chat/MarkdownMessage'
 
 // ─── Tipos de la API ──────────────────────────────────────────────────────────
 
-interface HistoryResponse {
-  data:       ChatMessage[]
-  pagination: { page: number; limit: number; total: number; pages: number }
-}
-
 interface SendResponse {
-  reply:  string
-  module: string
+  reply:         string
+  module:        string
+  chatSessionId: string
 }
 
 // ─── Iconos SVG ───────────────────────────────────────────────────────────────
@@ -120,11 +116,11 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
 export function FloatingChat() {
   const {
     isOpen, messages, isTyping, unreadCount,
-    historyLoaded,
+    activeSessionId, sessionsLoaded, messagesLoaded,
     open, close,
     addMessage, setMessages, setTyping,
     incrementUnread, clearUnread,
-    setHistoryLoaded, setPagination,
+    setSessions, setSessionsLoaded, setActiveSession, upsertSession, setMessagesLoaded,
   } = useChatStore()
 
   const messagesEndRef  = useRef<HTMLDivElement>(null)
@@ -137,21 +133,27 @@ export function FloatingChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
-  // ── Cargar historial al abrir por primera vez ─────────────────────────────────
+  // ── Cargar la lista de chats al abrir ─────────────────────────────────────────
   useEffect(() => {
-    if (!isOpen || historyLoaded) return
-
+    if (!isOpen || sessionsLoaded) return
     apiClient
-      .get<HistoryResponse>('/v1/chat/history?limit=50&sort=desc')
-      .then((res) => {
-        setMessages([...res.data].reverse())
-        setPagination(res.pagination)
-        setHistoryLoaded(true)
+      .get<{ data: ChatSession[] }>('/v1/chat/sessions')
+      .then((r) => {
+        setSessions(r.data)
+        setSessionsLoaded(true)
+        if (r.data.length > 0 && !useChatStore.getState().activeSessionId) setActiveSession(r.data[0]!.id)
       })
-      .catch(() => {
-        setHistoryLoaded(true)   // falló — no reintentar en bucle
-      })
-  }, [isOpen, historyLoaded, setMessages, setHistoryLoaded, setPagination])
+      .catch(() => setSessionsLoaded(true))
+  }, [isOpen, sessionsLoaded, setSessions, setSessionsLoaded, setActiveSession])
+
+  // ── Cargar los mensajes del chat activo ──────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen || !activeSessionId || messagesLoaded) return
+    apiClient
+      .get<{ data: ChatMessage[] }>(`/v1/chat/sessions/${activeSessionId}/messages?limit=50&sort=desc`)
+      .then((r) => { setMessages([...r.data].reverse()); setMessagesLoaded(true) })
+      .catch(() => setMessagesLoaded(true))
+  }, [isOpen, activeSessionId, messagesLoaded, setMessages, setMessagesLoaded])
 
   // ── Cerrar al hacer click fuera (solo desktop) ────────────────────────────────
   useEffect(() => {
@@ -192,6 +194,15 @@ export function FloatingChat() {
     // Vaciar el input inmediatamente
     if (inputRef.current) inputRef.current.value = ''
 
+    // Asegurar un chat activo (crea uno si no hay).
+    let sid = useChatStore.getState().activeSessionId
+    if (!sid) {
+      try {
+        const r = await apiClient.post<{ data: ChatSession }>('/v1/chat/sessions', {})
+        upsertSession(r.data); setActiveSession(r.data.id); setMessagesLoaded(true); sid = r.data.id
+      } catch { isSendingRef.current = false; return }
+    }
+
     // Optimismo: agregar mensaje del usuario al historial
     const userMsg: ChatMessage = {
       id:        `tmp-${Date.now()}`,
@@ -203,7 +214,7 @@ export function FloatingChat() {
     setTyping(true)
 
     try {
-      const res = await apiClient.post<SendResponse>('/v1/chat/message', { message: text })
+      const res = await apiClient.post<SendResponse>('/v1/chat/message', { message: text, chatSessionId: sid })
 
       const assistantMsg: ChatMessage = {
         id:        `tmp-${Date.now()}-a`,
@@ -231,7 +242,7 @@ export function FloatingChat() {
       isSendingRef.current = false
       inputRef.current?.focus()
     }
-  }, [addMessage, setTyping, incrementUnread])
+  }, [addMessage, setTyping, incrementUnread, upsertSession, setActiveSession, setMessagesLoaded])
 
   // ── Tecla Enter para enviar (Shift+Enter = nueva línea) ───────────────────────
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

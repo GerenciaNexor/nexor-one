@@ -22,8 +22,9 @@ import { prisma, directPrisma } from '../../lib/prisma'
 // ─── Configuración ────────────────────────────────────────────────────────────
 
 /** Solo lectura de Gmail (nunca escritura) + email de la cuenta (para saber qué buzón se vinculó). */
-const GMAIL_SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
+export const GMAIL_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly', // leer los correos entrantes
+  'https://www.googleapis.com/auth/gmail.send',     // HU-182 — enviar la respuesta del agente al remitente
   'https://www.googleapis.com/auth/userinfo.email',
 ]
 
@@ -211,7 +212,9 @@ export async function handleGmailCallback(
     lastError:      null,
     lastErrorAt:    null,
     lastVerifiedAt: now,
-    metadata:       { scope: GMAIL_SCOPES[0] },
+    // Se guarda el scope REALMENTE otorgado por Google (space-delimited), no el solicitado —
+    // así se puede verificar que gmail.send quedó concedido (HU-182).
+    metadata:       { scope: tokens.scope ?? GMAIL_SCOPES.join(' ') },
   }
   if (existing) await directPrisma.integration.update({ where: { id: existing.id }, data: gmailData })
   else          await directPrisma.integration.create({ data: { tenantId, channel: 'GMAIL', ...gmailData } })
@@ -251,11 +254,19 @@ async function setupGmailWatch(
       : null
     const historyId = response.data.historyId ?? null
 
+    // Preservar el scope ya guardado por el callback (el realmente otorgado) al refrescar el watch;
+    // renewGmailWatch corre a diario, así que no debe pisar el scope con la lista solicitada.
+    const current  = await directPrisma.integration.findFirst({
+      where: { tenantId, channel: 'GMAIL' }, select: { metadata: true },
+    })
+    const prevMeta = (current?.metadata ?? {}) as Record<string, unknown>
+
     await directPrisma.integration.updateMany({
       where: { tenantId, channel: 'GMAIL' },
       data:  {
         metadata: {
-          scope:       GMAIL_SCOPES[0],
+          ...prevMeta,
+          scope:       (prevMeta['scope'] as string) ?? GMAIL_SCOPES.join(' '),
           watchExpiry,
           historyId,
         },

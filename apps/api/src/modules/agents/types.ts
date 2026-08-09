@@ -6,7 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 // ─── Input / Output del AgentRunner ──────────────────────────────────────────
 
-export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA'
+export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA' | 'ATENCION'
 export type AgentChannel = 'whatsapp' | 'gmail' | 'internal'
 /** Razón por la que el agente respondió con el mensaje de fallback. */
 export type FallbackReason = 'max_turns' | 'api_error'
@@ -25,6 +25,12 @@ export interface AgentRunnerInput {
   userId?:       string
   /** Rol del usuario — permite a las tools aplicar restricciones de acceso */
   userRole?:     string
+  /**
+   * Historial previo de la conversación (memoria por sesión — HU-183). Solo lo usa el canal
+   * internal (chat del dashboard): son los mensajes anteriores del mismo chat, en orden
+   * cronológico, para que el agente recuerde el contexto. WhatsApp/Gmail no lo envían.
+   */
+  history?:      { role: 'user' | 'assistant'; content: string }[]
 }
 
 export interface AgentRunnerResult {

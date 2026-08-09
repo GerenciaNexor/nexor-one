@@ -25,6 +25,7 @@ import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
 import { NIRA_TOOLS    } from './tools/nira.tools'
 import { ARI_TOOLS     } from './tools/ari.tools'
+import { ATENCION_TOOLS } from './tools/atencion.tools'
 import { AGENDA_TOOLS  } from './tools/agenda.tools'
 import { VERA_TOOLS    } from './tools/vera.tools'
 import { EMPRESA_TOOLS } from './tools/empresa.tools'
@@ -39,16 +40,21 @@ const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un ases
 // ─── Selector de tools por módulo ─────────────────────────────────────────────
 
 function getToolsForModule(module: AgentModule): AgentTool[] {
+  // ATENCION (HU-180) es de cara al CLIENTE: NO hereda EMPRESA_TOOLS en bloque, porque
+  // consultar_usuarios expone datos de empleados (frontera de información). Su catálogo ya
+  // es autosuficiente e incluye consultar_sucursales (público).
+  if (module === 'ATENCION') return ATENCION_TOOLS
+
   const moduleTools: AgentTool[] = (() => {
     switch (module) {
-      case 'KIRA':   return KIRA_TOOLS
-      case 'NIRA':   return NIRA_TOOLS
-      case 'ARI':    return ARI_TOOLS
-      case 'AGENDA': return AGENDA_TOOLS
-      case 'VERA':   return VERA_TOOLS
+      case 'KIRA':     return KIRA_TOOLS
+      case 'NIRA':     return NIRA_TOOLS
+      case 'ARI':      return ARI_TOOLS
+      case 'AGENDA':   return AGENDA_TOOLS
+      case 'VERA':     return VERA_TOOLS
     }
   })()
-  // Las tools de empresa (sucursales, usuarios) se agregan a todos los módulos
+  // Las tools de empresa (sucursales, usuarios) se agregan a los módulos INTERNOS.
   return [...moduleTools, ...EMPRESA_TOOLS]
 }
 
@@ -195,10 +201,17 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   // por lo que app.current_tenant_id nunca fue seteado. La política RLS bloquearía
   // la query con prisma. directPrisma (superuser) bypasea RLS; el WHERE tenantId
   // garantiza el aislamiento a nivel de aplicación.
-  const featureFlag = await directPrisma.featureFlag.findFirst({
-    where:  { tenantId: input.tenantId, module: input.module as never },
-    select: { enabled: true },
-  })
+  //
+  // ATENCION (HU-180) es el agente de atención al cliente para canales externos:
+  // no es un módulo de negocio, no tiene FeatureFlag y no se gestiona por tenant.
+  // Se exceptúa del gate (siempre disponible: si llegó un mensaje por WhatsApp/Gmail,
+  // el canal ya está configurado para el tenant).
+  const featureFlag = input.module === 'ATENCION'
+    ? { enabled: true }
+    : await directPrisma.featureFlag.findFirst({
+        where:  { tenantId: input.tenantId, module: input.module as never },
+        select: { enabled: true },
+      })
   if (!featureFlag?.enabled) {
     const disabledReply = `El módulo ${input.module} no está activo para este tenant. Contacta al administrador de NEXOR.`
     const durationMs = Date.now() - startTime
@@ -258,10 +271,15 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   // withTenantContext para que RLS no descarte las sucursales del tenant.
   const tenantCtx: TenantContext = await getAgentTenantContext(input.tenantId)
 
-  const systemPrompt = getSystemPrompt(input.module, tenantCtx)
+  // El canal se pasa al prompt: el agente de ATENCION lo usa para saber que atiende a un
+  // cliente externo por WhatsApp/Gmail (corrige la ceguera de canal detectada en HU-179).
+  const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel)
 
   // ── 3. Bucle de conversación ───────────────────────────────────────────────
+  // El historial previo (memoria por sesión, HU-183) se antepone al mensaje actual. Solo llega
+  // por el canal internal; los agentes de atención al cliente (WhatsApp/Gmail) no lo envían.
   const messages: Anthropic.MessageParam[] = [
+    ...(input.history ?? []).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: input.message },
   ]
 

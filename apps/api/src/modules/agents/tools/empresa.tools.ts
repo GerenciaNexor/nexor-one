@@ -77,7 +77,7 @@ const consultarUsuarios: AgentTool = {
 
 // ─── consultar_sucursales ─────────────────────────────────────────────────────
 
-const consultarSucursales: AgentTool = {
+export const consultarSucursales: AgentTool = {
   definition: {
     name: 'consultar_sucursales',
     description: 'Returns the list of active branches (locations) of the company with their address and contact information.',
