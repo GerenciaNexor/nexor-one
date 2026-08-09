@@ -863,7 +863,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL', isActive: true },
-      select: { tokenEncrypted: true, identifier: true },
+      select: { tokenEncrypted: true, identifier: true, metadata: true },
     })
 
     if (!integration?.tokenEncrypted) {
@@ -879,21 +879,39 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
     const gmail = google.gmail({ version: 'v1', auth: oauthClient })
 
+    // Las notificaciones push de Gmail traen el historyId MÁS RECIENTE. Para obtener los cambios
+    // hay que listar DESDE el último historyId procesado (guardado en metadata), NO desde el de la
+    // notificación (que devolvería vacío: history.list retorna cambios POSTERIORES al startHistoryId).
+    // Tras procesar, se avanza el historyId guardado para no reprocesar ni perder correos.
+    const meta      = (integration.metadata ?? {}) as Record<string, unknown>
+    const storedHid = typeof meta['historyId'] === 'string' ? (meta['historyId'] as string) : null
+    const startHid  = storedHid ?? d.historyId
+
+    const advanceHistoryId = async (to: string): Promise<void> => {
+      await directPrisma.integration.update({
+        where: { id: d.integrationId },
+        data:  { metadata: { ...meta, historyId: to } },
+      }).catch((e) => console.error('[worker gmail] avanzar historyId:', e))
+    }
+
     const { data: historyData } = await gmail.users.history.list({
       userId:         'me',
-      startHistoryId: d.historyId,
+      startHistoryId: startHid,
       historyTypes:   ['messageAdded'],
       labelId:        'INBOX',
     })
 
     const historyRecords = historyData.history ?? []
+    const latestHid      = String(historyData.historyId ?? d.historyId)
 
     if (historyRecords.length === 0) {
       console.info(JSON.stringify({
         event:    'worker_gmail_no_new_messages',
         jobId:    job.id,
         tenantId: d.tenantId,
+        startHid,
       }))
+      await advanceHistoryId(latestHid)
       return
     }
 
@@ -1120,6 +1138,10 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
         }
       }
     }
+
+    // Avanzar el historyId guardado al último visto — evita reprocesar y deja el baseline listo
+    // para la próxima notificación (patrón recomendado por la doc de Gmail push).
+    await advanceHistoryId(latestHid)
   }
 }
 
