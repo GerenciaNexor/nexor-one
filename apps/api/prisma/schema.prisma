@@ -1380,5 +1380,8 @@ model ConversationMessage {
   @@index([conversationId, timestamp(sort: Asc)])
   @@index([tenantId])
   @@index([externalMessageId])
+  /// HU-181 — dedup atómico de mensajes entrantes por id de mensaje (wamid/Gmail messageId).
+  /// Un mensaje = una respuesta. Los NULL (mensajes outbound) se permiten múltiples (SQL NULL distinto).
+  @@unique([tenantId, externalMessageId])
   @@map("conversation_messages")
 }

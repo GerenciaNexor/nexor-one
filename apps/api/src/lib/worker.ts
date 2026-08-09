@@ -112,9 +112,15 @@ async function findOrCreateConversation(params: {
 }
 
 /**
- * Persiste un mensaje individual en conversation_messages.
- * APPEND-ONLY: nunca se actualiza ni elimina.
- * Idempotente: si externalMessageId ya existe (reenvío de Meta/Gmail), se descarta silenciosamente.
+ * Persiste un mensaje individual en conversation_messages. APPEND-ONLY.
+ *
+ * Idempotente y ATÓMICO (HU-181): el índice UNIQUE (tenant_id, external_message_id) garantiza
+ * que el mismo mensaje entrante (wamid/Gmail messageId) solo se inserta una vez, incluso con
+ * varios jobs concurrentes o reintentos. Devuelve `true` si insertó (mensaje NUEVO) y `false` si
+ * era un duplicado (violación de unicidad P2002). El worker usa este booleano como candado: si es
+ * duplicado, NO corre el agente ni responde → un mensaje = una respuesta.
+ *
+ * Los mensajes outbound (externalMessageId NULL) siempre insertan (NULL es distinto en SQL).
  */
 async function saveConversationMessage(params: {
   conversationId:     string
@@ -126,28 +132,27 @@ async function saveConversationMessage(params: {
   userId?:            string
   externalMessageId?: string
   timestamp:          Date
-}): Promise<void> {
-  if (params.externalMessageId) {
-    const dup = await directPrisma.conversationMessage.findFirst({
-      where:  { externalMessageId: params.externalMessageId },
-      select: { id: true },
+}): Promise<boolean> {
+  try {
+    await directPrisma.conversationMessage.create({
+      data: {
+        conversationId:    params.conversationId,
+        tenantId:          params.tenantId,
+        direction:         params.direction,
+        content:           params.content,
+        messageType:       params.messageType ?? 'text',
+        isFromAgent:       params.isFromAgent ?? false,
+        userId:            params.userId ?? null,
+        externalMessageId: params.externalMessageId ?? null,
+        timestamp:         params.timestamp,
+      },
     })
-    if (dup) return
+    return true
+  } catch (err) {
+    // P2002 = violación de índice único → el mensaje ya fue registrado (duplicado). No es un error.
+    if ((err as { code?: string }).code === 'P2002') return false
+    throw err
   }
-
-  await directPrisma.conversationMessage.create({
-    data: {
-      conversationId:    params.conversationId,
-      tenantId:          params.tenantId,
-      direction:         params.direction,
-      content:           params.content,
-      messageType:       params.messageType ?? 'text',
-      isFromAgent:       params.isFromAgent ?? false,
-      userId:            params.userId ?? null,
-      externalMessageId: params.externalMessageId ?? null,
-      timestamp:         params.timestamp,
-    },
-  })
 }
 
 // ─── Helpers de envío ─────────────────────────────────────────────────────────
@@ -698,9 +703,10 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
     // ── Guardar mensaje entrante (inbound, no bloquea el flujo si falla) ───
     const msgTimestamp = new Date(Number(d.timestamp) * 1000)
+    let inboundIsNew = true
     if (conversationId) {
       try {
-        await saveConversationMessage({
+        inboundIsNew = await saveConversationMessage({
           conversationId,
           tenantId:          d.tenantId,
           direction:         'inbound',
@@ -718,6 +724,17 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           error:    String(err),
         }))
       }
+    }
+
+    // HU-181 — un mensaje = una respuesta. Si el inbound ya estaba registrado (mismo wamid ya
+    // procesado por otro job/reintento), este mensaje ya se atendió: no se corre el agente ni se
+    // responde de nuevo.
+    if (conversationId && !inboundIsNew) {
+      console.info(JSON.stringify({
+        event: 'worker_duplicate_skipped', channel: 'whatsapp', jobId: job.id,
+        tenantId: d.tenantId, messageId: d.messageId,
+      }))
+      return
     }
 
     // Obtener access_token cifrado de la integración
@@ -959,10 +976,11 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           }))
         }
 
-        // ── Guardar mensaje entrante (inbound, no bloquea si falla) ──────
+        // ── Guardar mensaje entrante (inbound) — actúa como candado de dedup ──────
+        let inboundIsNew = true
         if (conversationId) {
           try {
-            await saveConversationMessage({
+            inboundIsNew = await saveConversationMessage({
               conversationId,
               tenantId:          d.tenantId,
               direction:         'inbound',
@@ -980,6 +998,17 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
               error:    String(err),
             }))
           }
+        }
+
+        // HU-181 — un mensaje = una respuesta. Gmail puede entregar varias notificaciones (distinto
+        // historyId) cuyos rangos de history.list se solapan y devuelven el MISMO correo. Si este
+        // messageId ya se registró, no se corre el agente ni se responde otra vez.
+        if (conversationId && !inboundIsNew) {
+          console.info(JSON.stringify({
+            event: 'worker_duplicate_skipped', channel: 'gmail', jobId: job.id,
+            tenantId: d.tenantId, messageId,
+          }))
+          continue
         }
 
         const result = await runAgent({
