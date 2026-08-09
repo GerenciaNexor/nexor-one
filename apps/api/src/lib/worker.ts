@@ -701,7 +701,21 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       }))
     }
 
-    // ── Guardar mensaje entrante (inbound, no bloquea el flujo si falla) ───
+    // ── Obtener el token del canal ANTES del candado de dedup (HU-182) ─────────
+    // Si la integración no existe, se lanza AQUÍ, antes de "consumir" el mensaje con el candado de
+    // dedup, para que el reintento lo reprocese y NO quede sin respuesta. NO se filtra por isActive:
+    // un canal marcado caído transitoriamente igual debe intentar responder; si el token está
+    // vencido, el envío falla y se marca caído (sin relanzar) — pero el agente ya respondió.
+    const integration = await directPrisma.integration.findFirst({
+      where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP' },
+      select: { tokenEncrypted: true },
+    })
+    if (!integration?.tokenEncrypted) {
+      throw new Error(`No hay integración de WhatsApp — tenant: ${d.tenantId}`)
+    }
+    const accessToken = decrypt(integration.tokenEncrypted)
+
+    // ── Guardar mensaje entrante (inbound) — actúa como candado de dedup (HU-181) ──────
     const msgTimestamp = new Date(Number(d.timestamp) * 1000)
     let inboundIsNew = true
     if (conversationId) {
@@ -727,8 +741,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     }
 
     // HU-181 — un mensaje = una respuesta. Si el inbound ya estaba registrado (mismo wamid ya
-    // procesado por otro job/reintento), este mensaje ya se atendió: no se corre el agente ni se
-    // responde de nuevo.
+    // procesado), este mensaje ya se atendió: no se corre el agente ni se responde de nuevo.
     if (conversationId && !inboundIsNew) {
       console.info(JSON.stringify({
         event: 'worker_duplicate_skipped', channel: 'whatsapp', jobId: job.id,
@@ -736,18 +749,6 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       }))
       return
     }
-
-    // Obtener access_token cifrado de la integración
-    const integration = await directPrisma.integration.findFirst({
-      where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP', isActive: true },
-      select: { tokenEncrypted: true },
-    })
-
-    if (!integration?.tokenEncrypted) {
-      throw new Error(`No hay integración de WhatsApp activa — tenant: ${d.tenantId}`)
-    }
-
-    const accessToken = decrypt(integration.tokenEncrypted)
 
     // ── Procesar imagen adjunta (adicional al texto, fire-and-forget) ─────────
     if (d.mediaId) {
@@ -867,13 +868,15 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
   } else if (canal === 'gmail') {
     const d = job.data
 
+    // NO se filtra por isActive (HU-182): un canal marcado caído transitoriamente igual debe
+    // intentar responder; el fetch va antes del bucle, así un fallo aquí no consume ningún mensaje.
     const integration = await directPrisma.integration.findFirst({
-      where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL', isActive: true },
+      where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL' },
       select: { tokenEncrypted: true, identifier: true, metadata: true },
     })
 
     if (!integration?.tokenEncrypted) {
-      throw new Error(`No hay integración de Gmail activa — tenant: ${d.tenantId}`)
+      throw new Error(`No hay integración de Gmail — tenant: ${d.tenantId}`)
     }
 
     const refreshToken = decrypt(integration.tokenEncrypted)
