@@ -580,10 +580,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* Chat flotante — visible en todas las pantallas del dashboard, EXCEPTO la Bandeja:
-          ahí su FAB (fixed bottom-right) tapaba el botón "Enviar" del hilo, y la Bandeja ya
-          es una interfaz de mensajería propia. */}
-      {!pathname.startsWith('/inbox') && <FloatingChat />}
+      {/* Chat flotante — visible en todas las pantallas del dashboard, EXCEPTO las que ya son
+          una interfaz de mensajería: la Bandeja (/inbox), donde su FAB tapaba el botón "Enviar",
+          y el Chat IA completo (/chat), donde el FAB es redundante. */}
+      {!pathname.startsWith('/inbox') && !pathname.startsWith('/chat') && <FloatingChat />}
     </div>
   )
 }
