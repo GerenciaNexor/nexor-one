@@ -7,6 +7,7 @@ import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
 import { createTenantWithAdmin, getSubscription, setSubscriptionAmount, setDemoDuration, convertDemoToClient, extendDemoAiQuota, DEMO_MAX_DAYS } from '../platform/tenants'
 import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
+import { listPlatformNotifications, getPlatformUnreadCount, markPlatformRead, markAllPlatformRead } from '../platform/notifications'
 
 /**
  * Hook onRequest para el scope /v1/admin.
@@ -78,11 +79,12 @@ const AiQuotaSchema = z.object({
 
 // HU-139 — gestión de canales por el equipo NEXOR (motivo obligatorio)
 const ConnectWhatsAppSchema = z.object({
-  phoneNumberId: z.string().min(1, 'Phone Number ID requerido'),
-  accessToken:   z.string().min(1, 'Access Token requerido'),
-  wabaId:        z.string().optional(), // WABA ID → suscribe la app para RECIBIR mensajes entrantes
-  branchId:      z.string().optional(),
-  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+  phoneNumberId:  z.string().min(1, 'Phone Number ID requerido'),
+  accessToken:    z.string().min(1, 'Access Token requerido'),
+  wabaId:         z.string().optional(), // WABA ID → suscribe la app para RECIBIR mensajes entrantes
+  tokenExpiresAt: z.string().optional(), // fecha de expiración conocida (tokens temporales) → aviso proactivo
+  branchId:       z.string().optional(),
+  reason:         z.string().min(1, 'El motivo es obligatorio').max(500),
 })
 const ConnectGmailSchema = z.object({
   email:  z.string().email('Email inválido'),
@@ -763,5 +765,41 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     })
 
     return reply.code(200).send(result)
+  })
+
+  // ─── Notificaciones de PLATAFORMA (campanita de la consola SUPER_ADMIN) ───────
+  /** GET /v1/admin/notifications?isRead=&limit= — bandeja del equipo NEXOR. */
+  app.get('/notifications', {
+    schema: { tags: ['Admin'], summary: 'Notificaciones de plataforma', security: bearerAuth, response: { 200: listRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const q = request.query as { isRead?: string; limit?: string }
+    const result = await listPlatformNotifications({
+      isRead: q.isRead === undefined ? undefined : q.isRead === 'true',
+      limit:  q.limit ? Number(q.limit) : undefined,
+    })
+    return reply.code(200).send({ success: true, ...result })
+  })
+
+  /** GET /v1/admin/notifications/unread-count */
+  app.get('/notifications/unread-count', {
+    schema: { tags: ['Admin'], summary: 'Conteo de notificaciones no leídas (plataforma)', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (_request, reply) => {
+    return reply.code(200).send({ success: true, data: { count: await getPlatformUnreadCount() } })
+  })
+
+  /** PUT /v1/admin/notifications/:id/read */
+  app.put('/notifications/:id/read', {
+    schema: { tags: ['Admin'], summary: 'Marcar notificación de plataforma como leída', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try { return reply.code(200).send({ success: true, data: await markPlatformRead(id) }) }
+    catch (err) { const e = err as { statusCode?: number; message?: string; code?: string }; return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error', code: e.code ?? 'INTERNAL_ERROR' }) }
+  })
+
+  /** PUT /v1/admin/notifications/read-all */
+  app.put('/notifications/read-all', {
+    schema: { tags: ['Admin'], summary: 'Marcar todas como leídas (plataforma)', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (_request, reply) => {
+    return reply.code(200).send({ success: true, data: await markAllPlatformRead() })
   })
 }

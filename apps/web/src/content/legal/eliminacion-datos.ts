@@ -7,7 +7,7 @@ import type { LegalDoc } from '@/components/legal/LegalLayout'
 export const eliminacionDatos: LegalDoc = {
   title:   'Instrucciones de eliminación de datos',
   updated: '6 de agosto de 2026',
-  intro:   'En NEXOR ONE SAS respetamos tu derecho a que tus datos personales sean eliminados. Esta página explica cómo solicitar la eliminación de los datos tratados a través de la plataforma NEXOR, incluidos los mensajes recibidos por los canales integrados (WhatsApp, correo).',
+  intro:   'En NEXOR ONE S.A.S respetamos tu derecho a que tus datos personales sean eliminados. Esta página explica cómo solicitar la eliminación de los datos tratados a través de la plataforma NEXOR, incluidos los mensajes recibidos por los canales integrados (WhatsApp, correo).',
   sections: [
     {
       heading: '1. Cómo solicitar la eliminación',

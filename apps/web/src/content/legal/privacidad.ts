@@ -11,7 +11,13 @@ export const privacidad: LegalDoc = {
   sections: [
     {
       heading: '1. Identificación del responsable',
-      body: 'NEXOR ONE SAS, sociedad constituida en Colombia, con domicilio en [dirección — por definir], es responsable del tratamiento de los datos personales recogidos a través de la plataforma NEXOR (nexor-one.com) y sus servicios asociados. Contacto: gerencia@nexor-one.com.',
+      body:
+`NEXOR ONE S.A.S, sociedad constituida en Colombia e identificada con NIT 902067704-7, con domicilio en la Calle 72 C No. 103-53, Bogotá D.C., Colombia, es responsable del tratamiento de los datos personales recogidos a través de la plataforma NEXOR (nexor-one.com) y sus servicios asociados.
+
+- Razón social: NEXOR ONE S.A.S
+- NIT: 902067704-7
+- Dirección: Calle 72 C No. 103-53, Bogotá D.C., Colombia
+- Correo: gerencia@nexor-one.com`,
     },
     {
       heading: '2. Qué datos recopilamos',

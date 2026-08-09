@@ -12,8 +12,9 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../../lib/guards'
-import { getIntegrations } from './service'
-import { listRes, stdErrors, bearerAuth } from '../../lib/openapi'
+import { directPrisma } from '../../lib/prisma'
+import { getIntegrations, generateGmailOAuthUrl } from './service'
+import { listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
 export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -23,7 +24,7 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:        ['Integrations'],
       summary:     'Estado de las integraciones del cliente',
-      description: 'Solo lectura: estado de los canales (sin tokens). Las credenciales las gestiona el equipo NEXOR desde la plataforma (HU-139).',
+      description: 'Solo lectura: estado de los canales (sin tokens). WhatsApp lo gestiona NEXOR; Gmail lo conecta el cliente por OAuth.',
       security:    bearerAuth,
       response:    { 200: listRes, ...stdErrors },
     },
@@ -36,5 +37,34 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
     }
+  })
+
+  /**
+   * GET /v1/integrations/gmail/connect-url — inicia el OAuth de Gmail (lo hace el CLIENTE).
+   * Devuelve la URL de consentimiento de Google; el frontend redirige al usuario allí para que
+   * elija su cuenta y otorgue permiso. Solo el TENANT_ADMIN puede vincular el buzón del tenant.
+   */
+  app.get('/gmail/connect-url', {
+    schema: { tags: ['Integrations'], summary: 'URL de conexión de Gmail (OAuth del cliente)', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('TENANT_ADMIN')],
+  }, async (request, reply) => {
+    try {
+      const url = generateGmailOAuthUrl(request.user.tenantId, request.user.userId)
+      return reply.code(200).send({ success: true, data: { url } })
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * DELETE /v1/integrations/gmail — el CLIENTE desconecta su propio Gmail (elimina el buzón vinculado).
+   */
+  app.delete('/gmail', {
+    schema: { tags: ['Integrations'], summary: 'Desconectar Gmail del cliente', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('TENANT_ADMIN')],
+  }, async (request, reply) => {
+    const r = await directPrisma.integration.deleteMany({ where: { tenantId: request.user.tenantId, channel: 'GMAIL' } })
+    return reply.code(200).send({ success: true, data: { removed: r.count } })
   })
 }

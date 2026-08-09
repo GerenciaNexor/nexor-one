@@ -327,6 +327,12 @@ model Integration {
   metadata       Json?     @db.JsonB
   isActive       Boolean   @default(false) @map("is_active")
   lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(6)
+  // HU — estado de salud del canal para la consola SUPER_ADMIN:
+  // connected (verificado) | pending (conectado, sin verificar) | error (falló) | expiring (token por vencer).
+  status         String    @default("pending") @db.VarChar(20)
+  lastError      String?   @map("last_error") @db.Text          // detalle del último fallo (para reconectar)
+  lastErrorAt    DateTime? @map("last_error_at") @db.Timestamptz(6)
+  tokenExpiresAt DateTime? @map("token_expires_at") @db.Timestamptz(6)  // expiración conocida (tokens temporales)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -337,6 +343,26 @@ model Integration {
   @@index([tenantId])
   @@index([channel, identifier])
   @@map("integrations")
+}
+
+/// Notificaciones para el equipo de PLATAFORMA (SUPER_ADMIN) — la "campanita" de la consola.
+/// NO tiene tenant/usuario: es una bandeja compartida del equipo NEXOR (identidad de plataforma,
+/// [[platform_admins]] no tiene fila en `users`). RLS deny-all para nexor_app: solo `directPrisma`.
+/// `tenantId` es solo una referencia (sin FK) al cliente afectado, para enlazar a su consola.
+model PlatformNotification {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  type      String   @db.VarChar(50)          // WA_CHANNEL_DOWN | WA_TOKEN_EXPIRING | ...
+  title     String   @db.VarChar(255)
+  message   String   @db.Text
+  tenantId  String?  @map("tenant_id") @db.VarChar(30)
+  link      String?  @db.VarChar(500)
+  metadata  Json?    @db.JsonB
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([isRead, createdAt(sort: Desc)])
+  @@index([type, tenantId, isRead])
+  @@map("platform_notifications")
 }
 
 /// Registro INMUTABLE de cada accion tomada por los agentes de IA.

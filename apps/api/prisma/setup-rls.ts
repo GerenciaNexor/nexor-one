@@ -105,7 +105,8 @@ async function setupRLS(): Promise<void> {
   //   platform_admins    (HU-134) — identidad del equipo NEXOR.
   //   platform_audit_logs (HU-136) — auditoría append-only de acciones de plataforma.
   //   subscriptions      (HU-138) — suscripción/monto por cliente (gestión de plataforma).
-  for (const t of ['platform_admins', 'platform_audit_logs', 'subscriptions']) {
+  //   platform_notifications — bandeja de la consola SUPER_ADMIN (sin tenant/usuario).
+  for (const t of ['platform_admins', 'platform_audit_logs', 'subscriptions', 'platform_notifications']) {
     await prisma.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`)
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "${t}"`)
     console.log(`  🔒 ${t} (RLS deny-all para nexor_app)`)

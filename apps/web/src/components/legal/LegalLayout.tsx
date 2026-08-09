@@ -82,7 +82,7 @@ export function LegalLayout({ doc }: { doc: LegalDoc }) {
               ))}
               <a href="mailto:gerencia@nexor-one.com" className="text-slate-400 transition-colors hover:text-white">gerencia@nexor-one.com</a>
             </nav>
-            <p className="text-xs text-slate-600">© {new Date().getFullYear()} NEXOR ONE SAS · Gestión empresarial con IA</p>
+            <p className="text-xs text-slate-600">© {new Date().getFullYear()} NEXOR ONE S.A.S · Gestión empresarial con IA</p>
           </div>
         </footer>
       </div>

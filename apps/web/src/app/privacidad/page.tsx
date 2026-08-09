@@ -4,7 +4,7 @@ import { privacidad } from '@/content/legal/privacidad'
 
 export const metadata: Metadata = {
   title:       'Política de Privacidad — NEXOR ONE',
-  description: 'Cómo NEXOR ONE SAS recopila, usa y protege los datos personales tratados a través de la plataforma NEXOR.',
+  description: 'Cómo NEXOR ONE S.A.S recopila, usa y protege los datos personales tratados a través de la plataforma NEXOR.',
 }
 
 export default function PrivacidadPage() {

@@ -21,8 +21,11 @@ import { prisma, directPrisma } from '../../lib/prisma'
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
-/** Solo lectura de Gmail — nunca permisos de escritura */
-const GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+/** Solo lectura de Gmail (nunca escritura) + email de la cuenta (para saber qué buzón se vinculó). */
+const GMAIL_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/userinfo.email',
+]
 
 /** Minutos de validez del state OAuth antes de expirar */
 const STATE_TTL_MS = 10 * 60 * 1000
@@ -95,6 +98,8 @@ export interface SafeIntegration {
   channel:       string
   identifier:    string   // email address para Gmail
   isActive:      boolean
+  status:        string   // connected | pending | error | expiring
+  lastError:     string | null
   lastVerifiedAt: string | null
   metadata:      unknown
   createdAt:     string
@@ -190,36 +195,26 @@ export async function handleGmailCallback(
   const encryptedRefreshToken = encrypt(tokens.refresh_token)
 
   // ── 5. Upsert en tabla integrations ───────────────────────────────────────
+  // directPrisma (bypass RLS): el callback corre FUERA del tenantHook (sin app.current_tenant_id),
+  // así que `prisma` bajo nexor_app bloquearía el upsert. El tenantId sale del state firmado (CSRF).
   const now     = new Date()
-  const existing = await prisma.integration.findFirst({
+  const existing = await directPrisma.integration.findFirst({
     where:  { tenantId, channel: 'GMAIL' },
     select: { id: true },
   })
 
-  if (existing) {
-    await prisma.integration.update({
-      where: { id: existing.id },
-      data: {
-        identifier:     email,
-        tokenEncrypted: encryptedRefreshToken,
-        isActive:       true,
-        lastVerifiedAt: now,
-        metadata:       { scope: GMAIL_SCOPES[0] },
-      },
-    })
-  } else {
-    await prisma.integration.create({
-      data: {
-        tenantId,
-        channel:        'GMAIL',
-        identifier:     email,
-        tokenEncrypted: encryptedRefreshToken,
-        isActive:       true,
-        lastVerifiedAt: now,
-        metadata:       { scope: GMAIL_SCOPES[0] },
-      },
-    })
+  const gmailData = {
+    identifier:     email,
+    tokenEncrypted: encryptedRefreshToken,
+    isActive:       true,
+    status:         'connected',
+    lastError:      null,
+    lastErrorAt:    null,
+    lastVerifiedAt: now,
+    metadata:       { scope: GMAIL_SCOPES[0] },
   }
+  if (existing) await directPrisma.integration.update({ where: { id: existing.id }, data: gmailData })
+  else          await directPrisma.integration.create({ data: { tenantId, channel: 'GMAIL', ...gmailData } })
 
   // ── 6. Configurar Gmail watch (Pub/Sub) ───────────────────────────────────
   await setupGmailWatch(client, tenantId)
@@ -256,7 +251,7 @@ async function setupGmailWatch(
       : null
     const historyId = response.data.historyId ?? null
 
-    await prisma.integration.updateMany({
+    await directPrisma.integration.updateMany({
       where: { tenantId, channel: 'GMAIL' },
       data:  {
         metadata: {
@@ -344,6 +339,8 @@ export async function getIntegrations(tenantId: string): Promise<SafeIntegration
       channel:       true,
       identifier:    true,
       isActive:      true,
+      status:        true,
+      lastError:     true,
       lastVerifiedAt: true,
       metadata:      true,
       createdAt:     true,
@@ -370,6 +367,8 @@ const SAFE_SELECT = {
   identifier:     true,
   branchId:       true,
   isActive:       true,
+  status:         true,
+  lastError:      true,
   lastVerifiedAt: true,
   metadata:       true,
   createdAt:      true,
@@ -382,6 +381,8 @@ type SafeRow = {
   identifier:     string
   branchId:       string | null
   isActive:       boolean
+  status:         string
+  lastError:      string | null
   lastVerifiedAt: Date | null
   metadata:       unknown
   createdAt:      Date
@@ -395,6 +396,8 @@ function toSafe(r: SafeRow): SafeIntegration & { branchId: string | null } {
     identifier:     r.identifier,
     branchId:       r.branchId,
     isActive:       r.isActive,
+    status:         r.status,
+    lastError:      r.lastError,
     lastVerifiedAt: r.lastVerifiedAt?.toISOString() ?? null,
     metadata:       r.metadata,
     createdAt:      r.createdAt.toISOString(),

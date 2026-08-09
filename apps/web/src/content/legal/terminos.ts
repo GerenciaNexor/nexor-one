@@ -7,7 +7,7 @@ import type { LegalDoc } from '@/components/legal/LegalLayout'
 export const terminos: LegalDoc = {
   title:   'Términos y Condiciones del Servicio',
   updated: '6 de agosto de 2026',
-  intro:   'Estos términos regulan el acceso y uso de la plataforma NEXOR (nexor-one.com) y sus servicios, operados por NEXOR ONE SAS. Al crear una cuenta o utilizar la plataforma, la empresa cliente y sus usuarios aceptan estos términos.',
+  intro:   'Estos términos regulan el acceso y uso de la plataforma NEXOR (nexor-one.com) y sus servicios, operados por NEXOR ONE S.A.S. Al crear una cuenta o utilizar la plataforma, la empresa cliente y sus usuarios aceptan estos términos.',
   sections: [
     {
       heading: '1. Aceptación de los términos',
@@ -43,7 +43,7 @@ export const terminos: LegalDoc = {
     },
     {
       heading: '7. Propiedad intelectual',
-      body: 'La plataforma, su software, marca y contenidos son propiedad de NEXOR ONE SAS o de sus licenciantes. Estos términos no transfieren ningún derecho de propiedad intelectual sobre la plataforma a la empresa cliente, salvo el derecho de uso durante la vigencia del servicio.',
+      body: 'La plataforma, su software, marca y contenidos son propiedad de NEXOR ONE S.A.S o de sus licenciantes. Estos términos no transfieren ningún derecho de propiedad intelectual sobre la plataforma a la empresa cliente, salvo el derecho de uso durante la vigencia del servicio.',
     },
     {
       heading: '8. Disponibilidad, soporte y cambios en el servicio',
@@ -51,7 +51,7 @@ export const terminos: LegalDoc = {
     },
     {
       heading: '9. Limitación de responsabilidad',
-      body: 'En la máxima medida permitida por la ley, NEXOR ONE SAS no será responsable por daños indirectos, lucro cesante o pérdida de datos derivados del uso o la imposibilidad de uso de la plataforma. Nada en estos términos limita responsabilidades que no puedan excluirse legalmente.',
+      body: 'En la máxima medida permitida por la ley, NEXOR ONE S.A.S no será responsable por daños indirectos, lucro cesante o pérdida de datos derivados del uso o la imposibilidad de uso de la plataforma. Nada en estos términos limita responsabilidades que no puedan excluirse legalmente.',
     },
     {
       heading: '10. Vigencia y terminación',
