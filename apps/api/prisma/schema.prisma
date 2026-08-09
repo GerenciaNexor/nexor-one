@@ -42,6 +42,7 @@ enum ModuleName {
   KIRA
   AGENDA
   VERA
+  ATENCION // HU-180 — agente de atención al cliente para canales externos (WhatsApp/Gmail)
 }
 
 enum Channel {

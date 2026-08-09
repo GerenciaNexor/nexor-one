@@ -180,51 +180,40 @@ async function sendWhatsAppReply(
 }
 
 /**
- * Determina el módulo del agente a invocar según los feature flags del tenant.
+ * Determina el módulo/agente que atiende un mensaje ENTRANTE de un canal externo
+ * (WhatsApp/Gmail). HU-180 — corrige la causa raíz de HU-179 (antes enrutaba a KIRA,
+ * el asistente de inventario interno, por defecto).
  *
- * - Si solo hay un módulo activo: lo devuelve directamente.
- * - Si hay varios activos: puntúa el mensaje con keywords de cada módulo
- *   y elige el de mayor score. En caso de empate, aplica la prioridad fija.
+ * Reglas (deterministas):
+ *   1. Override por integración: `integration.metadata.module` permite forzar un módulo
+ *      interno para un canal concreto ("este número/correo atiende ventas/compras"),
+ *      siempre que ese módulo esté habilitado para el tenant.
+ *   2. Por defecto: el agente de ATENCIÓN al cliente ('ATENCION'), que habla en nombre de
+ *      la empresa, cotiza/orienta y hace handoff a un asesor humano.
  *
- * La decisión es determinista — el mismo mensaje siempre produce el mismo módulo.
+ * No se enruta por keywords ni se reutiliza el módulo del hilo previo: el routing externo
+ * es estable por canal, así que la conversación no salta de agente entre mensajes.
  */
-async function resolveModule(tenantId: string, message: string): Promise<AgentModule> {
-  const flags = await directPrisma.featureFlag.findMany({
-    where:  { tenantId, enabled: true },
-    select: { module: true },
+async function resolveExternalModule(tenantId: string, integrationId: string): Promise<AgentModule> {
+  const VALID: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA', 'ATENCION']
+
+  const integ = await directPrisma.integration.findUnique({
+    where:  { id: integrationId },
+    select: { metadata: true },
   })
-  const enabled = new Set(flags.map((f) => f.module as string))
+  const meta = (integ?.metadata ?? {}) as Record<string, unknown>
+  const override = typeof meta['module'] === 'string' ? (meta['module'] as string).toUpperCase() : null
 
-  // Prioridad fija cuando no hay distinción por keywords
-  const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA']
-  const active = PRIORITY.filter((m) => enabled.has(m))
-
-  if (active.length === 0) return 'KIRA'  // fallback de seguridad
-  if (active.length === 1) return active[0]!
-
-  // ── Routing por keywords cuando hay múltiples módulos activos ────────────
-  const KEYWORDS: Partial<Record<AgentModule, string[]>> = {
-    KIRA:   ['stock', 'inventario', 'producto', 'entrada', 'salida', 'unidades',
-              'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía'],
-    NIRA:   ['compra', 'proveedor', 'orden', 'cotización', 'precio', 'pedido',
-              'factura', 'surtir', ' oc ', 'suministro', 'abastec'],
-    ARI:    ['cliente', 'venta', 'cotizar', 'lead', 'oportunidad', 'oferta',
-              'presupuesto', 'negocio', 'contrato'],
-    AGENDA: ['cita', 'turno', 'agendar', 'horario', 'disponibilidad', 'reservar',
-              'appointment', 'agenda'],
+  if (override && override !== 'ATENCION' && VALID.includes(override as AgentModule)) {
+    // Solo respeta el override si ese módulo interno está habilitado para el tenant.
+    const flag = await directPrisma.featureFlag.findFirst({
+      where:  { tenantId, module: override as never, enabled: true },
+      select: { module: true },
+    })
+    if (flag) return override as AgentModule
   }
 
-  const lower = message.toLowerCase()
-  const scores = new Map<AgentModule, number>()
-
-  for (const mod of active) {
-    const hits = (KEYWORDS[mod] ?? []).filter((kw) => lower.includes(kw)).length
-    scores.set(mod, hits)
-  }
-
-  // Módulo con mayor score; en empate, prioridad fija
-  const best = active.reduce((a, b) => (scores.get(b) ?? 0) > (scores.get(a) ?? 0) ? b : a)
-  return best
+  return 'ATENCION'
 }
 
 // ─── Helpers OCR + creación de borradores ────────────────────────────────────
@@ -687,7 +676,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     }))
 
     // Resolver módulo antes de FindOrCreate para asignarlo a la conversación
-    const module = await resolveModule(d.tenantId, d.content)
+    const module = await resolveExternalModule(d.tenantId, d.integrationId)
 
     // ── Conversación: FindOrCreate (no bloquea el flujo si falla) ──────────
     let conversationId: string | null = null
@@ -946,7 +935,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
         // Invocar AgentRunner con el contenido del email
         const emailMessage = `Asunto: ${subject}\nDe: ${from}\n\n${snippet}`
-        const module       = await resolveModule(d.tenantId, emailMessage)
+        const module       = await resolveExternalModule(d.tenantId, d.integrationId)
 
         // ── Conversación: FindOrCreate (no bloquea el flujo si falla) ────
         const senderEmail = extractEmailAddress(from)

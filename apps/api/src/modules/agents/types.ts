@@ -6,7 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 // ─── Input / Output del AgentRunner ──────────────────────────────────────────
 
-export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA'
+export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA' | 'ATENCION'
 export type AgentChannel = 'whatsapp' | 'gmail' | 'internal'
 /** Razón por la que el agente respondió con el mensaje de fallback. */
 export type FallbackReason = 'max_turns' | 'api_error'
