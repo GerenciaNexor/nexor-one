@@ -28,6 +28,25 @@ function normalize(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
 }
 
+/** Singulariza una palabra en español (monitores→monitor, cables→cable) para tolerar plural/singular. */
+function singular(w: string): string {
+  if (w.length > 4 && w.endsWith('es')) return w.slice(0, -2)
+  if (w.length > 3 && w.endsWith('s'))  return w.slice(0, -1)
+  return w
+}
+
+/** Palabras normalizadas + singularizadas de un texto, para un matching tolerante. */
+function searchWords(s: string): string[] {
+  return normalize(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 2).map(singular)
+}
+
+/** ¿Coinciden dos palabras? exacta, o una prefijo/incluida en la otra (mín. 3 chars para evitar ruido). */
+function wordsMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  if (Math.min(a.length, b.length) < 3) return false
+  return a.startsWith(b) || b.startsWith(a) || a.includes(b) || b.includes(a)
+}
+
 // ─── consultar_disponibilidad ─────────────────────────────────────────────────
 // Reemplazo de cara al cliente de consultar_stock_producto: nunca revela el inventario crudo.
 
@@ -52,12 +71,12 @@ const consultarDisponibilidad: AgentTool = {
   async execute({ producto, cantidad }, tenantId) {
     const raw = String(producto ?? '').trim()
     if (!raw) return { error: 'Indica el nombre o SKU del producto.' }
-    const term  = normalize(raw)
-    const words = term.split(/\s+/).filter((w) => w.length >= 3)
+    const term      = normalize(raw)
+    const termWords = searchWords(raw)   // singularizadas: "monitores" → ["monitor"]
 
     // Se traen los productos vendibles/alquilables del tenant (acotado) y se busca SIN acentos y por
-    // palabras — así "audifonos", "audífonos" o "audífonos inalámbricos" encuentran "Audífonos diadema".
-    // Solo campos PÚBLICOS (nunca costPrice, minStock, abcClass, preferredSupplier).
+    // palabras singularizadas — así "monitores" encuentra "Monitor 27\" 144Hz" y "audifonos"
+    // encuentra "Audífonos diadema". Solo campos PÚBLICOS (nunca costPrice, minStock, etc.).
     const products = await prisma.product.findMany({
       where:  { tenantId, isActive: true, OR: [{ isSellable: true }, { isRentable: true }] },
       take:   1000,
@@ -72,11 +91,16 @@ const consultarDisponibilidad: AgentTool = {
     const scored = products
       .map((p) => {
         const n = normalize(p.name), sku = normalize(p.sku)
+        // Palabras buscables del producto: nombre + categoría (para términos generales).
+        const hay = searchWords(`${p.name} ${p.category ?? ''}`)
         let score = 0
-        if (sku === term || n === term)          score = 100
-        else if (n.includes(term))               score = 80
-        else if (term.includes(n) && n.length >= 4) score = 60
-        else                                     score = words.filter((w) => n.includes(w)).length * 20
+        if (sku === term || n === term)   score = 100
+        else if (n.includes(term))        score = 80
+        else {
+          // Coincidencia por palabras singularizadas (tolera plural/singular, parcial y categoría).
+          const hits = termWords.filter((tw) => hay.some((hw) => wordsMatch(tw, hw))).length
+          score = hits > 0 ? 40 + hits * 20 : 0
+        }
         return { p, score }
       })
       .filter((x) => x.score > 0)
