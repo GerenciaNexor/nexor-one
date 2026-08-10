@@ -20,10 +20,17 @@ import { QUEUE_NAME, redisConnection, type IncomingMessageJob } from './queue'
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
 import { markIntegrationDown } from './integration-status'
+import { isOwnGmailMessage } from './gmail-loop-guard'
 import { runAgent } from '../modules/agents/agent.runner'
 import type { AgentModule } from '../modules/agents/types'
 import { extractDocument } from '../modules/ocr/service'
 import type { OrderExtraction, QuoteExtraction } from '../modules/ocr/service'
+
+// ─── Salvaguarda anti-bucle de Gmail (HU-184, 2ª capa) ────────────────────────
+// Aunque el filtro de correos propios corta el bucle en su origen, este límite frena cualquier
+// realimentación imprevista: no más de N respuestas del agente por conversación en una ventana corta.
+const GMAIL_LOOP_WINDOW_MS  = 5 * 60 * 1000
+const GMAIL_LOOP_MAX_REPLIES = 8
 
 // ─── Helpers de conversaciones ───────────────────────────────────────────────
 
@@ -958,17 +965,13 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
         const origMsgId = getHeader('Message-ID')
         const threadId  = fullMsg.threadId ?? ''
 
-        // ── EVITAR LOOP DE AUTO-RESPUESTA ────────────────────────────────────
-        // El agente envía la respuesta desde la propia cuenta; ese correo enviado reaparece en el
-        // historial y, si se procesa, el agente se responde a sí mismo en bucle (se observó un loop
-        // de cientos de correos). Se ignora todo mensaje PROPIO: con etiqueta SENT/DRAFT, o cuyo
-        // remitente sea la cuenta conectada.
-        const labelIds  = fullMsg.labelIds ?? []
-        const fromEmail = extractEmailAddress(from).toLowerCase()
-        const ownEmail  = (integration.identifier ?? '').toLowerCase()
-        if (labelIds.includes('SENT') || labelIds.includes('DRAFT') || (!!ownEmail && fromEmail === ownEmail)) {
+        // ── REGLA DURA HU-184 — nunca procesar un correo PROPIO (evita el bucle de auto-respuesta) ──
+        // El agente envía la respuesta desde la propia cuenta; ese correo saliente reaparece en el
+        // historial. Se ignora por completo (no se guarda, no dispara al agente, no responde) si tiene
+        // etiqueta SENT/DRAFT o el remitente es la cuenta conectada. SENT cubre cualquier alias de envío.
+        if (isOwnGmailMessage({ from, labelIds: fullMsg.labelIds, ownEmail: integration.identifier ?? '' })) {
           console.info(JSON.stringify({
-            event: 'worker_gmail_self_skip', jobId: job.id, tenantId: d.tenantId, from: fromEmail,
+            event: 'worker_gmail_self_skip', jobId: job.id, tenantId: d.tenantId, from: extractEmailAddress(from),
           }))
           continue
         }
@@ -1043,6 +1046,25 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
             tenantId: d.tenantId, messageId,
           }))
           continue
+        }
+
+        // ── Salvaguarda anti-bucle (HU-184, 2ª capa) ──────────────────────────
+        // Si en esta conversación ya se enviaron demasiadas respuestas del agente en una ventana
+        // corta, se corta (no se responde) para frenar cualquier realimentación que escape al filtro.
+        if (conversationId) {
+          const recentReplies = await directPrisma.conversationMessage.count({
+            where: {
+              conversationId, direction: 'outbound', isFromAgent: true,
+              createdAt: { gte: new Date(Date.now() - GMAIL_LOOP_WINDOW_MS) },
+            },
+          })
+          if (recentReplies >= GMAIL_LOOP_MAX_REPLIES) {
+            console.warn(JSON.stringify({
+              event: 'worker_gmail_loop_guard_tripped', jobId: job.id, tenantId: d.tenantId,
+              conversationId, recentReplies,
+            }))
+            continue
+          }
         }
 
         const result = await runAgent({
