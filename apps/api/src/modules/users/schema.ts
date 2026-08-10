@@ -25,5 +25,12 @@ export const UpdateUserSchema = z.object({
   password: z.string().min(8).optional(),
 })
 
-export type CreateUserInput = z.infer<typeof CreateUserSchema>
-export type UpdateUserInput = z.infer<typeof UpdateUserSchema>
+/** Cambio de la PROPIA contraseña (self-service): verifica la actual y setea la nueva. */
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'La contraseña actual es requerida'),
+  newPassword:     z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+})
+
+export type CreateUserInput     = z.infer<typeof CreateUserSchema>
+export type UpdateUserInput     = z.infer<typeof UpdateUserSchema>
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>

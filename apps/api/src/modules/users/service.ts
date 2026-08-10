@@ -103,3 +103,21 @@ export async function updateUser(
     select: USER_SELECT,
   })
 }
+
+/**
+ * Cambio de la PROPIA contraseña (self-service): valida la contraseña actual antes de setear la nueva.
+ * Cualquier usuario autenticado puede cambiar SU contraseña (no requiere ser admin).
+ */
+export async function changeOwnPassword(
+  tenantId: string, userId: string, currentPassword: string, newPassword: string,
+): Promise<{ ok: true }> {
+  const user = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { passwordHash: true } })
+  if (!user) throw { statusCode: 404, message: 'Usuario no encontrado', code: 'NOT_FOUND' }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash)
+  if (!valid) throw { statusCode: 400, message: 'La contraseña actual es incorrecta', code: 'INVALID_CURRENT_PASSWORD' }
+
+  const hash = await bcrypt.hash(newPassword, 12)
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } })
+  return { ok: true }
+}

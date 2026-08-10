@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { CreateUserSchema, UpdateUserSchema } from './schema'
-import { listUsers, createUser, updateUser } from './service'
+import { CreateUserSchema, UpdateUserSchema, ChangePasswordSchema } from './schema'
+import { listUsers, createUser, updateUser, changeOwnPassword } from './service'
 import { requireTenantAdmin } from '../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -57,6 +57,33 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     try {
       const user = await createUser(request.user.tenantId, parsed.data)
       return reply.code(201).send(user)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * PUT /v1/users/me/password — cambiar la PROPIA contraseña (self-service).
+   * Cualquier usuario autenticado. Verifica la contraseña actual antes de cambiarla.
+   */
+  app.put('/me/password', {
+    schema: {
+      tags:        ['Users'],
+      summary:     'Cambiar mi contraseña',
+      description: 'El usuario autenticado cambia su propia contraseña (verifica la actual).',
+      security:    bearerAuth,
+      body:        z2j(ChangePasswordSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const parsed = ChangePasswordSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos de entrada invalidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      await changeOwnPassword(request.user.tenantId, request.user.userId, parsed.data.currentPassword, parsed.data.newPassword)
+      return reply.code(200).send({ success: true, message: 'Contraseña actualizada' })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
