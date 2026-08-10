@@ -109,9 +109,63 @@ export const consultarSucursales: AgentTool = {
   },
 }
 
+// ─── consultar_recordatorios (HU-190) ─────────────────────────────────────────
+// Recordatorios PERSONALES del usuario que habla (HU-156). Son por-usuario: se acota
+// SIEMPRE a ctx.userId. Transversal (no pertenece a un módulo de negocio).
+
+const consultarRecordatorios: AgentTool = {
+  definition: {
+    name: 'consultar_recordatorios',
+    description: 'Devuelve los recordatorios del usuario (tareas/avisos con fecha y hora, p. ej. "llamar a un cliente", "devolver un alquiler"). Úsala para "¿qué recordatorios tengo?", "¿qué tengo pendiente?", "¿qué recordatorios tengo esta semana?". Por defecto trae los pendientes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        incluirHechos: { type: 'boolean', description: 'Si es true, incluye también los ya completados. Por defecto solo pendientes.' },
+      },
+    },
+  },
+
+  async execute({ incluirHechos }, tenantId, ctx?: ExecutionContext) {
+    // Los recordatorios son personales: sin usuario identificado no se devuelve nada.
+    if (!ctx?.userId) {
+      return { total: 0, recordatorios: [], message: 'No hay un usuario asociado para consultar recordatorios.' }
+    }
+
+    const now = new Date()
+    const reminders = await prisma.reminder.findMany({
+      where: {
+        tenantId,
+        userId: ctx.userId,
+        // Por defecto solo pendientes (como el panel de Inicio). isActive NO se filtra:
+        // un recordatorio pendiente sigue siendo pendiente aunque esté pausado.
+        ...(incluirHechos ? {} : { status: 'pending' }),
+      },
+      select: { title: true, description: true, remindAt: true, alertLevel: true, recurrence: true, status: true },
+      orderBy: [{ status: 'asc' }, { remindAt: 'asc' }],
+      take: 100,
+    })
+
+    if (reminders.length === 0) return { total: 0, recordatorios: [], message: 'No tienes recordatorios pendientes.' }
+
+    return {
+      total: reminders.length,
+      recordatorios: reminders.map((r) => ({
+        titulo:      r.title,
+        descripcion: r.description ?? null,
+        cuando:      r.remindAt.toISOString(),
+        prioridad:   r.alertLevel,
+        recurrencia: r.recurrence === 'none' ? null : r.recurrence,
+        estado:      r.status === 'done' ? 'hecho' : 'pendiente',
+        vencido:     r.status !== 'done' && r.remindAt < now,
+      })),
+    }
+  },
+}
+
 // ─── Catálogo empresa ─────────────────────────────────────────────────────────
 
 export const EMPRESA_TOOLS: AgentTool[] = [
   consultarUsuarios,
   consultarSucursales,
+  consultarRecordatorios,
 ]

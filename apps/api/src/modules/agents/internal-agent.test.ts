@@ -111,6 +111,12 @@ describe('HU-190 — cobertura completa del agente interno', () => {
     expect(n).toContain('consultar_centros_costo')
   })
 
+  it('recordatorios: consultables por CUALQUIER rol (tool transversal de empresa)', () => {
+    expect(names(['KIRA'], [])).toContain('consultar_recordatorios')          // operativo
+    expect(names([], [])).toContain('consultar_recordatorios')                 // sin módulo
+    expect(names(['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA'], [])).toContain('consultar_recordatorios') // admin
+  })
+
   it('el prompt interno prohíbe negar la existencia y protege solo los secretos', () => {
     const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Compras y alquileres entrantes'])
     expect(p).toMatch(/no existe en el sistema/i)     // aparece en la PROHIBICIÓN de decirlo
