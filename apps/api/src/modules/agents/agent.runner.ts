@@ -21,6 +21,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma, withTenantContext, runInTenantTransaction } from '../../lib/prisma'
 import { demoModel, demoAiWhere, demoAiExhaustedMessage, effectiveAiQuota } from '../../lib/demo-limits'
 import { getSystemPrompt, type TenantContext } from './prompts'
+import { buildConversationTurns } from './agent-history'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
 import { NIRA_TOOLS    } from './tools/nira.tools'
@@ -276,12 +277,9 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel)
 
   // ── 3. Bucle de conversación ───────────────────────────────────────────────
-  // El historial previo (memoria por sesión, HU-183) se antepone al mensaje actual. Solo llega
-  // por el canal internal; los agentes de atención al cliente (WhatsApp/Gmail) no lo envían.
-  const messages: Anthropic.MessageParam[] = [
-    ...(input.history ?? []).map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: input.message },
-  ]
+  // El historial previo (memoria de la conversación — HU-183 interno, HU-186 WhatsApp/Gmail) se
+  // antepone al mensaje actual y se sanea para la API de Anthropic (ver buildConversationTurns).
+  const messages: Anthropic.MessageParam[] = buildConversationTurns(input.history, input.message)
 
   const toolDetails: ToolDetail[]  = []
   const toolsUsed:   string[]      = []

@@ -20,10 +20,17 @@ import { QUEUE_NAME, redisConnection, type IncomingMessageJob } from './queue'
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
 import { markIntegrationDown } from './integration-status'
+import { isOwnGmailMessage } from './gmail-loop-guard'
 import { runAgent } from '../modules/agents/agent.runner'
 import type { AgentModule } from '../modules/agents/types'
 import { extractDocument } from '../modules/ocr/service'
 import type { OrderExtraction, QuoteExtraction } from '../modules/ocr/service'
+
+// ─── Salvaguarda anti-bucle de Gmail (HU-184, 2ª capa) ────────────────────────
+// Aunque el filtro de correos propios corta el bucle en su origen, este límite frena cualquier
+// realimentación imprevista: no más de N respuestas del agente por conversación en una ventana corta.
+const GMAIL_LOOP_WINDOW_MS  = 5 * 60 * 1000
+const GMAIL_LOOP_MAX_REPLIES = 8
 
 // ─── Helpers de conversaciones ───────────────────────────────────────────────
 
@@ -66,49 +73,57 @@ async function findOrCreateConversation(params: {
   const { tenantId, channel, senderIdentifier, senderName, relatedModule } = params
   const now = new Date()
 
-  const windowStart = channel === 'WHATSAPP'
-    ? new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    : undefined
-
-  const existing = await directPrisma.conversation.findFirst({
-    where: {
-      tenantId,
-      channel,
-      senderIdentifier,
-      status: { in: ['open', 'replied'] },
-      ...(windowStart ? { lastMessageAt: { gte: windowStart } } : {}),
-    },
-    select:  { id: true, status: true },
-    orderBy: { lastMessageAt: 'desc' },
-  })
-
-  if (existing) {
-    await directPrisma.conversation.update({
-      where: { id: existing.id },
-      data:  {
-        lastMessageAt: now,
-        updatedAt:     now,
-        ...(relatedModule ? { relatedModule: relatedModule as ModuleName } : {}),
-        // Nuevo mensaje del remitente → el equipo debe atenderlo de nuevo
-        ...(existing.status === 'replied' ? { status: 'open' } : {}),
-      },
-    })
-    return existing.id
+  // HU-186 — UNA sola conversación persistente por contacto y canal. Sin ventana de tiempo ni filtro
+  // por estado: los mensajes del mismo número/correo se agrupan SIEMPRE aquí, pasen minutos o días.
+  // Upsert atómico sobre el índice único (tenant, channel, sender) → sin duplicados aunque lleguen
+  // dos mensajes casi a la vez. Un mensaje nuevo REABRE la conversación (status 'open').
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const conv = await directPrisma.conversation.upsert({
+        where:  { tenantId_channel_senderIdentifier: { tenantId, channel, senderIdentifier } },
+        create: {
+          tenantId, channel, senderIdentifier,
+          senderName:    senderName ?? null,
+          relatedModule: relatedModule ? (relatedModule as ModuleName) : null,
+          status:        'open',
+          lastMessageAt: now,
+        },
+        update: {
+          lastMessageAt: now,
+          status:        'open',
+          ...(relatedModule ? { relatedModule: relatedModule as ModuleName } : {}),
+          ...(senderName    ? { senderName } : {}),
+        },
+        select: { id: true },
+      })
+      return conv.id
+    } catch (err) {
+      // Carrera entre dos mensajes casi simultáneos: reintentar (en el 2º intento ya existe → update).
+      if ((err as { code?: string }).code === 'P2002' && attempt === 0) continue
+      throw err
+    }
   }
+  throw new Error('findOrCreateConversation: no se pudo resolver la conversación')
+}
 
-  const created = await directPrisma.conversation.create({
-    data: {
-      tenantId,
-      channel,
-      senderIdentifier,
-      senderName:    senderName ?? null,
-      relatedModule: relatedModule ? (relatedModule as ModuleName) : null,
-      status:        'open',
-      lastMessageAt: now,
-    },
-    select: { id: true },
+/**
+ * Memoria del agente (HU-186): últimos N mensajes de una conversación en orden cronológico.
+ * inbound → 'user' (el cliente), outbound → 'assistant' (el negocio/agente). Excluye mensajes de
+ * sistema. La ventana (25) equilibra memoria y costo; no se cargan historiales ilimitados.
+ */
+async function loadConversationHistory(
+  conversationId: string, tenantId: string, limit = 25,
+): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  const rows = await directPrisma.conversationMessage.findMany({
+    where:   { conversationId, tenantId, messageType: { not: 'system' } },
+    orderBy: { createdAt: 'desc' },
+    take:    limit,
+    select:  { direction: true, content: true },
   })
-  return created.id
+  return rows.reverse().map((r) => ({
+    role:    r.direction === 'inbound' ? 'user' : 'assistant',
+    content: r.content,
+  }))
 }
 
 /**
@@ -701,6 +716,10 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       }))
     }
 
+    // Memoria del agente (HU-186): historial previo de la conversación, cargado ANTES de guardar el
+    // mensaje actual para que no se duplique en el contexto.
+    const history = conversationId ? await loadConversationHistory(conversationId, d.tenantId) : []
+
     // ── Obtener el token del canal ANTES del candado de dedup (HU-182) ─────────
     // Si la integración no existe, se lanza AQUÍ, antes de "consumir" el mensaje con el candado de
     // dedup, para que el reintento lo reprocese y NO quede sin respuesta. NO se filtra por isActive:
@@ -788,7 +807,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       return
     }
 
-    // Invocar AgentRunner (para el contenido de texto)
+    // Invocar AgentRunner (para el contenido de texto) — con memoria de la conversación (HU-186)
     const result = await runAgent({
       tenantId:      d.tenantId,
       module,
@@ -796,6 +815,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       message:       d.content,
       senderId:      d.from,
       integrationId: d.integrationId,
+      history,
     })
 
     console.info(JSON.stringify({
@@ -945,6 +965,17 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
         const origMsgId = getHeader('Message-ID')
         const threadId  = fullMsg.threadId ?? ''
 
+        // ── REGLA DURA HU-184 — nunca procesar un correo PROPIO (evita el bucle de auto-respuesta) ──
+        // El agente envía la respuesta desde la propia cuenta; ese correo saliente reaparece en el
+        // historial. Se ignora por completo (no se guarda, no dispara al agente, no responde) si tiene
+        // etiqueta SENT/DRAFT o el remitente es la cuenta conectada. SENT cubre cualquier alias de envío.
+        if (isOwnGmailMessage({ from, labelIds: fullMsg.labelIds, ownEmail: integration.identifier ?? '' })) {
+          console.info(JSON.stringify({
+            event: 'worker_gmail_self_skip', jobId: job.id, tenantId: d.tenantId, from: extractEmailAddress(from),
+          }))
+          continue
+        }
+
         console.info(JSON.stringify({
           event:    'worker_gmail_message_received',
           jobId:    job.id,
@@ -978,6 +1009,9 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
             error:    String(err),
           }))
         }
+
+        // Memoria del agente (HU-186): historial previo, ANTES de guardar el mensaje actual.
+        const history = conversationId ? await loadConversationHistory(conversationId, d.tenantId) : []
 
         // ── Guardar mensaje entrante (inbound) — actúa como candado de dedup ──────
         let inboundIsNew = true
@@ -1014,6 +1048,25 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           continue
         }
 
+        // ── Salvaguarda anti-bucle (HU-184, 2ª capa) ──────────────────────────
+        // Si en esta conversación ya se enviaron demasiadas respuestas del agente en una ventana
+        // corta, se corta (no se responde) para frenar cualquier realimentación que escape al filtro.
+        if (conversationId) {
+          const recentReplies = await directPrisma.conversationMessage.count({
+            where: {
+              conversationId, direction: 'outbound', isFromAgent: true,
+              createdAt: { gte: new Date(Date.now() - GMAIL_LOOP_WINDOW_MS) },
+            },
+          })
+          if (recentReplies >= GMAIL_LOOP_MAX_REPLIES) {
+            console.warn(JSON.stringify({
+              event: 'worker_gmail_loop_guard_tripped', jobId: job.id, tenantId: d.tenantId,
+              conversationId, recentReplies,
+            }))
+            continue
+          }
+        }
+
         const result = await runAgent({
           tenantId:      d.tenantId,
           module,
@@ -1021,6 +1074,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           message:       emailMessage,
           senderId:      from,
           integrationId: d.integrationId,
+          history,
         })
 
         console.info(JSON.stringify({

@@ -96,6 +96,44 @@ describe('HU-180 — consultar_disponibilidad respeta la frontera', () => {
   })
 })
 
+// HU-185 — el agente no debe negar productos que sí existen (plural / término general / sin stock).
+describe('HU-185 — encuentra productos existentes (plural / general / sin stock)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // Catálogo tipo el real de la demo.
+  const CATALOGO = [
+    { name: 'Monitor 27" 144Hz', sku: 'NX-003', description: '144Hz', category: 'Monitores', unit: 'unidad', salePrice: 980000, rentalPrice: null, isSellable: true, isRentable: false, stocks: [{ quantity: 11, rentedQuantity: 0 }] },
+    { name: 'Monitor pantalla plana 30 gamer', sku: 'NX-25', description: 'Gamer', category: 'Monitores', unit: 'unidad', salePrice: 1200000, rentalPrice: null, isSellable: true, isRentable: false, stocks: [{ quantity: 0, rentedQuantity: 0 }] },
+    { name: 'Audífonos diadema', sku: 'NX-005', description: '', category: 'Audio', unit: 'unidad', salePrice: 175000, rentalPrice: null, isSellable: true, isRentable: false, stocks: [{ quantity: 49, rentedQuantity: 0 }] },
+    { name: 'Teclado mecánico RGB', sku: 'NX-001', description: '', category: 'Periféricos', unit: 'unidad', salePrice: 200000, rentalPrice: null, isSellable: true, isRentable: false, stocks: [{ quantity: 67, rentedQuantity: 0 }] },
+  ]
+
+  it('"monitores" (PLURAL) encuentra los monitores del catálogo', async () => {
+    mock.product.findMany.mockResolvedValue(CATALOGO)
+    const out = await disponibilidad.execute({ producto: 'monitores' }, 't1') as Record<string, unknown>
+    expect(String(out.producto)).toMatch(/monitor/i)
+    expect(out).not.toHaveProperty('mensaje') // se encontró (no es "no encontré")
+    const nombres = ((out.coincidencias ?? []) as { producto: string }[]).map((c) => c.producto)
+    expect(nombres.some((n) => /Monitor 27/.test(n))).toBe(true)
+    expect(nombres.some((n) => /Monitor pantalla plana/.test(n))).toBe(true)
+  })
+
+  it('producto que EXISTE pero SIN stock → lo encuentra (disponible=false), NO lo niega', async () => {
+    mock.product.findMany.mockResolvedValue([CATALOGO[1]])
+    const out = await disponibilidad.execute({ producto: 'monitor pantalla plana' }, 't1') as Record<string, unknown>
+    expect(String(out.producto)).toMatch(/pantalla plana/i)
+    expect(out.disponible).toBe(false)
+    expect(out).not.toHaveProperty('mensaje')
+  })
+
+  it('producto que NO está en el catálogo → no disponible con "no encontré"', async () => {
+    mock.product.findMany.mockResolvedValue(CATALOGO)
+    const out = await disponibilidad.execute({ producto: 'lavadora' }, 't1') as Record<string, unknown>
+    expect(out.disponible).toBe(false)
+    expect(String(out.mensaje)).toMatch(/no encontr/i)
+  })
+})
+
 describe('HU-180 — registrar_interes deriva a un humano con salida neutra', () => {
   beforeEach(() => vi.clearAllMocks())
 
