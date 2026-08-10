@@ -6,7 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 // ─── Input / Output del AgentRunner ──────────────────────────────────────────
 
-export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA' | 'ATENCION'
+export type AgentModule  = 'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA' | 'ATENCION' | 'INTERNO'
 export type AgentChannel = 'whatsapp' | 'gmail' | 'internal'
 /** Razón por la que el agente respondió con el mensaje de fallback. */
 export type FallbackReason = 'max_turns' | 'api_error'
@@ -31,6 +31,17 @@ export interface AgentRunnerInput {
    * cronológico, para que el agente recuerde el contexto. WhatsApp/Gmail no lo envían.
    */
   history?:      { role: 'user' | 'assistant'; content: string }[]
+  /**
+   * Alcance del agente interno unificado (module='INTERNO', HU-187), derivado del ROL del usuario:
+   *   - internalFull:  módulos con acceso total (todas sus tools).
+   *   - internalRead:  módulos con acceso de solo lectura (solo tools de consulta).
+   *   - internalAreas: etiquetas legibles de las áreas accesibles (para el prompt).
+   * El agente NUNCA obtiene tools de un módulo fuera de este alcance → no puede consultar áreas
+   * para las que el usuario no tiene permiso.
+   */
+  internalFull?:  AgentModule[]
+  internalRead?:  AgentModule[]
+  internalAreas?: string[]
 }
 
 export interface AgentRunnerResult {
