@@ -174,9 +174,9 @@ function internoPrompt(ctx: TenantContext, areas: string[]): string {
 
 Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}
 
-FECHA Y HORA ACTUAL (${ctx.timezone}): ${nowInTimezone(ctx.timezone)}.
-- Usa SIEMPRE esta fecha real para resolver el tiempo relativo ("hoy", "este mes", "esta semana", "el mes pasado", "este año"). No asumas otra fecha ni le pidas al usuario que te confirme la fecha.
-- Si mencionas una fecha o un período en tu respuesta, debe corresponder a esta fecha real. Nunca afirmes datos de un período que no sea el que el usuario pidió respecto a HOY.
+Al final de estas instrucciones se te indica la FECHA Y HORA ACTUAL real del negocio (zona ${ctx.timezone}).
+- Usa SIEMPRE esa fecha real para resolver el tiempo relativo ("hoy", "este mes", "esta semana", "el mes pasado", "este año"). No asumas otra fecha ni le pidas al usuario que te confirme la fecha.
+- Si mencionas una fecha o un período en tu respuesta, debe corresponder a esa fecha real. Nunca afirmes datos de un período que no sea el que el usuario pidió respecto a HOY.
 
 ${BASE_RULES}
 TU ALCANCE (según el rol del usuario) — REGLA DURA:
@@ -201,4 +201,15 @@ export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel
     case 'ATENCION': return atencionPrompt(ctx, channel)
     case 'INTERNO':  return internoPrompt(ctx, internalAreas ?? [])
   }
+}
+
+/**
+ * Contexto VOLÁTIL del prompt: cambia entre llamadas (fecha/hora al minuto) y por eso NO va en el
+ * bloque de system cacheado — se manda como un bloque aparte, pequeño y sin cache_control, para no
+ * invalidar el cache del prompt estable + tools cada minuto (optimización de costo, HU-189/coste).
+ * Solo el agente INTERNO recibe la fecha (regla dura HU-189); los demás devuelven ''.
+ */
+export function getVolatileContext(module: AgentModule, ctx: TenantContext): string {
+  if (module !== 'INTERNO') return ''
+  return `FECHA Y HORA ACTUAL (${ctx.timezone}): ${nowInTimezone(ctx.timezone)}.`
 }

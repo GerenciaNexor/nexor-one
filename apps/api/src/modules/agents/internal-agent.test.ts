@@ -5,9 +5,9 @@
  * a un área NO recibe tools de otra → no puede consultar datos de un área que no le corresponde.
  * Esta prueba (determinista) lo verifica a nivel de catálogo, la línea de defensa real.
  */
-import { describe, it, expect } from 'vitest'
-import { buildInternalTools } from './agent.runner'
-import { getSystemPrompt, type TenantContext } from './prompts'
+import { describe, it, expect, afterEach } from 'vitest'
+import { buildInternalTools, agentModel as pickAgentModel } from './agent.runner'
+import { getSystemPrompt, getVolatileContext, type TenantContext } from './prompts'
 import type { AgentModule } from './types'
 
 const names = (full: AgentModule[], read: AgentModule[]) => buildInternalTools(full, read).map((t) => t.definition.name)
@@ -64,19 +64,55 @@ describe('HU-187 — prompt del agente interno unificado', () => {
     expect(p).toMatch(/nunca menciones nombres internos/i)
   })
 
-  it('HU-189 — inyecta la fecha/hora actual del tenant y prohíbe asumir fechas', () => {
+  it('HU-189 — las instrucciones de fecha siguen en el prompt (estable, cacheable)', () => {
     const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Finanzas'])
-    expect(p).toMatch(/FECHA Y HORA ACTUAL/)
-    // el año actual (resuelto en la zona del tenant) debe aparecer en el prompt
-    const year = new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date())
-    expect(p).toContain(year)
-    expect(p).toMatch(/usa siempre esta fecha real/i)
+    expect(p).toMatch(/usa siempre esa fecha real/i)
     expect(p).toMatch(/no asumas otra fecha/i)
+    // HU-192: la fecha/hora AL MINUTO ya NO va en el bloque estable (rompería el cache): solo la
+    // referencia; el valor real se inyecta aparte vía getVolatileContext.
+    expect(p).not.toMatch(/FECHA Y HORA ACTUAL \(America/)
   })
 
-  it('HU-189 (regla dura) — el agente de atención (WhatsApp/Gmail) NO recibe la fecha', () => {
-    const atencion = getSystemPrompt('ATENCION', ctx, 'whatsapp')
-    expect(atencion).not.toMatch(/FECHA Y HORA ACTUAL/)
+  it('HU-192 — getVolatileContext trae la fecha real SOLO para INTERNO (fuera del cache)', () => {
+    const vol = getVolatileContext('INTERNO', ctx)
+    expect(vol).toMatch(/FECHA Y HORA ACTUAL/)
+    const year = new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date())
+    expect(vol).toContain(year)
+    // Regla dura HU-189/HU-180: el agente de atención NO recibe fecha.
+    expect(getVolatileContext('ATENCION', ctx)).toBe('')
+    expect(getVolatileContext('KIRA', ctx)).toBe('')
+  })
+})
+
+describe('HU-192 — selección de modelo híbrida (env)', () => {
+  const OLD = { ...process.env }
+  afterEach(() => { process.env = { ...OLD } })
+
+  it('default: consulta simple → base (Haiku); no usa Opus jamás', () => {
+    delete process.env['CLAUDE_MODEL_AGENT']; delete process.env['CLAUDE_MODEL_AGENT_COMPLEX']; delete process.env['AGENT_ESCALATE']
+    const m = pickAgentModel('¿qué recordatorios tengo?')
+    expect(m).toContain('haiku')
+    expect(m).not.toContain('opus')
+  })
+
+  it('auto: consulta compleja (analiza/compara) → escala a Sonnet', () => {
+    delete process.env['AGENT_ESCALATE']
+    expect(pickAgentModel('analiza la rentabilidad y compara sucursales')).toContain('sonnet')
+  })
+
+  it('AGENT_ESCALATE=never fuerza siempre el base (Haiku) aunque sea compleja', () => {
+    process.env['AGENT_ESCALATE'] = 'never'
+    expect(pickAgentModel('analiza y compara todo')).toContain('haiku')
+  })
+
+  it('AGENT_ESCALATE=always fuerza Sonnet aunque sea simple', () => {
+    process.env['AGENT_ESCALATE'] = 'always'
+    expect(pickAgentModel('hola')).toContain('sonnet')
+  })
+
+  it('configurable en caliente por env', () => {
+    process.env['CLAUDE_MODEL_AGENT'] = 'modelo-x'
+    expect(pickAgentModel('hola')).toBe('modelo-x')
   })
 })
 
