@@ -20,7 +20,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma, withTenantContext, runInTenantTransaction } from '../../lib/prisma'
 import { demoModel, demoAiWhere, demoAiExhaustedMessage, effectiveAiQuota } from '../../lib/demo-limits'
-import { getSystemPrompt, type TenantContext } from './prompts'
+import { getSystemPrompt, getVolatileContext, type TenantContext } from './prompts'
 import { buildConversationTurns } from './agent-history'
 import { getAgentTenantContext } from './tenant-context'
 import { KIRA_TOOLS    } from './tools/kira.tools'
@@ -37,6 +37,35 @@ import type { AgentModule, AgentChannel, AgentRunnerInput, AgentRunnerResult, Ag
 const MAX_TURNS    = 10
 const MAX_RETRIES  = 3
 const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un asesor te contactará pronto.'
+
+// ── HU-192 — Modelo del agente (no-demo): estrategia HÍBRIDA de costo ──────────
+// La mayoría de consultas del agente son de DATOS (recordatorios, stock, ventas…): Haiku basta y es
+// ~15x más barato que Opus. Solo se escala a Sonnet cuando la consulta amerita razonamiento. NUNCA
+// Opus. Todo configurable por env para ajustar EN CALIENTE (sin redeploy):
+//   CLAUDE_MODEL_AGENT          → modelo base           (default Haiku 4.5)
+//   CLAUDE_MODEL_AGENT_COMPLEX  → modelo de escalado     (default Sonnet 4.5)
+//   AGENT_ESCALATE = auto|never|always                   (default auto)
+// OJO: el base NO se encadena a CLAUDE_MODEL (que en prod apunta a Opus): el default barato es a propósito.
+const DEFAULT_AGENT_MODEL         = 'claude-haiku-4-5-20251001'
+const DEFAULT_AGENT_MODEL_COMPLEX = 'claude-sonnet-4-5-20250929'
+
+// Heurística conservadora de complejidad: se escala a Sonnet solo si la consulta pide análisis /
+// razonamiento, es muy larga o multiparte. Ante la duda → Haiku (menor costo). Ajustable con AGENT_ESCALATE.
+const COMPLEX_HINTS = /(analiz|an[aá]lisis|compar|por qu[eé]|recomiend|recomendaci|proyect|tendenci|estrategi|explica|eval[uú]|optimiz|deber[ií]a|convien|razon|proyecci)/i
+function isComplexQuery(message: string): boolean {
+  if (COMPLEX_HINTS.test(message)) return true
+  if (message.length > 320) return true
+  return (message.match(/\?/g) ?? []).length >= 3
+}
+
+export function agentModel(message: string): string {
+  const base    = process.env['CLAUDE_MODEL_AGENT']         ?? DEFAULT_AGENT_MODEL
+  const complex = process.env['CLAUDE_MODEL_AGENT_COMPLEX'] ?? DEFAULT_AGENT_MODEL_COMPLEX
+  const mode    = (process.env['AGENT_ESCALATE'] ?? 'auto').toLowerCase()
+  if (mode === 'never')  return base
+  if (mode === 'always') return complex
+  return isComplexQuery(message) ? complex : base
+}
 
 // ─── Selector de tools por módulo ─────────────────────────────────────────────
 
@@ -102,22 +131,49 @@ function getAnthropicClient(): Anthropic {
   return anthropicClient
 }
 
+// ─── Prompt caching del historial ─────────────────────────────────────────────
+
+/**
+ * Devuelve una COPIA de `messages` con cache_control en el último bloque del último mensaje, sin
+ * mutar el array persistente (que se sigue creciendo en el bucle). Esto fija un punto de cache al
+ * final del prefijo actual: dentro de un mismo request multi-turno, el turno N+1 lee el prefijo del
+ * turno N a tarifa de cache en vez de re-cobrarlo completo. Un solo breakpoint (sumado al del system
+ * estable = 2, dentro del límite de 4). Si el contenido es string, se normaliza a bloque de texto.
+ */
+function markLastMessageForCache(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages
+  const out = messages.slice()
+  const last = out[out.length - 1]!
+  const blocks = (typeof last.content === 'string'
+    ? [{ type: 'text', text: last.content }]
+    : last.content.slice()) as Anthropic.ContentBlockParam[]
+  if (blocks.length === 0) return messages
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam
+  out[out.length - 1] = { ...last, content: blocks }
+  return out
+}
+
 // ─── Llamada a Claude con reintento exponencial ───────────────────────────────
 
 async function callClaude(
   client:     Anthropic,
   model:      string,
-  system:     string,
+  system:     Anthropic.TextBlockParam[],
   messages:   Anthropic.MessageParam[],
   tools:      Anthropic.Tool[],
   attempt = 1,
 ): Promise<Anthropic.Message> {
+  // Prompt caching (HU-192): el bloque `system` estable ya viene marcado con cache_control en el
+  // caller → Anthropic cachea, por jerarquía, TODAS las tools + el system estable (el payload fijo
+  // ~6.3k tokens). Además marcamos el ÚLTIMO mensaje para cachear el prefijo del HISTORIAL: así, en
+  // el bucle multi-turno, cada turno lee el prefijo previo a 0.1x en vez de re-cobrarlo completo.
+  const messagesToSend = markLastMessageForCache(messages)
   try {
     return await client.messages.create({
       model,
       max_tokens: 1024,
       system,
-      messages,
+      messages: messagesToSend,
       tools: tools.length > 0 ? tools : undefined,
     })
   } catch (err) {
@@ -273,8 +329,8 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   })
   const isDemo = !!tenantDemo?.isDemo
   // En demo se fuerza el modelo Claude más barato (configurable por CLAUDE_MODEL_DEMO);
-  // fuera de demo, el modelo normal (CLAUDE_MODEL). No hardcodeado disperso.
-  const model = isDemo ? demoModel() : (process.env['CLAUDE_MODEL'] ?? 'claude-opus-4-6')
+  // fuera de demo, la estrategia híbrida (Haiku por default, Sonnet solo si la consulta lo amerita).
+  const model = isDemo ? demoModel() : agentModel(input.message)
 
   // HU-144/148 — Cupo TOTAL de mensajes de agente en la demo (candado de costo). El contador es
   // PERSISTENTE y a prueba de reseteo: se cuenta desde agent_logs (append-only) para ESTE tenant,
@@ -309,7 +365,16 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
   // El canal se pasa al prompt: el agente de ATENCION lo usa para saber que atiende a un
   // cliente externo por WhatsApp/Gmail (corrige la ceguera de canal detectada en HU-179).
-  const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas)
+  // El system se manda en DOS bloques para el prompt caching:
+  //  1. Estable (reglas + contexto del tenant) → con cache_control: se cachea junto a las tools.
+  //  2. Volátil (fecha/hora al minuto, solo INTERNO) → SIN cache: cambia cada minuto y rompería el
+  //     cache si fuera parte del bloque estable. Va pequeño y aparte.
+  const stableSystem = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas)
+  const volatile     = getVolatileContext(input.module, tenantCtx)
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } },
+  ]
+  if (volatile) systemBlocks.push({ type: 'text', text: volatile })
 
   // ── 3. Bucle de conversación ───────────────────────────────────────────────
   // El historial previo (memoria de la conversación — HU-183 interno, HU-186 WhatsApp/Gmail) se
@@ -322,6 +387,8 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   let   finalReply    = FALLBACK_MSG
   let   hitMaxTurns   = false
   let   fallbackReason: FallbackReason | undefined
+  // HU-192 — acumuladores de uso para medir el costo real por consulta (observabilidad).
+  const usage = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }
 
   try {
     while (turnCount < MAX_TURNS) {
@@ -330,10 +397,17 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
       const response = await callClaude(
         client,
         model,
-        systemPrompt,
+        systemBlocks,
         messages,
         agentTools.map((t) => t.definition),
       )
+
+      // Acumular uso de tokens (incluye cache write/read del prompt caching).
+      const u = response.usage
+      usage.input      += u.input_tokens ?? 0
+      usage.output     += u.output_tokens ?? 0
+      usage.cacheWrite += u.cache_creation_input_tokens ?? 0
+      usage.cacheRead  += u.cache_read_input_tokens ?? 0
 
       // ── 3a. Respuesta final ────────────────────────────────────────────────
       if (response.stop_reason === 'end_turn') {
@@ -419,6 +493,17 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
   // ── 6. Log inmutable — siempre ────────────────────────────────────────────
   const durationMs = Date.now() - startTime
+
+  // HU-192 — observabilidad de costo: tokens y % de input servido desde cache. Permite VERIFICAR en
+  // prod que el caching pega (cacheRead alto) y el modelo usado por consulta (Haiku vs Sonnet).
+  const cachedPct = usage.cacheRead + usage.input > 0
+    ? Math.round((usage.cacheRead / (usage.cacheRead + usage.input)) * 100)
+    : 0
+  console.info('[AgentRunner] cost', JSON.stringify({
+    module: input.module, model, turns: turnCount,
+    inputTokens: usage.input, outputTokens: usage.output,
+    cacheWrite: usage.cacheWrite, cacheRead: usage.cacheRead, cachedPct: `${cachedPct}%`,
+  }))
 
   await saveLog({
     tenantId:     input.tenantId,
