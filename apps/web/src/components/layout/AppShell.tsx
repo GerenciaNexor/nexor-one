@@ -11,6 +11,7 @@ import { FloatingChat } from '@/components/chat/FloatingChat'
 import { useChatStore } from '@/store/chat'
 import { useTheme } from '@/hooks/useTheme'
 import { getCache, setCache } from '@/lib/page-cache'
+import { ChangePasswordModal } from '@/components/ui/ChangePasswordModal'
 
 // ─── Normalización de links de notificaciones (compatibilidad con links legacy) ─
 
@@ -134,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifLoading, setNotifLoading] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
   // Feature flags: que modulos mostrar en la sidebar.
@@ -434,6 +436,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-700">
           <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">{user?.name}</p>
           <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">{user?.role}</p>
+          {/* Cambiar la propia contraseña — disponible para CUALQUIER rol (incluye OPERATIVE) */}
+          <button
+            onClick={() => setPwOpen(true)}
+            className="mt-2 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Cambiar contraseña
+          </button>
         </div>
       </aside>
 
@@ -584,6 +593,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           una interfaz de mensajería: la Bandeja (/inbox), donde su FAB tapaba el botón "Enviar",
           y el Chat IA completo (/chat), donde el FAB es redundante. */}
       {!pathname.startsWith('/inbox') && !pathname.startsWith('/chat') && <FloatingChat />}
+
+      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   )
 }
