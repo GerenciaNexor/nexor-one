@@ -142,8 +142,8 @@ export async function saveChatMessage(params: {
 // Todo por (tenantId, userId) — RLS por tenant + filtro por usuario en la capa de aplicación.
 
 const MAX_TITLE   = 80
-/** Cuántos mensajes previos de la sesión recuerda el agente (memoria por chat). */
-const MEMORY_SIZE = 20
+/** Cuántos mensajes previos de la sesión recuerda el agente (memoria por chat). HU-186: 25. */
+const MEMORY_SIZE = 25
 
 /** Lista los chats del usuario, más recientes primero. */
 export async function listChatSessions(tenantId: string, userId: string) {

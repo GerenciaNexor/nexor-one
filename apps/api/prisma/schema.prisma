@@ -1375,7 +1375,9 @@ model Conversation {
   assignedUser User?                 @relation("ConversationAssignee", fields: [assignedTo], references: [id])
   messages     ConversationMessage[]
 
-  @@index([tenantId, channel, senderIdentifier])
+  /// HU-186 — UNA sola conversación persistente por contacto y canal (sin duplicados).
+  /// Los mensajes del mismo número/correo se agrupan siempre aquí, sin importar el tiempo entre ellos.
+  @@unique([tenantId, channel, senderIdentifier])
   @@index([tenantId, status])
   @@index([lastMessageAt(sort: Desc)])
   @@map("conversations")
