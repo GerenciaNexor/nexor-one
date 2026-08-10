@@ -13,7 +13,7 @@ import { ChangePasswordModal } from '@/components/ui/ChangePasswordModal'
 type UserRole   = 'TENANT_ADMIN' | 'BRANCH_ADMIN' | 'AREA_MANAGER' | 'OPERATIVE'
 type ModuleName = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA'
 
-interface Branch { id: string; name: string }
+interface Branch { id: string; name: string; isActive: boolean }
 
 interface User {
   id:          string
@@ -191,9 +191,12 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               >
                 <option value="">Sin asignar</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
+                {/* Solo sucursales ACTIVAS. Al editar, se conserva la ya asignada aunque esté inactiva. */}
+                {branches
+                  .filter((b) => b.isActive || b.id === form.branchId)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}{!b.isActive ? ' (inactiva)' : ''}</option>
+                  ))}
               </select>
             </div>
           )}
