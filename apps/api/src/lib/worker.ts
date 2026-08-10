@@ -945,6 +945,21 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
         const origMsgId = getHeader('Message-ID')
         const threadId  = fullMsg.threadId ?? ''
 
+        // ── EVITAR LOOP DE AUTO-RESPUESTA ────────────────────────────────────
+        // El agente envía la respuesta desde la propia cuenta; ese correo enviado reaparece en el
+        // historial y, si se procesa, el agente se responde a sí mismo en bucle (se observó un loop
+        // de cientos de correos). Se ignora todo mensaje PROPIO: con etiqueta SENT/DRAFT, o cuyo
+        // remitente sea la cuenta conectada.
+        const labelIds  = fullMsg.labelIds ?? []
+        const fromEmail = extractEmailAddress(from).toLowerCase()
+        const ownEmail  = (integration.identifier ?? '').toLowerCase()
+        if (labelIds.includes('SENT') || labelIds.includes('DRAFT') || (!!ownEmail && fromEmail === ownEmail)) {
+          console.info(JSON.stringify({
+            event: 'worker_gmail_self_skip', jobId: job.id, tenantId: d.tenantId, from: fromEmail,
+          }))
+          continue
+        }
+
         console.info(JSON.stringify({
           event:    'worker_gmail_message_received',
           jobId:    job.id,
