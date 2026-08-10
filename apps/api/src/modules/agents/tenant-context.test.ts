@@ -16,9 +16,9 @@ const BRANCHES = [
   { tenantId: 'tenant-B', name: 'Sede B — Cali' },
 ]
 
-const TENANTS: Record<string, { name: string; currency: string }> = {
-  'tenant-A': { name: 'Empresa A', currency: 'COP' },
-  'tenant-B': { name: 'Empresa B', currency: 'USD' },
+const TENANTS: Record<string, { name: string; currency: string; timezone: string }> = {
+  'tenant-A': { name: 'Empresa A', currency: 'COP', timezone: 'America/Bogota' },
+  'tenant-B': { name: 'Empresa B', currency: 'USD', timezone: 'America/New_York' },
 }
 
 vi.mock('../../lib/prisma', () => ({
@@ -50,6 +50,7 @@ describe('getAgentTenantContext — BUG-004 (aislamiento de sucursales)', () => 
     const ctx = await getAgentTenantContext('tenant-A')
     expect(ctx.tenantName).toBe('Empresa A')
     expect(ctx.currency).toBe('COP')
+    expect(ctx.timezone).toBe('America/Bogota') // HU-189 — zona horaria del tenant
     expect(ctx.branches).toEqual(['Sede A — Bogotá', 'Sede A — Medellín'])
   })
 

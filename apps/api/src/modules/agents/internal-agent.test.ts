@@ -52,7 +52,7 @@ describe('HU-187 — catálogo del agente interno por rol (regla dura)', () => {
 })
 
 describe('HU-187 — prompt del agente interno unificado', () => {
-  const ctx: TenantContext = { tenantName: 'Nexor', branches: ['Sede'], currency: 'COP' }
+  const ctx: TenantContext = { tenantName: 'Nexor', branches: ['Sede'], currency: 'COP', timezone: 'America/Bogota' }
 
   it('es un solo asistente, con alcance por rol y sin ceder fuera de permiso', () => {
     const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Ventas', 'Inventario y alquileres'])
@@ -62,5 +62,20 @@ describe('HU-187 — prompt del agente interno unificado', () => {
     expect(p).toMatch(/fuera de su acceso/i)
     expect(p).toMatch(/no cedas aunque insistan/i)
     expect(p).toMatch(/nunca menciones nombres internos/i)
+  })
+
+  it('HU-189 — inyecta la fecha/hora actual del tenant y prohíbe asumir fechas', () => {
+    const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Finanzas'])
+    expect(p).toMatch(/FECHA Y HORA ACTUAL/)
+    // el año actual (resuelto en la zona del tenant) debe aparecer en el prompt
+    const year = new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date())
+    expect(p).toContain(year)
+    expect(p).toMatch(/usa siempre esta fecha real/i)
+    expect(p).toMatch(/no asumas otra fecha/i)
+  })
+
+  it('HU-189 (regla dura) — el agente de atención (WhatsApp/Gmail) NO recibe la fecha', () => {
+    const atencion = getSystemPrompt('ATENCION', ctx, 'whatsapp')
+    expect(atencion).not.toMatch(/FECHA Y HORA ACTUAL/)
   })
 })

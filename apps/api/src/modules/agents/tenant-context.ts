@@ -23,7 +23,7 @@ export async function getAgentTenantContext(tenantId: string): Promise<TenantCon
   return withTenantContext(tenantId, async (tx) => {
     const tenant = await tx.tenant.findUniqueOrThrow({
       where:  { id: tenantId },
-      select: { name: true, currency: true },
+      select: { name: true, currency: true, timezone: true },
     })
 
     const branches = await tx.branch.findMany({
@@ -35,6 +35,7 @@ export async function getAgentTenantContext(tenantId: string): Promise<TenantCon
       tenantName: tenant.name,
       branches:   branches.map((b) => b.name),
       currency:   tenant.currency,
+      timezone:   tenant.timezone || 'America/Bogota',
     }
   })
 }

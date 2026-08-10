@@ -11,6 +11,16 @@ export interface TenantContext {
   tenantName:  string
   branches:    string[]
   currency:    string
+  /** Zona horaria del tenant (IANA, p. ej. 'America/Bogota'). HU-189. */
+  timezone:    string
+}
+
+/** Fecha y hora actuales legibles en la zona horaria del tenant (evita el desfase UTC). HU-189. */
+function nowInTimezone(timeZone: string): string {
+  const now   = new Date()
+  const fecha = new Intl.DateTimeFormat('es-CO', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(now)
+  const hora  = new Intl.DateTimeFormat('es-CO', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
+  return `${fecha}, ${hora}`
 }
 
 // ─── Prompts por módulo ───────────────────────────────────────────────────────
@@ -163,6 +173,10 @@ function internoPrompt(ctx: TenantContext, areas: string[]): string {
   return `Eres el asistente interno de ${ctx.tenantName}. Ayudas al equipo con todo lo que su rol le permite, usando los módulos del sistema (ventas, compras, inventario, alquileres, finanzas, agenda) como herramientas por detrás. Eres UN SOLO asistente: el usuario nunca elige con qué área hablar; tú resuelves su pregunta con las herramientas disponibles.
 
 Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}
+
+FECHA Y HORA ACTUAL (${ctx.timezone}): ${nowInTimezone(ctx.timezone)}.
+- Usa SIEMPRE esta fecha real para resolver el tiempo relativo ("hoy", "este mes", "esta semana", "el mes pasado", "este año"). No asumas otra fecha ni le pidas al usuario que te confirme la fecha.
+- Si mencionas una fecha o un período en tu respuesta, debe corresponder a esta fecha real. Nunca afirmes datos de un período que no sea el que el usuario pidió respecto a HOY.
 
 ${BASE_RULES}
 TU ALCANCE (según el rol del usuario) — REGLA DURA:
