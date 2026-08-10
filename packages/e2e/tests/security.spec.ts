@@ -56,70 +56,89 @@ test.beforeAll(async () => {
   tenantBId  = authB.user.tenantId
   branchAId  = authA.user.branchId ?? ''
 
-  const ts = Date.now()
-  const c  = api(tokenA)
+  const c = api(tokenA)
 
-  // KIRA — producto
-  const product = await c.post<WithId>('/v1/kira/products', {
-    sku:  `SEC-${ts}`,
-    name: `Producto Seg ${ts}`,
-    unit: 'und',
-  })
-  productId = product.id
+  // Anti-flake: la siembra encadena creaciones dependientes (proveedor→OC, cliente→deal). Bajo la
+  // carga del CI se observó un read-after-write intermitente: la transacción por-request no queda
+  // visible a tiempo para el create siguiente (FK P2003 en la OC o 404 "cliente no encontrado" en el
+  // deal), y falla en un paso distinto en cada intento (firma de flake, no de bug determinista). Se
+  // reintenta TODA la cadena con datos frescos para que un bache transitorio no tumbe el suite; si los
+  // 3 intentos fallan, se relanza el error real.
+  let seedErr: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const ts = Date.now() + attempt
 
-  // NIRA — proveedor + OC borrador
-  const supplier = await c.post<WithId>('/v1/nira/suppliers', {
-    name:  `Proveedor Seg ${ts}`,
-    email: `seg-${ts}@test.nexor.co`,
-  })
-  supplierId = supplier.id
+      // KIRA — producto
+      const product = await c.post<WithId>('/v1/kira/products', {
+        sku:  `SEC-${ts}`,
+        name: `Producto Seg ${ts}`,
+        unit: 'und',
+      })
+      productId = product.id
 
-  const po = await c.post<WithId>('/v1/nira/purchase-orders', {
-    supplierId,
-    branchId: branchAId, // HU-165 — sucursal obligatoria al crear la OC
-    notes: 'OC seguridad HU-086',
-    items: [{ productId: 'seed-e2e-product-001', quantityOrdered: 1, unitCost: 10000 }],
-  })
-  poId = po.id
+      // NIRA — proveedor + OC borrador
+      const supplier = await c.post<WithId>('/v1/nira/suppliers', {
+        name:  `Proveedor Seg ${ts}`,
+        email: `seg-${ts}@test.nexor.co`,
+      })
+      supplierId = supplier.id
 
-  // ARI — cliente + deal
-  const client = await c.post<WithId>('/v1/ari/clients', { name: `Cliente Seg ${ts}` })
-  clientId = client.id
+      const po = await c.post<WithId>('/v1/nira/purchase-orders', {
+        supplierId,
+        branchId: branchAId, // HU-165 — sucursal obligatoria al crear la OC
+        notes: 'OC seguridad HU-086',
+        items: [{ productId: 'seed-e2e-product-001', quantityOrdered: 1, unitCost: 10000 }],
+      })
+      poId = po.id
 
-  const stagesRes  = await c.get('/v1/ari/stages')
-  const stages     = await stagesRes.json() as { data: WithId[] }
-  const stageId    = stages.data[0]?.id ?? ''
+      // ARI — cliente + deal
+      const client = await c.post<WithId>('/v1/ari/clients', { name: `Cliente Seg ${ts}` })
+      clientId = client.id
 
-  const deal = await c.post<WithId>('/v1/ari/deals', {
-    clientId,
-    stageId,
-    title: `Deal Seg ${ts}`,
-    value: 50000,
-  })
-  dealId = deal.id
+      const stagesRes  = await c.get('/v1/ari/stages')
+      const stages     = await stagesRes.json() as { data: WithId[] }
+      const stageId    = stages.data[0]?.id ?? ''
 
-  // AGENDA — cita usando service type y disponibilidad del seed-e2e
-  // La cita es en 14 días a las 10:00 hora Bogotá (= 15:00 UTC con UTC-5)
-  const futureDate = new Date()
-  futureDate.setDate(futureDate.getDate() + 14)
-  const startAt = `${futureDate.toISOString().slice(0, 10)}T15:00:00.000Z`
+      const deal = await c.post<WithId>('/v1/ari/deals', {
+        clientId,
+        stageId,
+        title: `Deal Seg ${ts}`,
+        value: 50000,
+      })
+      dealId = deal.id
 
-  const appt = await c.post<WithId>('/v1/agenda/appointments', {
-    branchId:      branchAId,
-    serviceTypeId: 'seed-e2e-svc-001',
-    startAt,
-    clientName:    `Paciente Seg ${ts}`,
-  })
-  appointmentId = appt.id
+      // AGENDA — cita usando service type y disponibilidad del seed-e2e
+      // La cita es en 14 días a las 10:00 hora Bogotá (= 15:00 UTC con UTC-5)
+      const futureDate = new Date()
+      futureDate.setDate(futureDate.getDate() + 14)
+      const startAt = `${futureDate.toISOString().slice(0, 10)}T15:00:00.000Z`
 
-  // VERA — transacción manual
-  const tx = await c.post<WithId>('/v1/vera/transactions', {
-    type:        'income',
-    amount:      9_999,
-    date:        new Date().toISOString().slice(0, 10),
-    description: `TX seguridad HU-086 ${ts}`,
-  })
-  transactionId = tx.id
+      const appt = await c.post<WithId>('/v1/agenda/appointments', {
+        branchId:      branchAId,
+        serviceTypeId: 'seed-e2e-svc-001',
+        startAt,
+        clientName:    `Paciente Seg ${ts}`,
+      })
+      appointmentId = appt.id
+
+      // VERA — transacción manual
+      const tx = await c.post<WithId>('/v1/vera/transactions', {
+        type:        'income',
+        amount:      9_999,
+        date:        new Date().toISOString().slice(0, 10),
+        description: `TX seguridad HU-086 ${ts}`,
+      })
+      transactionId = tx.id
+
+      seedErr = undefined
+      break
+    } catch (err) {
+      seedErr = err
+      await new Promise((resolve) => setTimeout(resolve, 600 * attempt))
+    }
+  }
+  if (seedErr) throw seedErr
 })
 
 // ── Teardown: limpiar todos los recursos creados ──────────────────────────────
