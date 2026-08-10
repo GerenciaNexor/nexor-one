@@ -40,11 +40,41 @@ const FALLBACK_MSG = 'No pude completar esta solicitud automáticamente. Un ases
 
 // ─── Selector de tools por módulo ─────────────────────────────────────────────
 
+/** Catálogo de tools por módulo interno de negocio. */
+const MODULE_CATALOG: Record<'KIRA' | 'NIRA' | 'ARI' | 'AGENDA' | 'VERA', AgentTool[]> = {
+  KIRA: KIRA_TOOLS, NIRA: NIRA_TOOLS, ARI: ARI_TOOLS, AGENDA: AGENDA_TOOLS, VERA: VERA_TOOLS,
+}
+
+/** Una tool es de SOLO LECTURA si consulta/lista/ve (no modifica datos). */
+const READ_ONLY_TOOL = /^(consultar|listar|ver|buscar|comparar)_/
+
+/**
+ * Catálogo del agente interno UNIFICADO (HU-187): unión de las tools de los módulos permitidos por
+ * el ROL del usuario. Los módulos con acceso TOTAL aportan todas sus tools; los de SOLO LECTURA solo
+ * sus tools de consulta. Incluye EMPRESA_TOOLS (sucursales/usuarios, con sus propios guards por rol).
+ * El agente jamás recibe tools de un módulo fuera del alcance → no puede consultar áreas sin permiso.
+ */
+export function buildInternalTools(full: AgentModule[], read: AgentModule[]): AgentTool[] {
+  const byName = new Map<string, AgentTool>()
+  for (const m of full) {
+    if (m in MODULE_CATALOG) for (const t of MODULE_CATALOG[m as keyof typeof MODULE_CATALOG]) byName.set(t.definition.name, t)
+  }
+  for (const m of read) {
+    if (m in MODULE_CATALOG) for (const t of MODULE_CATALOG[m as keyof typeof MODULE_CATALOG]) {
+      if (READ_ONLY_TOOL.test(t.definition.name) && !byName.has(t.definition.name)) byName.set(t.definition.name, t)
+    }
+  }
+  for (const t of EMPRESA_TOOLS) byName.set(t.definition.name, t)
+  return [...byName.values()]
+}
+
 function getToolsForModule(module: AgentModule): AgentTool[] {
   // ATENCION (HU-180) es de cara al CLIENTE: NO hereda EMPRESA_TOOLS en bloque, porque
   // consultar_usuarios expone datos de empleados (frontera de información). Su catálogo ya
   // es autosuficiente e incluye consultar_sucursales (público).
   if (module === 'ATENCION') return ATENCION_TOOLS
+  // INTERNO (HU-187) usa buildInternalTools según el rol; runAgent lo maneja aparte. Defensivo:
+  if (module === 'INTERNO')  return [...EMPRESA_TOOLS]
 
   const moduleTools: AgentTool[] = (() => {
     switch (module) {
@@ -194,7 +224,10 @@ export async function notifyFallback(
 export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResult> {
   const startTime  = Date.now()
   const client     = getAnthropicClient()
-  const agentTools = getToolsForModule(input.module)
+  // INTERNO (HU-187): catálogo unificado según el alcance del rol; el resto, tools de su módulo.
+  const agentTools = input.module === 'INTERNO'
+    ? buildInternalTools(input.internalFull ?? [], input.internalRead ?? [])
+    : getToolsForModule(input.module)
   const toolMap    = new Map(agentTools.map((t) => [t.definition.name, t]))
 
   // ── 1. Verificar que el módulo está habilitado para el tenant ────────────
@@ -207,7 +240,9 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   // no es un módulo de negocio, no tiene FeatureFlag y no se gestiona por tenant.
   // Se exceptúa del gate (siempre disponible: si llegó un mensaje por WhatsApp/Gmail,
   // el canal ya está configurado para el tenant).
-  const featureFlag = input.module === 'ATENCION'
+  // ATENCION e INTERNO (HU-180/187) no son módulos de negocio con FeatureFlag propio: se exceptúan
+  // del gate. INTERNO ya está acotado por el alcance del rol (internalFull/internalRead).
+  const featureFlag = (input.module === 'ATENCION' || input.module === 'INTERNO')
     ? { enabled: true }
     : await directPrisma.featureFlag.findFirst({
         where:  { tenantId: input.tenantId, module: input.module as never },
@@ -274,7 +309,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
 
   // El canal se pasa al prompt: el agente de ATENCION lo usa para saber que atiende a un
   // cliente externo por WhatsApp/Gmail (corrige la ceguera de canal detectada en HU-179).
-  const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel)
+  const systemPrompt = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas)
 
   // ── 3. Bucle de conversación ───────────────────────────────────────────────
   // El historial previo (memoria de la conversación — HU-183 interno, HU-186 WhatsApp/Gmail) se

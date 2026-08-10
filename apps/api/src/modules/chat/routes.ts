@@ -16,7 +16,8 @@ import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../../lib/guards'
 import { runAgent } from '../agents/agent.runner'
 import {
-  resolveModuleForChat,
+  allowedModulesForUser,
+  scopeAreaLabels,
   saveChatMessage,
   getChatHistory,
   getChatHistoryForUser,
@@ -79,27 +80,23 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       sessionId = created.id
     }
 
-    const resolution = await resolveModuleForChat(role, userModule, tenantId, message)
+    // HU-187 — agente interno UNIFICADO gobernado por el ROL: el alcance (áreas que puede consultar)
+    // se deriva del rol + módulo del usuario. No se enruta a un solo módulo.
+    const scope = await allowedModulesForUser(role, userModule, tenantId)
+    const areas = scopeAreaLabels(scope)
 
     // Memoria del chat (mensajes previos) ANTES de guardar el mensaje actual.
     const history = await getSessionMemory(sessionId, tenantId)
     // Si el chat aún tiene el título por defecto, ponerle el primer mensaje.
     await autoTitleFromFirstMessage(sessionId, message)
 
-    await saveChatMessage({ tenantId, userId, chatSessionId: sessionId, role: 'user', content: message, module: resolution.module })
-
-    if (!resolution.hasAccess) {
-      const noAccessReply = `No tienes acceso al módulo ${resolution.module}. Solo puedes consultar información de tu módulo asignado.`
-      await saveChatMessage({ tenantId, userId, chatSessionId: sessionId, role: 'assistant', content: noAccessReply })
-      await touchChatSession(sessionId)
-      return reply.code(200).send({ reply: noAccessReply, module: resolution.module, chatSessionId: sessionId })
-    }
+    await saveChatMessage({ tenantId, userId, chatSessionId: sessionId, role: 'user', content: message, module: 'INTERNO' })
 
     let agentReply = TIMEOUT_REPLY
 
     const agentPromise = runAgent({
       tenantId,
-      module:        resolution.module,
+      module:        'INTERNO',
       channel:       'internal',
       message,
       senderId:      userId,
@@ -107,6 +104,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       userId,
       userRole:      role,
       history,
+      internalFull:  scope.full,
+      internalRead:  scope.read,
+      internalAreas: areas,
     })
 
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_TIMEOUT_MS))
@@ -116,7 +116,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     await saveChatMessage({ tenantId, userId, chatSessionId: sessionId, role: 'assistant', content: agentReply })
     await touchChatSession(sessionId)
 
-    return reply.code(200).send({ reply: agentReply, module: resolution.module, chatSessionId: sessionId })
+    return reply.code(200).send({ reply: agentReply, module: 'INTERNO', chatSessionId: sessionId })
   })
 
   // ─── Sesiones / chats (HU-183) ──────────────────────────────────────────────

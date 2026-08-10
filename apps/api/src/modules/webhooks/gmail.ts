@@ -123,8 +123,11 @@ export default async function gmailWebhookRoutes(app: FastifyInstance): Promise<
     // ── 4. Identificar tenant por emailAddress ──────────────────────────────
     let integration: { id: string; tenantId: string } | null = null
     try {
+      // HU-188: NO se filtra por isActive (mismo motivo que WhatsApp). El flag de salud caído no debe
+      // descartar el correo entrante aquí; se encola para cualquier integración existente y el worker
+      // decide. Solo una cuenta desconectada de verdad (sin fila) se descarta.
       integration = await directPrisma.integration.findFirst({
-        where:  { channel: 'GMAIL', identifier: emailAddress, isActive: true },
+        where:  { channel: 'GMAIL', identifier: emailAddress },
         select: { id: true, tenantId: true },
       })
     } catch (err) {

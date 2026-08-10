@@ -43,6 +43,7 @@ enum ModuleName {
   AGENDA
   VERA
   ATENCION // HU-180 — agente de atención al cliente para canales externos (WhatsApp/Gmail)
+  INTERNO  // HU-187 — agente interno unificado del dashboard (todos los módulos según el rol)
 }
 
 enum Channel {

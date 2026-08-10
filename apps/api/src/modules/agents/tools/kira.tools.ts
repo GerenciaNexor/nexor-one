@@ -605,6 +605,59 @@ const consultarReporteAbc: AgentTool = {
   },
 }
 
+// ─── consultar_alquileres (HU-187) ────────────────────────────────────────────
+
+const consultarAlquileres: AgentTool = {
+  definition: {
+    name:        'consultar_alquileres',
+    description: 'Lista los alquileres ACTIVOS (productos prestados/rentados aún no devueltos): producto, cantidad, a quién, fecha de alquiler y de vencimiento. Úsala para "¿qué tengo alquilado?", "¿qué está prestado?" o "¿qué alquileres están vencidos?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        productName:  { type: 'string',  description: 'Filtrar por nombre de producto (opcional)' },
+        soloVencidos: { type: 'boolean', description: 'Si es true, solo los que ya pasaron su fecha de vencimiento' },
+      },
+    },
+  },
+
+  async execute({ productName, soloVencidos }, tenantId) {
+    const now = new Date()
+    const rentals = await prisma.rental.findMany({
+      where: {
+        tenantId,
+        status:     'active',
+        returnedAt: null,
+        ...(productName  ? { product: { name: { contains: String(productName), mode: 'insensitive' } } } : {}),
+        ...(soloVencidos ? { dueAt: { lt: now } } : {}),
+      },
+      select: {
+        quantity: true, rentedAt: true, dueAt: true,
+        product: { select: { name: true, sku: true } },
+        client:  { select: { name: true } },
+        branch:  { select: { name: true } },
+      },
+      orderBy: { rentedAt: 'desc' },
+      take:    100,
+    })
+
+    if (rentals.length === 0) return { total: 0, alquileres: [], mensaje: 'No hay alquileres activos.' }
+
+    return {
+      total: rentals.length,
+      alquileres: rentals.map((r) => ({
+        producto:    r.product.name,
+        sku:         r.product.sku,
+        cantidad:    Number(r.quantity),
+        cliente:     r.client?.name ?? 'Sin registrar',
+        sucursal:    r.branch.name,
+        alquiladoEl: r.rentedAt.toISOString().slice(0, 10),
+        venceEl:     r.dueAt ? r.dueAt.toISOString().slice(0, 10) : null,
+        vencido:     r.dueAt ? r.dueAt < now : false,
+      })),
+    }
+  },
+}
+
 // ─── Catálogo KIRA ────────────────────────────────────────────────────────────
 
 export const KIRA_TOOLS: AgentTool[] = [
@@ -617,4 +670,5 @@ export const KIRA_TOOLS: AgentTool[] = [
   consultarRotacionProductos,
   consultarLotes,
   consultarReporteAbc,
+  consultarAlquileres,
 ]

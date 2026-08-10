@@ -144,10 +144,16 @@ export default async function whatsappWebhookRoutes(app: FastifyInstance): Promi
         if (!phoneNumberId) continue
 
         // ── 5. Identificar tenant ───────────────────────────────────────────
+        // HU-188: NO se filtra por isActive. El flag es un estado de salud (se marca "caído" ante un
+        // bache transitorio, p. ej. al arrancar tras un deploy), NO un interruptor de encendido. Si se
+        // filtrara, un mensaje entrante se descartaría AQUÍ (antes de encolar) mientras el flag esté
+        // caído, y solo "Verificar" lo destrababa. Se encola para cualquier integración EXISTENTE; el
+        // worker ignora el flag al enviar (cee2b07) y si el token está vencido, el envío falla y se
+        // marca caído. Una integración desconectada de verdad no tiene fila → findFirst null → se descarta.
         let integration: { id: string; tenantId: string } | null = null
         try {
           integration = await directPrisma.integration.findFirst({
-            where:  { channel: 'WHATSAPP', identifier: phoneNumberId, isActive: true },
+            where:  { channel: 'WHATSAPP', identifier: phoneNumberId },
             select: { id: true, tenantId: true },
           })
         } catch (err) {

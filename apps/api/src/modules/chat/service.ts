@@ -17,102 +17,72 @@ import type { Role } from '@nexor/shared'
 import { prisma } from '../../lib/prisma'
 import type { AgentModule } from '../agents/types'
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// ─── Alcance del agente interno unificado por ROL (HU-187) ────────────────────
+// El chat interno es UN solo agente que usa los módulos como herramientas, limitado a las áreas
+// donde el usuario tiene permiso según su rol (README_ROLES). No se inventa un sistema nuevo: se
+// reutiliza rol + user.module + feature flags del tenant.
 
-const PRIORITY: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA']
+/** Módulos internos (áreas) del sistema. */
+export const INTERNAL_MODULES: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA']
 
-const KEYWORDS: Partial<Record<AgentModule, string[]>> = {
-  KIRA:   ['stock', 'inventario', 'producto', 'entrada', 'salida', 'unidades',
-            'bodega', 'almacén', 'cantidad', 'existencia', 'mercancía', 'lote', 'rotación'],
-  NIRA:   ['compra', 'proveedor', 'orden', 'cotización', 'precio', 'pedido',
-            'factura', 'surtir', ' oc ', 'suministro', 'abastec'],
-  ARI:    ['cliente', 'venta', 'cotizar', 'lead', 'oportunidad', 'oferta',
-            'presupuesto', 'negocio', 'contrato', 'deal', 'pipeline'],
-  AGENDA: ['cita', 'turno', 'agendar', 'horario', 'disponibilidad', 'reservar',
-            'appointment', 'agenda'],
-  VERA:   ['transacción', 'transacciones', 'financiero', 'finanzas', 'ingreso',
-            'egreso', 'gasto', 'utilidad', 'margen', 'flujo', 'caja', 'presupuesto vera',
-            'balance', 'rentabilidad', 'kpi financiero'],
+/** Etiqueta legible de cada área (para el prompt del agente). Inventario incluye alquileres. */
+export const MODULE_LABEL: Record<string, string> = {
+  KIRA: 'Inventario y alquileres', NIRA: 'Compras', ARI: 'Ventas', AGENDA: 'Agenda', VERA: 'Finanzas',
 }
 
-/** Elige el módulo con mayor score de keywords; en empate respeta PRIORITY. */
-function scoreKeywords(message: string, candidates: AgentModule[]): AgentModule | null {
-  if (candidates.length === 0) return null
-  if (candidates.length === 1) return candidates[0]!
-
-  const lower = message.toLowerCase()
-  const scores = new Map<AgentModule, number>()
-
-  for (const mod of candidates) {
-    const hits = (KEYWORDS[mod] ?? []).filter((kw) => lower.includes(kw)).length
-    scores.set(mod, hits)
-  }
-
-  // Si ningún candidato tiene keywords relevantes → null (usar default externo)
-  const maxScore = Math.max(...scores.values())
-  if (maxScore === 0) return null
-
-  return candidates.reduce((a, b) => (scores.get(b) ?? 0) > (scores.get(a) ?? 0) ? b : a)
+/** Módulos donde un AREA_MANAGER tiene acceso de SOLO LECTURA (README_ROLES). */
+const READ_RELATED: Partial<Record<AgentModule, AgentModule[]>> = {
+  ARI:    ['KIRA', 'VERA'],
+  NIRA:   ['KIRA', 'VERA'],
+  KIRA:   ['NIRA'],
+  VERA:   ['ARI', 'NIRA'],
+  AGENDA: [],
 }
 
-// ─── Resolución de módulo ─────────────────────────────────────────────────────
-
-export interface ModuleResolution {
-  module:    AgentModule
-  hasAccess: boolean
+/** Alcance del agente interno: módulos con acceso total y módulos de solo lectura. */
+export interface InternalScope {
+  full: AgentModule[]   // acceso total (todas las tools del módulo)
+  read: AgentModule[]   // solo lectura (solo tools de consulta)
 }
 
 /**
- * Determina el módulo al que se enruta el mensaje del chat interno.
- *
- * @param role       - Rol del usuario autenticado
- * @param userModule - Módulo asignado al usuario (null para BRANCH_ADMIN+)
- * @param tenantId   - Para obtener los módulos activos del tenant
- * @param message    - Contenido del mensaje (para keyword scoring)
+ * Deriva del ROL del usuario las áreas que el agente interno puede consultar (regla dura HU-187):
+ *   - TENANT_ADMIN / SUPER_ADMIN / BRANCH_ADMIN → todas las áreas activas del tenant.
+ *   - AREA_MANAGER → su módulo (total) + sus módulos relacionados en SOLO LECTURA.
+ *   - OPERATIVE → solo su módulo.
+ * Todo intersectado con los módulos ACTIVOS del tenant (feature flags). El agente nunca recibe tools
+ * de un módulo fuera de este alcance → no puede consultar áreas para las que el usuario no tiene permiso.
  */
-export async function resolveModuleForChat(
-  role:       Role,
-  userModule: string | null | undefined,
-  tenantId:   string,
-  message:    string,
-): Promise<ModuleResolution> {
-  // Módulos activos del tenant
-  const flags = await prisma.featureFlag.findMany({
-    where:  { tenantId, enabled: true },
-    select: { module: true },
-  })
-  const activeModules = PRIORITY.filter((m) => flags.some((f) => f.module === m))
-  const fallback: AgentModule = activeModules[0] ?? 'KIRA'
+export async function allowedModulesForUser(
+  role: Role, userModule: string | null | undefined, tenantId: string,
+): Promise<InternalScope> {
+  const flags  = await prisma.featureFlag.findMany({ where: { tenantId, enabled: true }, select: { module: true } })
+  const active = INTERNAL_MODULES.filter((m) => flags.some((f) => f.module === m))
 
-  // ── OPERATIVE — solo su módulo asignado ───────────────────────────────────
-  if (role === 'OPERATIVE') {
-    const ownModule = (userModule ?? '') as AgentModule
-    if (!ownModule || !PRIORITY.includes(ownModule)) {
-      // Sin módulo asignado — devuelve el fallback del tenant sin acceso
-      return { module: fallback, hasAccess: false }
-    }
-
-    // Detectar si el mensaje intenta acceder a otro módulo
-    const detected = scoreKeywords(message, PRIORITY.filter((m) => m !== ownModule))
-    if (detected) {
-      // Intento de acceso a módulo ajeno → no access
-      return { module: detected, hasAccess: false }
-    }
-
-    return { module: ownModule, hasAccess: true }
+  if (role === 'TENANT_ADMIN' || role === 'SUPER_ADMIN' || role === 'BRANCH_ADMIN') {
+    return { full: active, read: [] }
   }
 
-  // ── AREA_MANAGER — puede usar cualquier módulo activo del tenant ───────────
+  const own = (userModule ?? '') as AgentModule
+  if (!own || !active.includes(own)) return { full: [], read: [] }
+
   if (role === 'AREA_MANAGER') {
-    const detected = scoreKeywords(message, activeModules)
-    // Si no hay keywords de otro módulo, usa su propio módulo asignado (o fallback)
-    const resolved = detected ?? (userModule as AgentModule | undefined) ?? fallback
-    return { module: resolved, hasAccess: true }
+    const read = (READ_RELATED[own] ?? []).filter((m) => active.includes(m) && m !== own)
+    return { full: [own], read }
   }
+  // OPERATIVE
+  return { full: [own], read: [] }
+}
 
-  // ── BRANCH_ADMIN / TENANT_ADMIN / SUPER_ADMIN — sin restricciones ─────────
-  const detected = scoreKeywords(message, activeModules)
-  return { module: detected ?? fallback, hasAccess: true }
+/** Etiquetas legibles de las áreas accesibles (full + read), para el prompt del agente. */
+export function scopeAreaLabels(scope: InternalScope): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const m of [...scope.full, ...scope.read]) {
+    const label = MODULE_LABEL[m] ?? m
+    if (!seen.has(label)) { seen.add(label); out.push(label) }
+  }
+  return out
 }
 
 // ─── Operaciones de chat_messages ─────────────────────────────────────────────

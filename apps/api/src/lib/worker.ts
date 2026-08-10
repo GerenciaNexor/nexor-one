@@ -19,7 +19,7 @@ import type { ModuleName } from '@prisma/client'
 import { QUEUE_NAME, redisConnection, type IncomingMessageJob } from './queue'
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
-import { markIntegrationDown } from './integration-status'
+import { markIntegrationDown, markIntegrationHealthy } from './integration-status'
 import { isOwnGmailMessage } from './gmail-loop-guard'
 import { runAgent } from '../modules/agents/agent.runner'
 import type { AgentModule } from '../modules/agents/types'
@@ -55,11 +55,9 @@ function extractSenderName(fromHeader: string): string | undefined {
 }
 
 /**
- * Encuentra la conversación activa más reciente para el remitente dado,
- * o crea una nueva si no existe o expiró la ventana de inactividad.
- *
- * - WhatsApp: ventana de 24 horas de inactividad (lastMessageAt)
- * - Gmail: sin ventana de tiempo — agrupa por email del remitente
+ * Devuelve la conversación ÚNICA y persistente del contacto (por tenant, canal y remitente),
+ * creándola si no existe. HU-186: sin ventana de tiempo ni filtro por estado — los mensajes del
+ * mismo número/correo se agrupan siempre en la misma conversación, pasen minutos o días.
  *
  * Usa directPrisma porque el worker corre fuera del contexto de tenant HTTP.
  */
@@ -727,7 +725,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     // vencido, el envío falla y se marca caído (sin relanzar) — pero el agente ya respondió.
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP' },
-      select: { tokenEncrypted: true },
+      select: { tokenEncrypted: true, status: true, identifier: true },
     })
     if (!integration?.tokenEncrypted) {
       throw new Error(`No hay integración de WhatsApp — tenant: ${d.tenantId}`)
@@ -866,6 +864,12 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     try {
       await sendWhatsAppReply(d.phoneNumberId, d.from, result.reply, accessToken)
 
+      // HU-188: si el canal estaba marcado caído (flag por un bache transitorio) pero acaba de enviar
+      // con éxito, se AUTO-RECUPERA el estado → el usuario no tiene que darle "Verificar".
+      if (integration.status !== 'connected') {
+        await markIntegrationHealthy({ id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP', identifier: integration.identifier ?? d.phoneNumberId }).catch(() => {})
+      }
+
       // Marcar conversación como replied si el agente respondió sin fallback
       if (conversationId && !result.hitMaxTurns) {
         directPrisma.conversation.update({
@@ -892,7 +896,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     // intentar responder; el fetch va antes del bucle, así un fallo aquí no consume ningún mensaje.
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL' },
-      select: { tokenEncrypted: true, identifier: true, metadata: true },
+      select: { tokenEncrypted: true, identifier: true, metadata: true, status: true },
     })
 
     if (!integration?.tokenEncrypted) {
@@ -1188,6 +1192,11 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
                 tenantId: d.tenantId,
                 threadId,
               }))
+
+              // HU-188: envío exitoso → auto-recuperar el flag si estaba caído (sin "Verificar").
+              if (integration.status !== 'connected') {
+                await markIntegrationHealthy({ id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL', identifier: integration.identifier ?? '' }).catch(() => {})
+              }
 
               if (capConvId) {
                 await directPrisma.conversation.update({
