@@ -147,9 +147,113 @@ const consultarKpisFinancieros: AgentTool = {
   },
 }
 
+// ─── consultar_presupuestos (HU-190) ──────────────────────────────────────────
+// Presupuestos mensuales (VERA → Presupuestos) vs. gasto real de ese mes.
+
+const consultarPresupuestos: AgentTool = {
+  definition: {
+    name: 'consultar_presupuestos',
+    description: 'Lista los presupuestos mensuales configurados y compara cada uno contra el gasto real (egresos) de ese mes. Úsala para "¿cuál es mi presupuesto de este mes?", "¿cómo voy contra el presupuesto?" o "¿me pasé del presupuesto?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        year:     { type: 'number', description: 'Año a consultar (por defecto: el año actual)' },
+        branchId: { type: 'string', description: 'Filtrar por sucursal (opcional)' },
+      },
+    },
+  },
+
+  async execute({ year, branchId }, tenantId) {
+    const now  = new Date()
+    const yr   = Number(year ?? now.getFullYear())
+    const budgets = await prisma.monthlyBudget.findMany({
+      where: { tenantId, year: yr, ...(branchId ? { branchId: branchId as string } : {}) },
+      include: { branch: { select: { name: true } } },
+      orderBy: [{ month: 'asc' }],
+    })
+
+    if (budgets.length === 0) return { total: 0, presupuestos: [], message: `No hay presupuestos configurados para ${yr}.` }
+
+    const presupuestos = await Promise.all(budgets.map(async (b) => {
+      const gte = new Date(yr, b.month - 1, 1)
+      const lte = new Date(yr, b.month, 0, 23, 59, 59, 999)
+      const spent = await prisma.transaction.aggregate({
+        where: { tenantId, type: 'expense', date: { gte, lte }, ...(b.branchId ? { branchId: b.branchId } : {}) },
+        _sum: { amount: true },
+      })
+      const gasto  = Number(spent._sum.amount ?? 0)
+      const monto  = Number(b.amount)
+      return {
+        año:          yr,
+        mes:          b.month,
+        sucursal:     b.branch?.name ?? 'Toda la empresa',
+        presupuesto:  monto.toFixed(2),
+        gastoReal:    gasto.toFixed(2),
+        disponible:   (monto - gasto).toFixed(2),
+        usado:        monto > 0 ? `${Math.round((gasto / monto) * 1000) / 10}%` : 'N/A',
+        excedido:     gasto > monto,
+        moneda:       b.currency,
+      }
+    }))
+
+    return { total: presupuestos.length, presupuestos }
+  },
+}
+
+// ─── consultar_centros_costo (HU-190) ─────────────────────────────────────────
+// Centros de costo (VERA → Centros de costo) con el gasto acumulado de cada uno.
+
+const consultarCentrosCosto: AgentTool = {
+  definition: {
+    name: 'consultar_centros_costo',
+    description: 'Lista los centros de costo y el gasto (egresos) acumulado de cada uno en un rango de fechas. Úsala para "¿cuánto he gastado por centro de costo?" o "¿en qué centro de costo va más plata?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Fecha inicial YYYY-MM-DD (por defecto: primer día del mes actual)' },
+        to:   { type: 'string', description: 'Fecha final YYYY-MM-DD (por defecto: hoy)' },
+      },
+    },
+  },
+
+  async execute({ from, to }, tenantId) {
+    const now = new Date()
+    const gte = from ? new Date(from as string) : new Date(now.getFullYear(), now.getMonth(), 1)
+    const lte = to   ? new Date(new Date(to as string).setHours(23, 59, 59, 999)) : now
+
+    const centers = await prisma.costCenter.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true, description: true },
+      orderBy: { name: 'asc' },
+    })
+    if (centers.length === 0) return { total: 0, centrosCosto: [], message: 'No hay centros de costo configurados.' }
+
+    const byCenter = await prisma.transaction.groupBy({
+      by:    ['costCenterId'],
+      where: { tenantId, type: 'expense', date: { gte, lte }, costCenterId: { in: centers.map((c) => c.id) } },
+      _sum:  { amount: true },
+      _count: { id: true },
+    })
+    const map = new Map(byCenter.map((r) => [r.costCenterId, r]))
+
+    return {
+      periodo: { desde: gte.toISOString().split('T')[0], hasta: lte.toISOString().split('T')[0] },
+      total:   centers.length,
+      centrosCosto: centers.map((c) => ({
+        nombre:      c.name,
+        descripcion: c.description ?? null,
+        gasto:       Number(map.get(c.id)?._sum.amount ?? 0).toFixed(2),
+        registros:   map.get(c.id)?._count.id ?? 0,
+      })),
+    }
+  },
+}
+
 // ─── Catálogo VERA ────────────────────────────────────────────────────────────
 
 export const VERA_TOOLS: AgentTool[] = [
   consultarTransacciones,
   consultarKpisFinancieros,
+  consultarPresupuestos,
+  consultarCentrosCosto,
 ]

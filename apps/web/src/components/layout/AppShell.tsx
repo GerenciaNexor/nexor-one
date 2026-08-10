@@ -11,6 +11,7 @@ import { FloatingChat } from '@/components/chat/FloatingChat'
 import { useChatStore } from '@/store/chat'
 import { useTheme } from '@/hooks/useTheme'
 import { getCache, setCache } from '@/lib/page-cache'
+import { AccountModal } from '@/components/ui/AccountModal'
 
 // ─── Normalización de links de notificaciones (compatibilidad con links legacy) ─
 
@@ -134,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifLoading, setNotifLoading] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
   // Feature flags: que modulos mostrar en la sidebar.
@@ -257,6 +259,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const activeModules = MODULES.filter((m) => flags[m.key])
+
+  const userInitials = (() => {
+    const parts = (user?.name ?? '').trim().split(/\s+/)
+    return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·'
+  })()
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
@@ -430,10 +437,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
 
-        {/* Nombre del usuario en el pie de la sidebar */}
-        <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-700">
-          <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">{user?.name}</p>
-          <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">{user?.role}</p>
+        {/* Pie: usuario. Click → modal "Mi cuenta" (info básica + cambiar contraseña).
+            Disponible para CUALQUIER rol (incluye OPERATIVE). */}
+        <div className="border-t border-slate-200 p-3 dark:border-slate-700">
+          <button
+            onClick={() => setAccountOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-700"
+            aria-label="Ver mi cuenta"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+              {userInitials}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-300">{user?.name}</span>
+              <span className="mt-0.5 block truncate text-xs text-slate-400 dark:text-slate-500">{user?.role}</span>
+            </span>
+          </button>
         </div>
       </aside>
 
@@ -584,6 +603,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           una interfaz de mensajería: la Bandeja (/inbox), donde su FAB tapaba el botón "Enviar",
           y el Chat IA completo (/chat), donde el FAB es redundante. */}
       {!pathname.startsWith('/inbox') && !pathname.startsWith('/chat') && <FloatingChat />}
+
+      {accountOpen && user && <AccountModal user={user} onClose={() => setAccountOpen(false)} />}
     </div>
   )
 }

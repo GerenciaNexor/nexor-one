@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { getSystemPrompt, type TenantContext } from './prompts'
 import { ATENCION_TOOLS } from './tools/atencion.tools'
 
-const ctx: TenantContext = { tenantName: 'Demo SAS', branches: ['Sede Principal'], currency: 'COP' }
+const ctx: TenantContext = { tenantName: 'Demo SAS', branches: ['Sede Principal'], currency: 'COP', timezone: 'America/Bogota' }
 
 describe('HU-180 — persona del agente de atención (ATENCION)', () => {
   it('habla en nombre de la empresa y es consciente del canal', () => {

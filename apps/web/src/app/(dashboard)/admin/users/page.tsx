@@ -6,13 +6,14 @@ import { useAuthStore } from '@/store/auth'
 import { SkeletonRows } from '@/components/ui/SkeletonRows'
 import { getCache, setCache } from '@/lib/page-cache'
 import { Portal } from '@/components/ui/Portal'
+import { ChangePasswordModal } from '@/components/ui/ChangePasswordModal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type UserRole   = 'TENANT_ADMIN' | 'BRANCH_ADMIN' | 'AREA_MANAGER' | 'OPERATIVE'
 type ModuleName = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA'
 
-interface Branch { id: string; name: string }
+interface Branch { id: string; name: string; isActive: boolean }
 
 interface User {
   id:          string
@@ -190,9 +191,12 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               >
                 <option value="">Sin asignar</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
+                {/* Solo sucursales ACTIVAS. Al editar, se conserva la ya asignada aunque esté inactiva. */}
+                {branches
+                  .filter((b) => b.isActive || b.id === form.branchId)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}{!b.isActive ? ' (inactiva)' : ''}</option>
+                  ))}
               </select>
             </div>
           )}
@@ -256,6 +260,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading]   = useState(!getCache<User[]>('admin-users'))
   const [search, setSearch]     = useState('')
   const [modal, setModal]       = useState<{ open: boolean; user: User | null }>({ open: false, user: null })
+  const [pwOpen, setPwOpen]     = useState(false)
 
   function load(silent = false) {
     if (!silent) setLoading(true)
@@ -358,7 +363,12 @@ export default function AdminUsersPage() {
                       {u.isActive ? 'Activo' : 'Inactivo'}
                     </span>
                     {isSelf ? (
-                      <span className="text-xs text-slate-400">Tu cuenta</span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs text-slate-400">Tu cuenta</span>
+                        <button onClick={() => setPwOpen(true)} className="rounded-md px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                          Cambiar contraseña
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => setModal({ open: true, user: u })}
@@ -424,7 +434,12 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-5 py-3 text-right">
                       {isSelf ? (
-                        <span className="text-xs text-slate-400">Tu cuenta</span>
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-slate-400">Tu cuenta</span>
+                          <button onClick={() => setPwOpen(true)} className="rounded-md px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                            Cambiar contraseña
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => setModal({ open: true, user: u })}
@@ -451,6 +466,9 @@ export default function AdminUsersPage() {
           onSuccess={handleSuccess}
         />
       )}
+
+      {/* Cambiar mi contraseña */}
+      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   )
 }

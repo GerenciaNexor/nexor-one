@@ -565,6 +565,69 @@ const consultarReporteCostos: AgentTool = {
   },
 }
 
+// ─── consultar_alquileres_entrantes (HU-190) ──────────────────────────────────
+// Compras → Alquileres entrantes (HU-175-178): lo que NEXOR alquiló DE un tercero.
+// Distinto de los alquileres SALIENTES de KIRA (lo que NEXOR presta a sus clientes).
+
+const consultarAlquileresEntrantes: AgentTool = {
+  definition: {
+    name:        'consultar_alquileres_entrantes',
+    description: 'Lista los alquileres ENTRANTES (lo que la empresa ha alquilado/rentado DE un tercero o proveedor externo): qué se rentó, cantidad, a quién, costo, fecha de devolución y estado. Úsala para "¿qué he alquilado de un externo?", "¿qué le rentamos a un proveedor?" o "¿qué alquileres entrantes están por vencer?". NO confundir con consultar_alquileres (lo que NOSOTROS prestamos a clientes).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        soloActivos: { type: 'boolean', description: 'Si es true, solo los alquileres activos (aún no devueltos). Por defecto trae todos.' },
+        busqueda:    { type: 'string',  description: 'Filtrar por proyecto o nombre del tercero/proveedor (opcional)' },
+      },
+    },
+  },
+
+  async execute({ soloActivos, busqueda }, tenantId) {
+    const now = new Date()
+    const q = busqueda ? String(busqueda) : undefined
+    const rentals = await prisma.incomingRental.findMany({
+      where: {
+        tenantId,
+        ...(soloActivos ? { status: 'active' } : {}),
+        ...(q ? { OR: [
+          { project:        { contains: q, mode: 'insensitive' } },
+          { thirdPartyName: { contains: q, mode: 'insensitive' } },
+          { description:    { contains: q, mode: 'insensitive' } },
+          { supplier: { name: { contains: q, mode: 'insensitive' } } },
+        ] } : {}),
+      },
+      select: {
+        description: true, quantity: true, project: true, returnDate: true,
+        rentalCost: true, deposit: true, status: true, thirdPartyName: true,
+        supplier: { select: { name: true } },
+        branch:   { select: { name: true } },
+      },
+      orderBy: [{ status: 'asc' }, { returnDate: 'asc' }],
+      take:    100,
+    })
+
+    if (rentals.length === 0) {
+      return { total: 0, alquileresEntrantes: [], mensaje: 'No hay alquileres entrantes registrados.' }
+    }
+
+    return {
+      total: rentals.length,
+      alquileresEntrantes: rentals.map((r) => ({
+        descripcion: r.description,
+        cantidad:    Number(r.quantity),
+        tercero:     r.supplier?.name ?? r.thirdPartyName ?? 'Sin registrar',
+        proyecto:    r.project,
+        costo:       Number(r.rentalCost),
+        deposito:    Number(r.deposit),
+        sucursal:    r.branch?.name ?? null,
+        devolucion:  r.returnDate.toISOString().slice(0, 10),
+        estado:      r.status === 'returned' ? 'devuelto' : 'activo',
+        vencido:     r.status === 'active' && r.returnDate < now,
+      })),
+    }
+  },
+}
+
 // ─── Catálogo NIRA ────────────────────────────────────────────────────────────
 
 export const NIRA_TOOLS: AgentTool[] = [
@@ -576,4 +639,5 @@ export const NIRA_TOOLS: AgentTool[] = [
   consultarOrdenesCompra,
   consultarRankingProveedores,
   consultarReporteCostos,
+  consultarAlquileresEntrantes,
 ]

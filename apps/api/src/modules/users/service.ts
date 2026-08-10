@@ -49,12 +49,23 @@ export async function listUsers(
   return { data, total, page, limit }
 }
 
+/**
+ * Valida que la sucursal exista en el tenant y esté ACTIVA. No se puede asignar un usuario a una
+ * sucursal inactiva/desactivada. Lanza 400 si no existe o está inactiva.
+ */
+async function assertBranchAssignable(tenantId: string, branchId: string): Promise<void> {
+  const branch = await prisma.branch.findFirst({ where: { id: branchId, tenantId }, select: { isActive: true } })
+  if (!branch)          throw { statusCode: 400, message: 'La sucursal no existe en tu empresa', code: 'BRANCH_NOT_FOUND' }
+  if (!branch.isActive) throw { statusCode: 400, message: 'No puedes asignar un usuario a una sucursal inactiva', code: 'BRANCH_INACTIVE' }
+}
+
 export async function createUser(tenantId: string, input: CreateUserInput) {
   await assertDemoLimit(tenantId, 'users') // HU-143 — tope del plan demo
   const existing = await prisma.user.findUnique({ where: { email: input.email } })
   if (existing) {
     throw { statusCode: 409, message: 'El email ya esta registrado', code: 'EMAIL_CONFLICT' }
   }
+  if (input.branchId) await assertBranchAssignable(tenantId, input.branchId)
 
   const hash = await bcrypt.hash(input.password, 12)
   return prisma.user.create({
@@ -89,6 +100,9 @@ export async function updateUser(
     throw { statusCode: 403, message: 'No puedes modificar al Super Admin', code: 'FORBIDDEN' }
   }
 
+  // Solo se valida cuando se ASIGNA una sucursal (no al quitarla con null).
+  if (input.branchId) await assertBranchAssignable(tenantId, input.branchId)
+
   const data: Record<string, unknown> = {}
   if (input.name     !== undefined) data['name']     = input.name
   if (input.role     !== undefined) data['role']     = input.role
@@ -102,4 +116,22 @@ export async function updateUser(
     data,
     select: USER_SELECT,
   })
+}
+
+/**
+ * Cambio de la PROPIA contraseña (self-service): valida la contraseña actual antes de setear la nueva.
+ * Cualquier usuario autenticado puede cambiar SU contraseña (no requiere ser admin).
+ */
+export async function changeOwnPassword(
+  tenantId: string, userId: string, currentPassword: string, newPassword: string,
+): Promise<{ ok: true }> {
+  const user = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { passwordHash: true } })
+  if (!user) throw { statusCode: 404, message: 'Usuario no encontrado', code: 'NOT_FOUND' }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash)
+  if (!valid) throw { statusCode: 400, message: 'La contraseña actual es incorrecta', code: 'INVALID_CURRENT_PASSWORD' }
+
+  const hash = await bcrypt.hash(newPassword, 12)
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } })
+  return { ok: true }
 }

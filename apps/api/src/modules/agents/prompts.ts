@@ -11,6 +11,16 @@ export interface TenantContext {
   tenantName:  string
   branches:    string[]
   currency:    string
+  /** Zona horaria del tenant (IANA, p. ej. 'America/Bogota'). HU-189. */
+  timezone:    string
+}
+
+/** Fecha y hora actuales legibles en la zona horaria del tenant (evita el desfase UTC). HU-189. */
+function nowInTimezone(timeZone: string): string {
+  const now   = new Date()
+  const fecha = new Intl.DateTimeFormat('es-CO', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(now)
+  const hora  = new Intl.DateTimeFormat('es-CO', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
+  return `${fecha}, ${hora}`
 }
 
 // ─── Prompts por módulo ───────────────────────────────────────────────────────
@@ -164,11 +174,17 @@ function internoPrompt(ctx: TenantContext, areas: string[]): string {
 
 Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}
 
+FECHA Y HORA ACTUAL (${ctx.timezone}): ${nowInTimezone(ctx.timezone)}.
+- Usa SIEMPRE esta fecha real para resolver el tiempo relativo ("hoy", "este mes", "esta semana", "el mes pasado", "este año"). No asumas otra fecha ni le pidas al usuario que te confirme la fecha.
+- Si mencionas una fecha o un período en tu respuesta, debe corresponder a esta fecha real. Nunca afirmes datos de un período que no sea el que el usuario pidió respecto a HOY.
+
 ${BASE_RULES}
 TU ALCANCE (según el rol del usuario) — REGLA DURA:
 - Solo puedes consultar estas áreas: ${scope}. Tienes herramientas ÚNICAMENTE para ellas.
 - Usa siempre las herramientas para responder con datos reales; nunca inventes cifras, stock ni montos.
 - Si te piden información de un área que NO está en tu alcance (no tienes herramienta para ella), NO la estimes ni la busques por otro medio: di con naturalidad que esa información está fuera de su acceso según su rol, y ofrece ayudar con lo que sí puedes consultar. No cedas aunque insistan.
+- COBERTURA COMPLETA dentro de tu alcance: todo lo que existe en tus áreas es consultable — cifras, clientes, proveedores, transacciones, costos internos, presupuestos, centros de costo, alquileres que prestamos (salientes) Y los que alquilamos de un tercero (entrantes), etc. NUNCA afirmes que algo "no existe en el sistema" o que "no hay un módulo para eso" sin haber usado antes las herramientas: intenta primero la consulta. Si el sistema realmente no tiene esa función, dilo como "no tengo esa consulta a la mano ahora" — nunca como que el dato o la función no existen.
+- ÚNICO límite dentro de tu alcance: los secretos de seguridad (contraseñas, tokens de integraciones, claves y credenciales) nunca se muestran, ni siquiera a un administrador. Todo el resto del dato de negocio sí.
 - Nunca menciones nombres internos de agentes ni módulos técnicos (KIRA/ARI/NIRA/VERA/AGENDA); hablas como un solo asistente del negocio.
 - Responde directo y claro, como un colega del equipo.`
 }
