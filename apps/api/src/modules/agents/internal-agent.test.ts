@@ -79,3 +79,42 @@ describe('HU-187 — prompt del agente interno unificado', () => {
     expect(atencion).not.toMatch(/FECHA Y HORA ACTUAL/)
   })
 })
+
+describe('HU-190 — cobertura completa del agente interno', () => {
+  const ctx: TenantContext = { tenantName: 'Nexor', branches: ['Sede'], currency: 'COP', timezone: 'America/Bogota' }
+
+  it('compras (NIRA): incluye alquileres ENTRANTES — "¿qué he alquilado de un externo?"', () => {
+    const n = names(['NIRA'], [])
+    expect(n).toContain('consultar_alquileres_entrantes')
+    // y sigue distinguiéndose de los alquileres SALIENTES (KIRA), que NIRA no tiene:
+    expect(n).not.toContain('consultar_alquileres')
+  })
+
+  it('finanzas (VERA): presupuestos y centros de costo son consultables', () => {
+    const n = names(['VERA'], [])
+    expect(n).toContain('consultar_presupuestos')
+    expect(n).toContain('consultar_centros_costo')
+  })
+
+  it('admin: ve alquileres entrantes Y salientes (cobertura total, nada oculto)', () => {
+    const n = names(['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA'], [])
+    expect(n).toContain('consultar_alquileres')            // salientes (lo que prestamos)
+    expect(n).toContain('consultar_alquileres_entrantes')  // entrantes (lo que alquilamos de un tercero)
+    expect(n).toContain('consultar_presupuestos')
+    expect(n).toContain('consultar_centros_costo')
+  })
+
+  it('las tools nuevas son de lectura → entran también en el scope relacionado (read)', () => {
+    // Un jefe de compras (NIRA) con VERA relacionado en solo-lectura ve presupuestos/centros de costo:
+    const n = names(['NIRA'], ['VERA'])
+    expect(n).toContain('consultar_presupuestos')
+    expect(n).toContain('consultar_centros_costo')
+  })
+
+  it('el prompt interno prohíbe negar la existencia y protege solo los secretos', () => {
+    const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Compras y alquileres entrantes'])
+    expect(p).toMatch(/no existe en el sistema/i)     // aparece en la PROHIBICIÓN de decirlo
+    expect(p).toMatch(/secretos de seguridad/i)
+    expect(p).toMatch(/contraseñas, tokens/i)
+  })
+})

@@ -27,7 +27,7 @@ export const INTERNAL_MODULES: AgentModule[] = ['KIRA', 'NIRA', 'ARI', 'AGENDA',
 
 /** Etiqueta legible de cada área (para el prompt del agente). Inventario incluye alquileres. */
 export const MODULE_LABEL: Record<string, string> = {
-  KIRA: 'Inventario y alquileres', NIRA: 'Compras', ARI: 'Ventas', AGENDA: 'Agenda', VERA: 'Finanzas',
+  KIRA: 'Inventario y alquileres que prestamos', NIRA: 'Compras y alquileres entrantes (lo que alquilamos de un tercero)', ARI: 'Ventas', AGENDA: 'Agenda', VERA: 'Finanzas (transacciones, presupuestos, centros de costo)',
 }
 
 /** Módulos donde un AREA_MANAGER tiene acceso de SOLO LECTURA (README_ROLES). */
