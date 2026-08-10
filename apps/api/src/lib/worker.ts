@@ -55,11 +55,9 @@ function extractSenderName(fromHeader: string): string | undefined {
 }
 
 /**
- * Encuentra la conversación activa más reciente para el remitente dado,
- * o crea una nueva si no existe o expiró la ventana de inactividad.
- *
- * - WhatsApp: ventana de 24 horas de inactividad (lastMessageAt)
- * - Gmail: sin ventana de tiempo — agrupa por email del remitente
+ * Devuelve la conversación ÚNICA y persistente del contacto (por tenant, canal y remitente),
+ * creándola si no existe. HU-186: sin ventana de tiempo ni filtro por estado — los mensajes del
+ * mismo número/correo se agrupan siempre en la misma conversación, pasen minutos o días.
  *
  * Usa directPrisma porque el worker corre fuera del contexto de tenant HTTP.
  */
