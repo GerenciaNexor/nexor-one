@@ -5,32 +5,23 @@ import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
+import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
 import { EmptyState } from '@/components/ui/EmptyState'
-
-interface Register {
-  id: string
-  kind: 'purchase' | 'sale'
-  amount: number
-  description: string
-  date: string
-  branchName: string | null
-  affectsInventory: boolean
-  product: { sku: string; name: string; unit: string; quantity: number } | null
-}
 
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 // `date` es un DATE (fecha de calendario): UTC para no correrla un día en zonas negativas.
 const fmtDate = (iso: string) => fmtCalendarDate(iso)
 
 export default function QuickRegistersPage() {
-  const [rows, setRows]   = useState<Register[] | null>(null)
+  const [rows, setRows]   = useState<QuickRegister[] | null>(null)
   const [kind, setKind]   = useState<'' | 'purchase' | 'sale'>('')
   const [modal, setModal] = useState<'purchase' | 'sale' | null>(null)
   const [invoice, setInvoice] = useState<'purchase' | 'sale' | null>(null)
+  const [detail, setDetail] = useState<QuickRegister | null>(null)
 
   function load() {
     const q = kind ? `?kind=${kind}` : ''
-    apiClient.get<{ data: Register[] }>(`/v1/quick/registers${q}`)
+    apiClient.get<{ data: QuickRegister[] }>(`/v1/quick/registers${q}`)
       .then((r) => setRows(r.data)).catch(() => setRows([]))
   }
   useEffect(() => { load() }, [kind]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -72,6 +63,7 @@ export default function QuickRegistersPage() {
                   <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3">Detalle</th>
                   <th className="px-4 py-3">Inventario</th>
+                  <th className="px-4 py-3">Origen</th>
                   <th className="px-4 py-3">Sucursal</th>
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3 text-right">Monto</th>
@@ -79,7 +71,7 @@ export default function QuickRegistersPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
                     <td className="px-4 py-3">
                       {r.kind === 'sale'
                         ? <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Venta</span>
@@ -95,6 +87,11 @@ export default function QuickRegistersPage() {
                         ? <span className="text-xs text-violet-600 dark:text-violet-400">Sí</span>
                         : <span className="text-xs text-slate-400">Servicio</span>}
                     </td>
+                    <td className="px-4 py-3">
+                      {r.origin === 'invoice'
+                        ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">📄 Factura</span>
+                        : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">✍️ Manual</span>}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{r.branchName ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{fmtDate(r.date)}</td>
                     <td className={`px-4 py-3 text-right font-semibold ${r.kind === 'sale' ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-100'}`}>
@@ -108,6 +105,7 @@ export default function QuickRegistersPage() {
         </div>
       </div>
 
+      {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
       {modal && <QuickRegisterModal initialMode={modal} onClose={() => setModal(null)} onSuccess={() => { setModal(null); load() }} />}
       {invoice && <InvoiceUploadModal kind={invoice} onClose={() => setInvoice(null)} onSuccess={() => { setInvoice(null); load() }} />}
     </div>

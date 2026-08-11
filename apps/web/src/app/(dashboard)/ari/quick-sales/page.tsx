@@ -6,29 +6,19 @@ import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
+import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
 import { EmptyState } from '@/components/ui/EmptyState'
-
-interface Register {
-  id: string
-  kind: 'purchase' | 'sale'
-  amount: number
-  detail: string
-  counterparty: string | null
-  date: string
-  branchName: string | null
-  affectsInventory: boolean
-  product: { sku: string; name: string; unit: string; quantity: number } | null
-}
 
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 
 export default function QuickSalesPage() {
-  const [rows, setRows]   = useState<Register[] | null>(null)
+  const [rows, setRows]   = useState<QuickRegister[] | null>(null)
   const [modal, setModal] = useState(false)
   const [invoice, setInvoice] = useState(false)
+  const [detail, setDetail] = useState<QuickRegister | null>(null)
 
   function load() {
-    apiClient.get<{ data: Register[] }>('/v1/quick/registers?kind=sale')
+    apiClient.get<{ data: QuickRegister[] }>('/v1/quick/registers?kind=sale')
       .then((r) => setRows(r.data)).catch(() => setRows([]))
   }
   useEffect(() => { load() }, [])
@@ -72,13 +62,14 @@ export default function QuickSalesPage() {
                   <th className="px-4 py-3">Cliente</th>
                   <th className="px-4 py-3">Detalle</th>
                   <th className="px-4 py-3">Inventario</th>
+                  <th className="px-4 py-3">Origen</th>
                   <th className="px-4 py-3">Sucursal</th>
                   <th className="px-4 py-3 text-right">Monto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
                     <td className="px-4 py-3 text-slate-500">{fmtCalendarDate(r.date)}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.counterparty ?? '—'}</td>
                     <td className="px-4 py-3">
@@ -90,6 +81,11 @@ export default function QuickSalesPage() {
                       {r.affectsInventory
                         ? <span className="text-xs font-medium text-violet-600 dark:text-violet-400">Sí</span>
                         : <span className="text-xs text-slate-400">Servicio</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.origin === 'invoice'
+                        ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">📄 Factura</span>
+                        : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">✍️ Manual</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-500">{r.branchName ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-emerald-600">+{money(r.amount)}</td>
@@ -104,6 +100,7 @@ export default function QuickSalesPage() {
       {/* HU-194-A — facturas de venta cargadas por OCR: lista + búsqueda + detalle */}
       <InvoicesPanel kind="sale" />
 
+      {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
       {modal && <QuickRegisterModal initialMode="sale" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
       {invoice && <InvoiceUploadModal kind="sale" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); load() }} />}
     </div>

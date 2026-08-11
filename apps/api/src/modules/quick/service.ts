@@ -63,7 +63,7 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
   const [rows, total] = await Promise.all([
     prisma.transaction.findMany({
       where,
-      select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, createdAt: true, branch: { select: { name: true } } },
+      select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, createdAt: true, createdBy: true, quickInvoiceId: true, branch: { select: { name: true } } },
       orderBy: { date: 'desc' },
       skip: (opts.page - 1) * opts.limit, take: opts.limit,
     }),
@@ -71,9 +71,15 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
   ])
   const ids = rows.map((r) => r.id)
   const movs = ids.length
-    ? await prisma.stockMovement.findMany({ where: { tenantId, referenceType: { in: refTypes }, referenceId: { in: ids } }, select: { referenceId: true, quantity: true, product: { select: { sku: true, name: true, unit: true } } } })
+    ? await prisma.stockMovement.findMany({ where: { tenantId, referenceType: { in: refTypes }, referenceId: { in: ids } }, select: { referenceId: true, quantity: true, salePriceFrozen: true, costPriceFrozen: true, product: { select: { sku: true, name: true, unit: true } } } })
     : []
   const byTxn = new Map(movs.map((m) => [m.referenceId, m]))
+  // HU-194-C — autor de cada registro (createdBy → nombre); createdBy es escalar (sin relación).
+  const authorIds = [...new Set(rows.map((r) => r.createdBy).filter((x): x is string => !!x))]
+  const authors = authorIds.length
+    ? await prisma.user.findMany({ where: { tenantId, id: { in: authorIds } }, select: { id: true, name: true } })
+    : []
+  const authorName = new Map(authors.map((u) => [u.id, u.name]))
   // La descripción tiene el formato "Compra/Venta rápida — <detalle> (<contraparte>)".
   const parse = (desc: string) => {
     const cp = desc.match(/\(([^()]+)\)\s*$/)?.[1] ?? null
@@ -84,9 +90,12 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
     data: rows.map((r) => {
       const mov = byTxn.get(r.id)
       const { counterparty, detail } = parse(r.description)
+      const qty = mov ? num(mov.quantity) : null
+      const isSale = r.referenceType === 'quick_sale'
+      const unitValue = mov ? num(isSale ? mov.salePriceFrozen : mov.costPriceFrozen) : num(r.amount)
       return {
         id:               r.id,
-        kind:             r.referenceType === 'quick_purchase' ? 'purchase' : 'sale',
+        kind:             isSale ? 'sale' : 'purchase',
         amount:           num(r.amount),
         description:      r.description,
         detail,           // producto o descripción, sin prefijo ni contraparte
@@ -94,7 +103,13 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
         date:             r.date,
         branchName:       r.branch?.name ?? null,
         affectsInventory: !!mov,
-        product:          mov ? { sku: mov.product.sku, name: mov.product.name, unit: mov.product.unit, quantity: num(mov.quantity) } : null,
+        product:          mov ? { sku: mov.product.sku, name: mov.product.name, unit: mov.product.unit, quantity: qty } : null,
+        unitValue,        // HU-194-C — precio/costo unitario (para el detalle manual)
+        // HU-194-C — origen + autor + cuándo (para el detalle del historial).
+        origin:           r.quickInvoiceId ? 'invoice' : 'manual',
+        invoiceId:        r.quickInvoiceId ?? null,
+        createdByName:    r.createdBy ? (authorName.get(r.createdBy) ?? null) : null,
+        createdAt:        r.createdAt,
       }
     }),
     total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
@@ -126,7 +141,7 @@ type SaleLine = {
 /** Aplica UN ítem de compra dentro de una transacción abierta (stock entrada + gasto VERA, o solo VERA). */
 async function applyPurchaseItem(
   tx: Prisma.TransactionClient, tenantId: string, userId: string,
-  ctx: { supplierName: string; categoryId: string; now: Date }, line: PurchaseLine,
+  ctx: { supplierName: string; categoryId: string; now: Date; quickInvoiceId?: string }, line: PurchaseLine,
 ) {
   if (line.affectsInventory) {
     const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
@@ -173,7 +188,7 @@ async function applyPurchaseItem(
     const txn = await tx.transaction.create({
       data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
         description: `Compra rápida — ${product.name} (${ctx.supplierName})`, category: 'Compras',
-        referenceType: 'quick_purchase', date: ctx.now, isManual: true },
+        referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
       select: { id: true },
     })
     // Movimiento inmutable (HU-128): quién/cómo/por qué, con costo congelado.
@@ -189,7 +204,7 @@ async function applyPurchaseItem(
   const txn = await tx.transaction.create({
     data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
       description: `Compra rápida — ${line.description} (${ctx.supplierName})`, category: 'Compras',
-      referenceType: 'quick_purchase', date: ctx.now, isManual: true },
+      referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
     select: { id: true },
   })
   return { transactionId: txn.id, affectsInventory: false, amount }
@@ -198,7 +213,7 @@ async function applyPurchaseItem(
 /** Aplica UN ítem de venta dentro de una transacción abierta (stock salida del disponible + ingreso VERA, o solo VERA). */
 async function applySaleItem(
   tx: Prisma.TransactionClient, tenantId: string, userId: string,
-  ctx: { clientName: string; categoryId: string; now: Date }, line: SaleLine,
+  ctx: { clientName: string; categoryId: string; now: Date; quickInvoiceId?: string }, line: SaleLine,
 ) {
   if (line.affectsInventory) {
     const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
@@ -222,7 +237,7 @@ async function applySaleItem(
     const txn = await tx.transaction.create({
       data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
         description: `Venta rápida — ${product.name} (${ctx.clientName})`, category: 'Ventas',
-        referenceType: 'quick_sale', date: ctx.now, isManual: true },
+        referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
       select: { id: true },
     })
     await tx.stockMovement.create({
@@ -238,7 +253,7 @@ async function applySaleItem(
   const txn = await tx.transaction.create({
     data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
       description: `Venta rápida — ${line.description} (${ctx.clientName})`, category: 'Ventas',
-      referenceType: 'quick_sale', date: ctx.now, isManual: true },
+      referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
     select: { id: true },
   })
   return { transactionId: txn.id, affectsInventory: false, amount }
@@ -375,37 +390,43 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
       categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
     }
 
-    const resolution: unknown[] = []
-    for (const item of input.items) {
-      if (input.kind === 'purchase') {
-        const adds = item.addToInventory !== false && (item.productId || item.newProduct)
-        // HU-193-A — un ítem "no agregado al inventario" NO toca stock, pero SÍ se registra como gasto
-        // (la factura se pagó): así aparece en "Compras rápidas" y las finanzas quedan completas. Antes
-        // se saltaba (continue) → la factura se guardaba pero no aparecía por ningún lado (bug silencioso).
-        const line = adds
-          ? { affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined, newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue }
-          : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
-        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, line)
-        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
-      } else {
-        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now }, {
-          affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
-        })
-        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: true, ...r })
-      }
-    }
-
+    // HU-194-C — la factura se crea PRIMERO para ligar sus transacciones (quickInvoiceId = origen
+    // factura). Luego se actualiza con la resolución por-ítem.
     const image = input.imageBase64 ? Buffer.from(input.imageBase64, 'base64') : null
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
         issuer: input.issuer ?? null, nit: input.nit ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
-        // La factura COMPLETA + la resolución final por-ítem (qué se agregó, ids creados) — nada se pierde.
-        fullExtraction: { ...input.fullExtraction, _resolution: resolution } as Prisma.InputJsonValue,
+        fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
         imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
       },
       select: { id: true },
+    })
+
+    const resolution: unknown[] = []
+    for (const item of input.items) {
+      if (input.kind === 'purchase') {
+        const adds = item.addToInventory !== false && (item.productId || item.newProduct)
+        // HU-193-A — un ítem "no agregado al inventario" NO toca stock, pero SÍ se registra como gasto
+        // (la factura se pagó): así aparece en "Compras rápidas" y las finanzas quedan completas.
+        const line = adds
+          ? { affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined, newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue }
+          : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
+        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id }, line)
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
+      } else {
+        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id }, {
+          affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
+        })
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: true, ...r })
+      }
+    }
+
+    // Guardar la resolución final (qué se agregó, ids de transacción) en la factura — nada se pierde.
+    await tx.quickInvoice.update({
+      where: { id: invoice.id },
+      data:  { fullExtraction: { ...input.fullExtraction, _resolution: resolution } as Prisma.InputJsonValue },
     })
 
     return { invoiceId: invoice.id, kind: input.kind, itemsRegistered: resolution.length, items: resolution }
@@ -426,9 +447,11 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true },
+    select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+  // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
+  const author = inv.userId ? await prisma.user.findFirst({ where: { id: inv.userId, tenantId }, select: { name: true } }) : null
   const fe = (inv.fullExtraction ?? {}) as {
     additionalFields?: { label: string; value: string }[]
     notes?: { value?: string }
@@ -443,7 +466,8 @@ export async function getInvoice(tenantId: string, id: string) {
   return {
     id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
-    hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction, createdAt: inv.createdAt,
+    hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction,
+    createdAt: inv.createdAt, createdByName: author?.name ?? null,
   }
 }
 
