@@ -153,6 +153,14 @@ describe('HU-190 — cobertura completa del agente interno', () => {
     expect(names(['KIRA', 'NIRA', 'ARI', 'AGENDA', 'VERA'], [])).toContain('consultar_recordatorios') // admin
   })
 
+  it('inyecta el rol del usuario para no gastar un turno preguntando "¿eres admin?"', () => {
+    const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Ventas'], 'TENANT_ADMIN')
+    expect(p).toMatch(/administrador de la empresa/i)
+    expect(p).toMatch(/nunca le preguntes si es admin/i)
+    // Sin rol → no se agrega la línea (compatibilidad).
+    expect(getSystemPrompt('INTERNO', ctx, 'internal', ['Ventas'])).not.toMatch(/nunca le preguntes si es admin/i)
+  })
+
   it('el prompt interno prohíbe negar la existencia y protege solo los secretos', () => {
     const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Compras y alquileres entrantes'])
     expect(p).toMatch(/no existe en el sistema/i)     // aparece en la PROHIBICIÓN de decirlo
