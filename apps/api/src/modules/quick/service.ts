@@ -370,12 +370,14 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     for (const item of input.items) {
       if (input.kind === 'purchase') {
         const adds = item.addToInventory !== false && (item.productId || item.newProduct)
-        if (!adds) { resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: false, affectsStock: false }); continue }
-        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, {
-          affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined,
-          newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue,
-        })
-        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: !!item.newProduct, affectsStock: true, ...r })
+        // HU-193-A — un ítem "no agregado al inventario" NO toca stock, pero SÍ se registra como gasto
+        // (la factura se pagó): así aparece en "Compras rápidas" y las finanzas quedan completas. Antes
+        // se saltaba (continue) → la factura se guardaba pero no aparecía por ningún lado (bug silencioso).
+        const line = adds
+          ? { affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined, newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue }
+          : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
+        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, line)
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
       } else {
         const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now }, {
           affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,

@@ -105,6 +105,9 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
 
   /** POST /v1/quick/invoices — registra la factura revisada/confirmada (transacción + factura + imagen). */
   app.post('/invoices', {
+    // La miniatura comprimida (base64) viaja en el JSON; se sube el límite (default 1MB) para no
+    // rechazar (413) fotos grandes. Si aun así se excede, el front recibe el error y NO finge éxito.
+    bodyLimit: 12 * 1024 * 1024,
     schema: { tags: ['Quick'], summary: 'Registrar factura leída (confirmada)', security: bearerAuth, body: z2j(RegisterInvoiceSchema), response: { 201: objRes, ...stdErrors } },
     preHandler: [requireRole('OPERATIVE')],
   }, async (request, reply) => {
