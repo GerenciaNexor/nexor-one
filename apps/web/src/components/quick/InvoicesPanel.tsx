@@ -16,7 +16,7 @@ interface InvoiceRow {
 }
 
 /** HU-194-A — Lista + búsqueda + detalle de facturas cargadas por OCR (compra en NIRA, venta en ARI). */
-export function InvoicesPanel({ kind }: { kind: Kind }) {
+export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHeader?: boolean }) {
   const isSale = kind === 'sale'
   const [rows, setRows]   = useState<InvoiceRow[] | null>(null)
   const [q, setQ]         = useState('')
@@ -42,8 +42,8 @@ export function InvoicesPanel({ kind }: { kind: Kind }) {
   const inp = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
 
   return (
-    <div className="mt-8">
-      <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Facturas cargadas</h2>
+    <div className={hideHeader ? '' : 'mt-8'}>
+      {!hideHeader && <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Facturas cargadas</h2>}
       <p className="mt-0.5 text-xs text-slate-500">Facturas de {isSale ? 'venta' : 'compra'} leídas por foto (OCR). Ábrelas para ver toda su información y la imagen original.</p>
 
       {/* Búsqueda: número/emisor, rango de fecha, rango de total */}

@@ -16,6 +16,7 @@ export default function QuickSalesPage() {
   const [modal, setModal] = useState(false)
   const [invoice, setInvoice] = useState(false)
   const [detail, setDetail] = useState<QuickRegister | null>(null)
+  const [tab, setTab] = useState<'registers' | 'invoices'>('registers')
 
   function load() {
     apiClient.get<{ data: QuickRegister[] }>('/v1/quick/registers?kind=sale')
@@ -45,6 +46,19 @@ export default function QuickSalesPage() {
         </div>
       </div>
 
+      {/* Dos pestañas: historial de ventas rápidas vs facturas cargadas (no se estorban con muchos datos) */}
+      <div className="mt-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        {(['registers', 'invoices'] as const).map((v) => (
+          <button key={v} onClick={() => setTab(v)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${tab === v ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+            {v === 'registers' ? 'Ventas rápidas' : 'Facturas cargadas'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'invoices' ? (
+        <InvoicesPanel kind="sale" hideHeader />
+      ) : (
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         <div className="overflow-x-auto">
           {rows === null ? (
@@ -96,9 +110,7 @@ export default function QuickSalesPage() {
           )}
         </div>
       </div>
-
-      {/* HU-194-A — facturas de venta cargadas por OCR: lista + búsqueda + detalle */}
-      <InvoicesPanel kind="sale" />
+      )}
 
       {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
       {modal && <QuickRegisterModal initialMode="sale" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
