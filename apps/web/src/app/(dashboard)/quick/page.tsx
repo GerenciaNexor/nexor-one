@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
+import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Register {
@@ -25,6 +26,7 @@ export default function QuickRegistersPage() {
   const [rows, setRows]   = useState<Register[] | null>(null)
   const [kind, setKind]   = useState<'' | 'purchase' | 'sale'>('')
   const [modal, setModal] = useState<'purchase' | 'sale' | null>(null)
+  const [invoice, setInvoice] = useState<'purchase' | 'sale' | null>(null)
 
   function load() {
     const q = kind ? `?kind=${kind}` : ''
@@ -40,9 +42,11 @@ export default function QuickRegistersPage() {
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Registros rápidos</h1>
           <p className="mt-0.5 text-sm text-slate-500">Compras y ventas registradas de forma rápida (ya ocurridas, sin aprobación). También quedan en Finanzas (VERA) y, si afectan inventario, en KIRA.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setModal('purchase')} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">+ Compra</button>
           <button onClick={() => setModal('sale')} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">+ Venta</button>
+          <button onClick={() => setInvoice('purchase')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">📷 Factura compra</button>
+          <button onClick={() => setInvoice('sale')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">📷 Factura venta</button>
         </div>
       </div>
 
@@ -105,6 +109,7 @@ export default function QuickRegistersPage() {
       </div>
 
       {modal && <QuickRegisterModal initialMode={modal} onClose={() => setModal(null)} onSuccess={() => { setModal(null); load() }} />}
+      {invoice && <InvoiceUploadModal kind={invoice} onClose={() => setInvoice(null)} onSuccess={() => { setInvoice(null); load() }} />}
     </div>
   )
 }

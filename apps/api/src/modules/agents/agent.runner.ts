@@ -369,7 +369,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   //  1. Estable (reglas + contexto del tenant) → con cache_control: se cachea junto a las tools.
   //  2. Volátil (fecha/hora al minuto, solo INTERNO) → SIN cache: cambia cada minuto y rompería el
   //     cache si fuera parte del bloque estable. Va pequeño y aparte.
-  const stableSystem = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas)
+  const stableSystem = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas, input.userRole)
   const volatile     = getVolatileContext(input.module, tenantCtx)
   const systemBlocks: Anthropic.TextBlockParam[] = [
     { type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } },

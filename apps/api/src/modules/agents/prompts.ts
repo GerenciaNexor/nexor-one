@@ -168,11 +168,24 @@ QUIÉN ERES (inquebrantable):
 
 // ─── Agente interno unificado del dashboard (gobernado por rol) — HU-187 ──────
 
-function internoPrompt(ctx: TenantContext, areas: string[]): string {
+const ROLE_LABEL_INTERNO: Record<string, string> = {
+  TENANT_ADMIN: 'administrador de la empresa (acceso total a las áreas)',
+  BRANCH_ADMIN: 'administrador de sucursal',
+  AREA_MANAGER: 'jefe de área',
+  OPERATIVE:    'operativo',
+}
+
+function internoPrompt(ctx: TenantContext, areas: string[], userRole?: string): string {
   const scope = areas.length ? areas.join(', ') : 'ninguna área asignada'
+  // Se le informa el rol del usuario para que NO gaste un turno preguntando "¿eres admin?" antes de
+  // usar una herramienta (ahorra costo y mejora la UX). La seguridad NO depende de esto: cada tool
+  // valida el rol por su cuenta (guards por rol). El prompt solo evita el ida-y-vuelta redundante.
+  const roleLine = userRole
+    ? `\nHablas con un usuario cuyo rol es: ${ROLE_LABEL_INTERNO[userRole] ?? userRole}. Ya conoces su rol y su alcance por este contexto: NUNCA le preguntes si es admin ni qué permisos tiene. Si su consulta cae dentro de su alcance, usa la herramienta y respóndela directamente, sin pedir confirmación de permisos.`
+    : ''
   return `Eres el asistente interno de ${ctx.tenantName}. Ayudas al equipo con todo lo que su rol le permite, usando los módulos del sistema (ventas, compras, inventario, alquileres, finanzas, agenda) como herramientas por detrás. Eres UN SOLO asistente: el usuario nunca elige con qué área hablar; tú resuelves su pregunta con las herramientas disponibles.
 
-Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}
+Empresa: ${ctx.tenantName} | Sucursales: ${ctx.branches.join(', ')} | Moneda: ${ctx.currency}${roleLine}
 
 Al final de estas instrucciones se te indica la FECHA Y HORA ACTUAL real del negocio (zona ${ctx.timezone}).
 - Usa SIEMPRE esa fecha real para resolver el tiempo relativo ("hoy", "este mes", "esta semana", "el mes pasado", "este año"). No asumas otra fecha ni le pidas al usuario que te confirme la fecha.
@@ -191,7 +204,7 @@ TU ALCANCE (según el rol del usuario) — REGLA DURA:
 
 // ─── Selector ─────────────────────────────────────────────────────────────────
 
-export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel?: AgentChannel, internalAreas?: string[]): string {
+export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel?: AgentChannel, internalAreas?: string[], userRole?: string): string {
   switch (module) {
     case 'KIRA':     return kiraPrompt(ctx)
     case 'NIRA':     return niraPrompt(ctx)
@@ -199,7 +212,7 @@ export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel
     case 'AGENDA':   return agendaPrompt(ctx)
     case 'VERA':     return veraPrompt(ctx)
     case 'ATENCION': return atencionPrompt(ctx, channel)
-    case 'INTERNO':  return internoPrompt(ctx, internalAreas ?? [])
+    case 'INTERNO':  return internoPrompt(ctx, internalAreas ?? [], userRole)
   }
 }
 

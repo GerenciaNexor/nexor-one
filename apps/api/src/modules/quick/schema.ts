@@ -85,3 +85,61 @@ export const QuickSaleSchema = z.object({
 
 export type QuickPurchaseInput = z.infer<typeof QuickPurchaseSchema>
 export type QuickSaleInput     = z.infer<typeof QuickSaleSchema>
+export type NewProductInputT   = z.infer<typeof NewProductInput>
+
+// ─── HU-191 — Factura por imagen (OCR): registro tras la revisión/confirmación humana ─────────────
+
+/**
+ * Un ítem de la factura ya RESUELTO por el humano (revisado/corregido). `unitValue` = costo (compra)
+ * o precio (venta). Resolución del cruce con inventario:
+ *  - `productId` → está en inventario (afecta stock).
+ *  - sin `productId` + `addToInventory:true` + `newProduct` → se crea y afecta stock (compra pide
+ *    precio de venta en `newProduct.salePrice`).
+ *  - sin `productId` + `addToInventory:false` (solo compra) → queda en el registro de la factura,
+ *    sin tocar stock.
+ */
+export const InvoiceItemSchema = z.object({
+  description:    z.string().min(1, 'La descripción del ítem es requerida').max(500),
+  productId:      z.string().min(1).nullish(),
+  newProduct:     NewProductInput.optional(),
+  quantity:       z.number().positive('La cantidad debe ser mayor a 0'),
+  unitValue:      z.number().nonnegative('El valor no puede ser negativo'),
+  addToInventory: z.boolean().optional(),
+})
+
+export const RegisterInvoiceSchema = z.object({
+  kind:           z.enum(['purchase', 'sale']),
+  supplierId:     z.string().min(1).nullish(),  // compra; null → genérico "Proveedor ocasional"
+  clientId:       z.string().min(1).nullish(),  // venta;  null → genérico "Consumidor final"
+  branchId:       z.string().min(1).nullish(),
+  date:           z.string().optional(),
+  // Encabezado leído (columnas propias de la factura).
+  issuer:         z.string().max(255).nullish(),
+  nit:            z.string().max(50).nullish(),
+  total:          z.number().nonnegative().nullish(),
+  // Imagen comprimida (miniatura) + factura COMPLETA leída (nada se pierde).
+  imageBase64:    z.string().optional(),
+  imageMime:      z.string().max(50).optional(),
+  fullExtraction: z.record(z.any()),
+  items:          z.array(InvoiceItemSchema).min(1, 'La factura debe tener al menos un ítem'),
+}).superRefine((d, ctx) => {
+  d.items.forEach((it, i) => {
+    if (d.kind === 'sale') {
+      // Venta: agregar es OBLIGATORIO — cada ítem debe quedar mapeado a un producto existente
+      // (el usuario lo crea antes vía el alta de producto, y llega con productId).
+      if (!it.productId) ctx.addIssue({ code: 'custom', path: ['items', i, 'productId'], message: `El ítem "${it.description}" no existe en inventario: agrégalo antes de vender.` })
+    } else {
+      // Compra: si se agrega (addToInventory !== false) debe haber producto existente o nuevo.
+      const adds = it.addToInventory !== false
+      if (adds && !it.productId && !it.newProduct) {
+        ctx.addIssue({ code: 'custom', path: ['items', i, 'productId'], message: `Selecciona un producto existente o crea uno nuevo para "${it.description}", o marca no agregarlo al inventario.` })
+      }
+    }
+  })
+  // Si algún ítem afecta stock, la sucursal es obligatoria.
+  const anyStock = d.kind === 'sale' || d.items.some((it) => it.addToInventory !== false && (it.productId || it.newProduct))
+  if (anyStock && !d.branchId) ctx.addIssue({ code: 'custom', path: ['branchId'], message: 'Selecciona la sucursal' })
+})
+
+export type InvoiceItemInput     = z.infer<typeof InvoiceItemSchema>
+export type RegisterInvoiceInput = z.infer<typeof RegisterInvoiceSchema>

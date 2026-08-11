@@ -55,18 +55,19 @@ Sprint 19) que reproduce EXACTAMENTE el esquema de prod — ver su `README.md` p
 drift resuelto. Un `migrate reset` desde cero == prod, y `migrate dev` no propone cambios fantasma. Para
 aplicar migraciones nuevas a prod usa **`prisma migrate deploy`** (nunca `migrate dev`, que re-diffea).
 
-`setup-rls.ts` cubre **34 tablas de negocio** (incluye bandeja, carga masiva y chat —
+`setup-rls.ts` cubre **36 tablas de negocio** (incluye bandeja, carga masiva y chat —
 `conversations`, `conversation_messages`, `bulk_upload_logs` desde HU-114; `chat_messages` desde
 HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboard_daily_rollups`
 desde HU-127; `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
 `cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156;
-`rentals` desde HU-158; e `incoming_rentals` desde HU-175).
+`rentals` desde HU-158; `incoming_rentals` desde HU-175; e `quick_invoices` desde HU-191 — facturas
+por imagen/OCR del registro rápido).
 Además habilita RLS
 **deny-all** en las tablas de plataforma `platform_admins` (HU-134), `platform_audit_logs` (HU-136),
 `subscriptions` y `platform_notifications` (bandeja de la consola SUPER_ADMIN)
 — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
 del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
-cross-tenant de las 34 tablas bajo el rol real `nexor_app` en una BD temporal.
+cross-tenant de las 36 tablas bajo el rol real `nexor_app` en una BD temporal.
 
 ### E2E (un proyecto/archivo concreto)
 
