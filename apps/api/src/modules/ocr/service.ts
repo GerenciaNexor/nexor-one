@@ -6,6 +6,10 @@ const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
 // Usar Sonnet para OCR: más rápido y con excelente visión, reservamos Opus para el agente
 const OCR_MODEL = process.env['OCR_MODEL'] ?? 'claude-sonnet-4-6'
 
+// HU-191/192 — Modelo del OCR de FACTURAS del registro rápido: Haiku por defecto (céntimos por
+// factura, nunca Opus), configurable por env para subir a Sonnet si alguna factura lee mal.
+export const INVOICE_OCR_MODEL = process.env['OCR_INVOICE_MODEL'] ?? 'claude-haiku-4-5-20251001'
+
 // ─── Tipos de respuesta ───────────────────────────────────────────────────────
 
 export type DocumentType = 'quote' | 'order'
@@ -184,9 +188,13 @@ export async function extractDocument(params: {
   fileName:   string
   docType:    DocumentType | null
   tenantId:   string
+  /** HU-191 — modelo por-llamada. El flujo de facturas del registro rápido pasa Haiku (disciplina de
+   *  costos HU-192); OC/Cotización omiten → usan OCR_MODEL (Sonnet) y conservan su precisión. */
+  model?:     string
 }): Promise<ExtractionResult> {
   const { fileBuffer, fileName, docType } = params
   const mimeType = resolveMediaType(params.mimeType, fileName)
+  const model    = params.model ?? OCR_MODEL
 
   if (!ALLOWED_TYPES.has(mimeType)) {
     throw {
@@ -223,20 +231,30 @@ export async function extractDocument(params: {
         },
       }
 
+  // Prompt caching (HU-192): las INSTRUCCIONES (estables por tipo de documento) van en el bloque
+  // `system` con cache_control → se cachean entre facturas; solo la imagen (variable) va en el user.
   const response = await client.messages.create({
-    model:       OCR_MODEL,
+    model,
     max_tokens:  2048,
     temperature: 0,
+    system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
     messages: [
       {
         role:    'user',
         content: [
           fileBlock,
-          { type: 'text', text: prompt },
+          { type: 'text', text: 'Extrae los datos de este documento siguiendo las instrucciones y responde solo con el JSON.' },
         ],
       },
     ],
   })
+
+  // Observabilidad de costo por documento (HU-191/192): tokens y cache.
+  const u = response.usage
+  console.info('[OCR] cost', JSON.stringify({
+    model, inputTokens: u.input_tokens, outputTokens: u.output_tokens,
+    cacheWrite: u.cache_creation_input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0,
+  }))
 
   const rawText = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')

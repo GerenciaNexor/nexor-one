@@ -25,6 +25,8 @@ const TABLES = [
   'rentals',
   // HU-175 — alquileres entrantes (de un tercero).
   'incoming_rentals',
+  // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido.
+  'quick_invoices',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -67,6 +69,8 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.reminder.create({ data: { tenantId: t, userId: u, title: 'R', remindAt: new Date() } })
   await db.rental.create({ data: { tenantId: t, productId: p, branchId: br, userId: u, quantity: new Prisma.Decimal(1) } })
   await db.incomingRental.create({ data: { tenantId: t, supplierId: sp, userId: u, branchId: br, description: 'IR', quantity: new Prisma.Decimal(1), project: 'Proj', returnDate: new Date(), rentalCost: new Prisma.Decimal(100) } })
+  // HU-191 — factura por imagen (OCR)
+  await db.quickInvoice.create({ data: { tenantId: t, branchId: br, userId: u, kind: 'purchase', fullExtraction: { s } } })
 }
 
 async function main(): Promise<void> {

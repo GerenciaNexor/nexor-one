@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
+import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Register {
@@ -23,6 +24,7 @@ const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigi
 export default function QuickSalesPage() {
   const [rows, setRows]   = useState<Register[] | null>(null)
   const [modal, setModal] = useState(false)
+  const [invoice, setInvoice] = useState(false)
 
   function load() {
     apiClient.get<{ data: Register[] }>('/v1/quick/registers?kind=sale')
@@ -40,10 +42,16 @@ export default function QuickSalesPage() {
             <span className="text-slate-400">Distinto de &ldquo;Ventas realizadas&rdquo; (negocios ganados).</span>
           </p>
         </div>
-        <button onClick={() => setModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700">
-          <span className="text-base leading-none">+</span> Nueva venta rápida
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setInvoice(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
+            📷 Cargar factura
+          </button>
+          <button onClick={() => setModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700">
+            <span className="text-base leading-none">+</span> Nueva venta rápida
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
@@ -93,6 +101,7 @@ export default function QuickSalesPage() {
       </div>
 
       {modal && <QuickRegisterModal initialMode="sale" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
+      {invoice && <InvoiceUploadModal kind="sale" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); load() }} />}
     </div>
   )
 }

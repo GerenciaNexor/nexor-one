@@ -1,9 +1,11 @@
-import { prisma } from '../../lib/prisma'
+import { prisma, directPrisma } from '../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
 import { businessToday } from '../../lib/dates'
-import type { QuickPurchaseInput, QuickSaleInput } from './schema'
+import { matchProductByName } from '../../lib/text-match'
+import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
+import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
 const numN = (v: unknown): number | null => (v === null || v === undefined ? null : num(v))
@@ -99,13 +101,152 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
   }
 }
 
+// ─── Núcleo por-ítem (reutilizado por el registro rápido y por la factura OCR — HU-191) ────────────
+
+type PurchaseLine = {
+  affectsInventory: boolean
+  branchId?: string | null
+  productId?: string
+  newProduct?: NewProductInputT
+  quantity?: number
+  unitCost?: number
+  description?: string
+  amount?: number
+}
+type SaleLine = {
+  affectsInventory: boolean
+  branchId?: string | null
+  productId?: string
+  quantity?: number
+  unitPrice?: number
+  description?: string
+  amount?: number
+}
+
+/** Aplica UN ítem de compra dentro de una transacción abierta (stock entrada + gasto VERA, o solo VERA). */
+async function applyPurchaseItem(
+  tx: Prisma.TransactionClient, tenantId: string, userId: string,
+  ctx: { supplierName: string; categoryId: string; now: Date }, line: PurchaseLine,
+) {
+  if (line.affectsInventory) {
+    const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
+    if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
+
+    const qty = line.quantity!, cost = line.unitCost!
+
+    // HU-170 — el producto puede ser EXISTENTE o crearse al vuelo (un producto nace cuando se compra).
+    let product: { id: string; name: string }
+    if (line.newProduct) {
+      const np = line.newProduct
+      try {
+        product = await tx.product.create({
+          data: {
+            tenantId, sku: np.sku, name: np.name, description: np.description ?? null, category: np.category ?? null,
+            unit: np.unit, salePrice: np.salePrice, costPrice: np.costPrice ?? cost, // por defecto, el costo de esta compra
+            minStock: np.minStock, maxStock: np.maxStock, isSellable: np.isSellable, isRentable: np.isRentable,
+            rentalPrice: np.isRentable ? np.rentalPrice : null,
+          },
+          select: { id: true, name: true },
+        })
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === 'P2002') {
+          throw { statusCode: 409, message: `Ya existe un producto con el SKU '${np.sku}'. Selecciónalo en vez de crearlo.`, code: 'DUPLICATE_SKU' }
+        }
+        throw err
+      }
+    } else {
+      const found = await tx.product.findFirst({ where: { id: line.productId!, tenantId, isActive: true }, select: { id: true, name: true } })
+      if (!found) throw { statusCode: 404, message: 'Producto no encontrado o inactivo', code: 'PRODUCT_NOT_FOUND' }
+      product = found
+    }
+
+    const amount = qty * cost
+    const stock = await tx.stock.findUnique({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, select: { quantity: true } })
+    const before = stock ? num(stock.quantity) : 0
+    const after  = before + qty // entrada: nunca negativo
+
+    await tx.stock.upsert({
+      where:  { productId_branchId: { productId: product.id, branchId: branch.id } },
+      create: { productId: product.id, branchId: branch.id, quantity: after },
+      update: { quantity: after },
+    })
+    const txn = await tx.transaction.create({
+      data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
+        description: `Compra rápida — ${product.name} (${ctx.supplierName})`, category: 'Compras',
+        referenceType: 'quick_purchase', date: ctx.now, isManual: true },
+      select: { id: true },
+    })
+    // Movimiento inmutable (HU-128): quién/cómo/por qué, con costo congelado.
+    await tx.stockMovement.create({
+      data: { tenantId, productId: product.id, branchId: branch.id, userId, type: 'entrada', reason: 'compra',
+        quantity: qty, quantityBefore: before, quantityAfter: after, costPriceFrozen: cost,
+        referenceType: 'quick_purchase', referenceId: txn.id, notes: 'Compra rápida' },
+    })
+    return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: before, stockAfter: after }
+  }
+
+  const amount = line.amount!
+  const txn = await tx.transaction.create({
+    data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
+      description: `Compra rápida — ${line.description} (${ctx.supplierName})`, category: 'Compras',
+      referenceType: 'quick_purchase', date: ctx.now, isManual: true },
+    select: { id: true },
+  })
+  return { transactionId: txn.id, affectsInventory: false, amount }
+}
+
+/** Aplica UN ítem de venta dentro de una transacción abierta (stock salida del disponible + ingreso VERA, o solo VERA). */
+async function applySaleItem(
+  tx: Prisma.TransactionClient, tenantId: string, userId: string,
+  ctx: { clientName: string; categoryId: string; now: Date }, line: SaleLine,
+) {
+  if (line.affectsInventory) {
+    const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
+    if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
+    // HU-170 — en venta el producto DEBE existir (no se vende algo no registrado): se bloquea.
+    const product = await tx.product.findFirst({ where: { id: line.productId!, tenantId, isActive: true }, select: { id: true, name: true, costPrice: true } })
+    if (!product) throw { statusCode: 404, message: 'Este producto no existe en tu inventario. Agrégalo primero (por ejemplo con una compra) antes de venderlo.', code: 'PRODUCT_NOT_FOUND' }
+
+    const qty = line.quantity!, price = line.unitPrice!
+    const amount = qty * price
+    const stock = await tx.stock.findUnique({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, select: { quantity: true, rentedQuantity: true } })
+    const total = stock ? num(stock.quantity) : 0
+    const rented = stock ? num(stock.rentedQuantity) : 0
+    const available = Math.max(0, total - rented) // HU-158 — no se vende lo alquilado
+    if (available < qty) {
+      throw { statusCode: 409, message: `Stock insuficiente para "${product.name}": disponible ${available}, requerido ${qty}.`, code: 'INSUFFICIENT_STOCK' }
+    }
+    const after = total - qty // el disponible resultante sigue ≥ 0 (available ≥ qty ⇒ total−qty ≥ rented)
+
+    await tx.stock.update({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, data: { quantity: after } })
+    const txn = await tx.transaction.create({
+      data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
+        description: `Venta rápida — ${product.name} (${ctx.clientName})`, category: 'Ventas',
+        referenceType: 'quick_sale', date: ctx.now, isManual: true },
+      select: { id: true },
+    })
+    await tx.stockMovement.create({
+      data: { tenantId, productId: product.id, branchId: branch.id, userId, type: 'salida', reason: 'venta',
+        quantity: qty, quantityBefore: total, quantityAfter: after,
+        salePriceFrozen: price, costPriceFrozen: product.costPrice ?? null,
+        referenceType: 'quick_sale', referenceId: txn.id, notes: 'Venta rápida' },
+    })
+    return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: total, stockAfter: after }
+  }
+
+  const amount = line.amount!
+  const txn = await tx.transaction.create({
+    data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
+      description: `Venta rápida — ${line.description} (${ctx.clientName})`, category: 'Ventas',
+      referenceType: 'quick_sale', date: ctx.now, isManual: true },
+    select: { id: true },
+  })
+  return { transactionId: txn.id, affectsInventory: false, amount }
+}
+
 // ─── Compra rápida ─────────────────────────────────────────────────────────────
 
-/**
- * HU-169 — Compra rápida (ya ocurrida, sin aprobación).
- *  - afecta inventario → suma stock (entrada, motivo `compra`, append-only HU-128) + gasto en VERA.
- *  - no afecta inventario → solo gasto en VERA (servicios/consumos).
- */
+/** HU-169 — Compra rápida (ya ocurrida). Afecta stock (entrada/compra + gasto VERA) o solo VERA. */
 export async function quickPurchase(tenantId: string, userId: string, input: QuickPurchaseInput) {
   return prisma.$transaction(async (tx) => {
     const now = input.date ? new Date(input.date) : businessToday()
@@ -113,92 +254,17 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true, name: true } })
     if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
     const categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
-
-    if (input.affectsInventory) {
-      const branch = await tx.branch.findFirst({ where: { id: input.branchId!, tenantId, isActive: true }, select: { id: true } })
-      if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
-
-      const qty = input.quantity!, cost = input.unitCost!
-
-      // HU-170 — el producto puede ser EXISTENTE o crearse al vuelo (un producto nace cuando se compra).
-      let product: { id: string; name: string }
-      if (input.newProduct) {
-        const np = input.newProduct
-        try {
-          product = await tx.product.create({
-            data: {
-              tenantId,
-              sku:         np.sku,
-              name:        np.name,
-              description: np.description ?? null,
-              category:    np.category ?? null,
-              unit:        np.unit,
-              salePrice:   np.salePrice,
-              costPrice:   np.costPrice ?? cost, // por defecto, el costo de esta compra
-              minStock:    np.minStock,
-              maxStock:    np.maxStock,
-              isSellable:  np.isSellable,
-              isRentable:  np.isRentable,
-              rentalPrice: np.isRentable ? np.rentalPrice : null,
-            },
-            select: { id: true, name: true },
-          })
-        } catch (err: unknown) {
-          if ((err as { code?: string }).code === 'P2002') {
-            throw { statusCode: 409, message: `Ya existe un producto con el SKU '${np.sku}'. Selecciónalo en vez de crearlo.`, code: 'DUPLICATE_SKU' }
-          }
-          throw err
-        }
-      } else {
-        const found = await tx.product.findFirst({ where: { id: input.productId!, tenantId, isActive: true }, select: { id: true, name: true } })
-        if (!found) throw { statusCode: 404, message: 'Producto no encontrado o inactivo', code: 'PRODUCT_NOT_FOUND' }
-        product = found
-      }
-
-      const amount = qty * cost
-      const stock = await tx.stock.findUnique({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, select: { quantity: true } })
-      const before = stock ? num(stock.quantity) : 0
-      const after  = before + qty // entrada: nunca negativo
-
-      await tx.stock.upsert({
-        where:  { productId_branchId: { productId: product.id, branchId: branch.id } },
-        create: { productId: product.id, branchId: branch.id, quantity: after },
-        update: { quantity: after },
-      })
-      const txn = await tx.transaction.create({
-        data: { tenantId, branchId: branch.id, categoryId, type: 'expense', amount, currency: 'COP',
-          description: `Compra rápida — ${product.name} (${supplier.name})`, category: 'Compras',
-          referenceType: 'quick_purchase', date: now, isManual: true },
-        select: { id: true },
-      })
-      // Movimiento inmutable (HU-128): quién/cómo/por qué, con costo congelado.
-      await tx.stockMovement.create({
-        data: { tenantId, productId: product.id, branchId: branch.id, userId, type: 'entrada', reason: 'compra',
-          quantity: qty, quantityBefore: before, quantityAfter: after, costPriceFrozen: cost,
-          referenceType: 'quick_purchase', referenceId: txn.id, notes: 'Compra rápida' },
-      })
-      return { transactionId: txn.id, affectsInventory: true, amount, stockBefore: before, stockAfter: after }
-    }
-
-    const amount = input.amount!
-    const txn = await tx.transaction.create({
-      data: { tenantId, branchId: input.branchId ?? null, categoryId, type: 'expense', amount, currency: 'COP',
-        description: `Compra rápida — ${input.description} (${supplier.name})`, category: 'Compras',
-        referenceType: 'quick_purchase', date: now, isManual: true },
-      select: { id: true },
+    return applyPurchaseItem(tx, tenantId, userId, { supplierName: supplier.name, categoryId, now }, {
+      affectsInventory: input.affectsInventory, branchId: input.branchId, productId: input.productId,
+      newProduct: input.newProduct, quantity: input.quantity, unitCost: input.unitCost,
+      description: input.description, amount: input.amount,
     })
-    return { transactionId: txn.id, affectsInventory: false, amount }
   })
 }
 
 // ─── Venta rápida ──────────────────────────────────────────────────────────────
 
-/**
- * HU-169 — Venta rápida (ya ocurrida, sin pipeline).
- *  - afecta inventario → descuenta stock del DISPONIBLE (salida, motivo `venta`, precio congelado,
- *    append-only, sin negativo — HU-128/158) + ingreso en VERA.
- *  - no afecta inventario → solo ingreso en VERA (servicios).
- */
+/** HU-169 — Venta rápida (ya ocurrida). Descuenta del disponible (salida/venta + ingreso VERA) o solo VERA. */
 export async function quickSale(tenantId: string, userId: string, input: QuickSaleInput) {
   return prisma.$transaction(async (tx) => {
     const now = input.date ? new Date(input.date) : businessToday()
@@ -206,48 +272,138 @@ export async function quickSale(tenantId: string, userId: string, input: QuickSa
     const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true, name: true } })
     if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
     const categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
+    return applySaleItem(tx, tenantId, userId, { clientName: client.name, categoryId, now }, {
+      affectsInventory: input.affectsInventory, branchId: input.branchId, productId: input.productId,
+      quantity: input.quantity, unitPrice: input.unitPrice, description: input.description, amount: input.amount,
+    })
+  })
+}
 
-    if (input.affectsInventory) {
-      const branch = await tx.branch.findFirst({ where: { id: input.branchId!, tenantId, isActive: true }, select: { id: true } })
-      if (!branch) throw { statusCode: 400, message: 'Sucursal no encontrada en tu empresa', code: 'BRANCH_NOT_FOUND' }
-      // HU-170 — en venta el producto DEBE existir (no se vende algo no registrado): se bloquea.
-      const product = await tx.product.findFirst({ where: { id: input.productId!, tenantId, isActive: true }, select: { id: true, name: true, costPrice: true } })
-      if (!product) throw { statusCode: 404, message: 'Este producto no existe en tu inventario. Agrégalo primero (por ejemplo con una compra) antes de venderlo.', code: 'PRODUCT_NOT_FOUND' }
+// ─── HU-191 — Factura por imagen (OCR): extraer (no persiste) y registrar (tras confirmación) ──────
 
-      const qty = input.quantity!, price = input.unitPrice!
-      const amount = qty * price
-      const stock = await tx.stock.findUnique({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, select: { quantity: true, rentedQuantity: true } })
-      const total = stock ? num(stock.quantity) : 0
-      const rented = stock ? num(stock.rentedQuantity) : 0
-      const available = Math.max(0, total - rented) // HU-158 — no se vende lo alquilado
-      if (available < qty) {
-        throw { statusCode: 409, message: `Stock insuficiente para "${product.name}": disponible ${available}, requerido ${qty}.`, code: 'INSUFFICIENT_STOCK' }
-      }
-      const after = total - qty // el disponible resultante sigue ≥ 0 (available ≥ qty ⇒ total−qty ≥ rented)
+/**
+ * Lee UNA imagen de factura (Vision-por-Claude con Haiku+caching), cruza los ítems con el inventario
+ * de forma LOCAL (sin 2ª llamada a la API) y devuelve la propuesta para que el humano la revise.
+ * NO persiste nada. Si la imagen es ilegible → `{ canRead:false }` con el mensaje para caer a manual.
+ */
+export async function extractInvoice(params: {
+  tenantId: string; kind: 'purchase' | 'sale'; fileBuffer: Buffer; mimeType: string; fileName: string
+}) {
+  const { tenantId, kind, fileBuffer, mimeType, fileName } = params
+  const docType: DocumentType = kind === 'purchase' ? 'order' : 'quote'
 
-      await tx.stock.update({ where: { productId_branchId: { productId: product.id, branchId: branch.id } }, data: { quantity: after } })
-      const txn = await tx.transaction.create({
-        data: { tenantId, branchId: branch.id, categoryId, type: 'income', amount, currency: 'COP',
-          description: `Venta rápida — ${product.name} (${client.name})`, category: 'Ventas',
-          referenceType: 'quick_sale', date: now, isManual: true },
-        select: { id: true },
-      })
-      await tx.stockMovement.create({
-        data: { tenantId, productId: product.id, branchId: branch.id, userId, type: 'salida', reason: 'venta',
-          quantity: qty, quantityBefore: total, quantityAfter: after,
-          salePriceFrozen: price, costPriceFrozen: product.costPrice ?? null,
-          referenceType: 'quick_sale', referenceId: txn.id, notes: 'Venta rápida' },
-      })
-      return { transactionId: txn.id, affectsInventory: true, amount, stockBefore: total, stockAfter: after }
+  let result
+  try {
+    result = await extractDocument({ fileBuffer, mimeType, fileName, docType, tenantId, model: INVOICE_OCR_MODEL })
+  } catch (err) {
+    const e = err as { code?: string }
+    if (e.code === 'OCR_UNREADABLE' || e.code === 'OCR_PARSE_ERROR') {
+      return { canRead: false, message: 'Lo siento, la imagen no se logró entender, ingresa los valores manualmente.' }
+    }
+    throw err
+  }
+
+  // Catálogo del tenant (directPrisma: la ruta corre con tenantTx:false; filtro explícito por tenantId).
+  const products = await directPrisma.product.findMany({
+    where: { tenantId, isActive: true },
+    select: { id: true, name: true, sku: true, salePrice: true, costPrice: true },
+  })
+  const catalog = products.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))
+
+  const items = result.items.map((it) => {
+    const description = it.description?.value ?? ''
+    const match = description ? matchProductByName(description, catalog) : null
+    const prod  = match ? products.find((p) => p.id === match.id) ?? null : null
+    return {
+      description,
+      quantity:     it.quantity?.value ?? null,
+      unitValue:    it.unitPrice?.value ?? null,
+      productId:    prod?.id ?? null,
+      productName:  prod?.name ?? null,
+      inInventory:  !!prod,
+      suggestedSalePrice: prod ? numN(prod.salePrice) : null,
+      confidence:   it.description?.confidence ?? 'low',
+    }
+  })
+
+  const header = kind === 'purchase'
+    ? { issuer: (result as OrderExtraction).supplier?.value ?? null, nit: (result as OrderExtraction).supplierNit?.value ?? null }
+    : { issuer: (result as QuoteExtraction).client?.value ?? null, nit: null as string | null }
+
+  return {
+    canRead: true, kind,
+    issuer: header.issuer, nit: header.nit,
+    date:   result.date?.value ?? null,
+    total:  result.total?.value ?? null,
+    items,
+    fullExtraction: result, // factura COMPLETA (nada se pierde)
+  }
+}
+
+/**
+ * Registra la factura tras la revisión/confirmación humana: crea `QuickInvoice` (encabezado + factura
+ * completa + imagen comprimida) y aplica cada ítem resuelto (stock + VERA) en UNA transacción.
+ * Ítems de compra no agregados al inventario → quedan solo en el registro de la factura (sin stock).
+ */
+export async function registerInvoice(tenantId: string, userId: string, branchId: string | null, input: RegisterInvoiceInput) {
+  return prisma.$transaction(async (tx) => {
+    const now = input.date ? new Date(input.date) : businessToday()
+    const effectiveBranch = branchId ?? input.branchId ?? null
+
+    let counterpartyName: string
+    let categoryId: string
+    if (input.kind === 'purchase') {
+      const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
+      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { name: true } })
+      if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+      counterpartyName = supplier.name
+      categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
+    } else {
+      const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
+      const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { name: true } })
+      if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+      counterpartyName = client.name
+      categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
     }
 
-    const amount = input.amount!
-    const txn = await tx.transaction.create({
-      data: { tenantId, branchId: input.branchId ?? null, categoryId, type: 'income', amount, currency: 'COP',
-        description: `Venta rápida — ${input.description} (${client.name})`, category: 'Ventas',
-        referenceType: 'quick_sale', date: now, isManual: true },
+    const resolution: unknown[] = []
+    for (const item of input.items) {
+      if (input.kind === 'purchase') {
+        const adds = item.addToInventory !== false && (item.productId || item.newProduct)
+        if (!adds) { resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: false, affectsStock: false }); continue }
+        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, {
+          affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined,
+          newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue,
+        })
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: !!item.newProduct, affectsStock: true, ...r })
+      } else {
+        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now }, {
+          affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
+        })
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: true, ...r })
+      }
+    }
+
+    const image = input.imageBase64 ? Buffer.from(input.imageBase64, 'base64') : null
+    const invoice = await tx.quickInvoice.create({
+      data: {
+        tenantId, branchId: effectiveBranch, userId, kind: input.kind,
+        issuer: input.issuer ?? null, nit: input.nit ?? null,
+        invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
+        // La factura COMPLETA + la resolución final por-ítem (qué se agregó, ids creados) — nada se pierde.
+        fullExtraction: { ...input.fullExtraction, _resolution: resolution } as Prisma.InputJsonValue,
+        imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
+      },
       select: { id: true },
     })
-    return { transactionId: txn.id, affectsInventory: false, amount }
+
+    return { invoiceId: invoice.id, kind: input.kind, itemsRegistered: resolution.length, items: resolution }
   })
+}
+
+/** Sirve la imagen comprimida de una factura (trazabilidad). */
+export async function getInvoiceImage(tenantId: string, id: string) {
+  const inv = await prisma.quickInvoice.findFirst({ where: { id, tenantId }, select: { imageData: true, imageMime: true } })
+  if (!inv?.imageData) throw { statusCode: 404, message: 'Imagen no encontrada', code: 'NOT_FOUND' }
+  return { data: Buffer.from(inv.imageData), mime: inv.imageMime ?? 'image/jpeg' }
 }

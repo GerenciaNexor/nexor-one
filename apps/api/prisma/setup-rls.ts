@@ -76,6 +76,8 @@ const BUSINESS_TABLES = [
   'rentals',
   // HU-175 — alquileres entrantes (producto rentado de un tercero; no entra a KIRA).
   'incoming_rentals',
+  // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido (tenant_id propio).
+  'quick_invoices',
 ] as const
 
 async function setupRLS(): Promise<void> {

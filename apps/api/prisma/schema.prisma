@@ -121,6 +121,7 @@ model Tenant {
   conversations         Conversation[]
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
+  quickInvoices         QuickInvoice[]
   subscription          Subscription?
 
   /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
@@ -823,6 +824,34 @@ model IncomingRental {
   @@index([tenantId, supplierId])
   @@index([supplierId])
   @@map("incoming_rentals")
+}
+
+/**
+ * HU-191 — Factura cargada por imagen (OCR) desde el registro rápido de compra/venta.
+ * Guarda la factura COMPLETA leída (nada se pierde: lo sin columna propia va a `fullExtraction` JSON)
+ * + la imagen comprimida (miniatura, para trazabilidad). Las transacciones/movimientos de stock que
+ * se generan al confirmar viven en `transactions`/`stock_movements` (referenceType quick_purchase/sale);
+ * esta tabla es el comprobante de origen. branch_id/user_id son referencias (sin FK) del contexto.
+ */
+model QuickInvoice {
+  id             String    @id @default(cuid()) @db.VarChar(30)
+  tenantId       String    @map("tenant_id") @db.VarChar(30)
+  branchId       String?   @map("branch_id") @db.VarChar(30)
+  userId         String?   @map("user_id") @db.VarChar(30)
+  kind           String    @db.VarChar(20)                     // purchase | sale
+  issuer         String?   @db.VarChar(255)                    // emisor de la factura
+  nit            String?   @db.VarChar(50)
+  invoiceDate    DateTime? @map("invoice_date") @db.Date
+  total          Decimal?  @db.Decimal(15, 2)
+  fullExtraction Json      @map("full_extraction")             // factura COMPLETA (ningún dato leído se pierde)
+  imageData      Bytes?    @map("image_data")                  // miniatura comprimida (trazabilidad)
+  imageMime      String?   @map("image_mime") @db.VarChar(50)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("quick_invoices")
 }
 
 /// Historial INMUTABLE de cada cambio en el inventario.
