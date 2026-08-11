@@ -1185,6 +1185,10 @@ model Transaction {
   category          String?  @db.VarChar(100)
   referenceType     String?  @map("reference_type") @db.VarChar(50)
   referenceId       String?  @map("reference_id") @db.VarChar(30)
+  // HU-194-C — quién ingresó el registro y su origen. `quickInvoiceId` != null → vino de una factura
+  // OCR (y liga con quick_invoices para el detalle); null → registro manual. `createdBy` = user.id.
+  createdBy         String?  @map("created_by") @db.VarChar(30)
+  quickInvoiceId    String?  @map("quick_invoice_id") @db.VarChar(30)
   date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1200,6 +1204,7 @@ model Transaction {
   @@index([tenantId, isManual])
   @@index([tenantId, categoryId])
   @@index([referenceType, referenceId])
+  @@index([tenantId, quickInvoiceId])
   @@map("transactions")
 }
 

@@ -103,13 +103,13 @@ export function InvoicesPanel({ kind }: { kind: Kind }) {
 
 interface InvoiceDetail {
   id: string; kind: Kind; issuer: string | null; nit: string | null; date: string | null; total: number | null
-  hasImage: boolean; createdAt: string
+  hasImage: boolean; createdAt: string; createdByName?: string | null
   additionalFields: { label: string; value: string }[]
   items: Array<{ description?: string; quantity?: number; unitValue?: number; amount?: number; productName?: string; affectsStock?: boolean; addedToInventory?: boolean; transactionId?: string }>
   fullExtraction?: { items?: Array<{ description?: { value?: string }; quantity?: { value?: number }; unitPrice?: { value?: number } }> }
 }
 
-function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Kind; onClose: () => void }) {
+export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Kind; onClose: () => void }) {
   const isSale = kind === 'sale'
   const [inv, setInv] = useState<InvoiceDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -135,7 +135,10 @@ function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Kind; onC
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
         <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Factura de {isSale ? 'venta' : 'compra'}</h3>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Factura de {isSale ? 'venta' : 'compra'}</h3>
+              {inv && <p className="mt-0.5 text-xs text-slate-500">📄 Origen: factura por foto{inv.createdByName ? ` · Subida por ${inv.createdByName}` : ''}{inv.createdAt ? ` · ${fmtDate(inv.createdAt)}` : ''}</p>}
+            </div>
             <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
 

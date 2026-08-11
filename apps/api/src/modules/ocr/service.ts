@@ -51,6 +51,8 @@ interface BaseExtraction {
 export interface QuoteExtraction extends BaseExtraction {
   documentType: 'quote'
   client:       FieldValue | null
+  // HU-194-B — paridad con supplierNit de compra: NIT/CC del cliente para el campo dedicado de venta.
+  clientNit:    FieldValue | null
 }
 
 export interface OrderExtraction extends BaseExtraction {
@@ -87,7 +89,8 @@ Para tipo "quote":
   "canRead": true,
   "readabilityIssues": null,
   "confidence": "high|medium|low",
-  "client": { "value": "nombre del cliente o empresa", "confidence": "high|medium|low" },
+  "client":    { "value": "nombre del cliente o empresa", "confidence": "high|medium|low" },
+  "clientNit": { "value": "NIT o CC/identificación del cliente", "confidence": "high|medium|low" },
   "date": { "value": "YYYY-MM-DD", "confidence": "high|medium|low" },
   "items": [
     {
