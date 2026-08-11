@@ -16,6 +16,8 @@ const TABLES = [
   'client_ratings','pipeline_stages','deals','interactions','quotes','products','stock_movements',
   'suppliers','purchase_orders','supplier_ratings','service_types','availability','appointments',
   'transactions','conversations','conversation_messages','bulk_upload_logs','chat_messages',
+  // HU-183 — sesiones del chat interno (faltaba en la auditoría; setup-rls sí la cubre).
+  'chat_sessions',
   'dashboard_daily_rollups',
   // HU-135-fix — 5 tablas restantes (cierre 26→31).
   'blocked_dates','appointment_cancel_tokens','transaction_categories','cost_centers','monthly_budgets',
@@ -31,7 +33,7 @@ const TABLES = [
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   const t = `t_${s}`, br = `br_${s}`, u = `u_${s}`, cl = `cl_${s}`, st = `st_${s}`, d = `d_${s}`
-  const p = `p_${s}`, sp = `sp_${s}`, po = `po_${s}`, cv = `cv_${s}`
+  const p = `p_${s}`, sp = `sp_${s}`, po = `po_${s}`, cv = `cv_${s}`, cs = `cs_${s}`
   const T = (h = 9) => new Date(`1970-01-01T0${h}:00:00.000Z`)
   await db.tenant.create({ data: { id: t, name: `T${s}`, slug: `audit-${s}` } })
   await db.branch.create({ data: { id: br, tenantId: t, name: 'B' } })
@@ -50,7 +52,9 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.conversation.create({ data: { id: cv, tenantId: t, channel: 'WHATSAPP', senderIdentifier: `snd-${s}`, lastMessageAt: new Date() } })
   await db.conversationMessage.create({ data: { tenantId: t, conversationId: cv, direction: 'inbound', content: 'x', timestamp: new Date() } })
   await db.bulkUploadLog.create({ data: { tenantId: t, userId: u, type: 'products', fileName: 'f', status: 'success' } })
-  await db.chatMessage.create({ data: { tenantId: t, userId: u, role: 'user', content: 'x' } })
+  // HU-183 — chat_messages requiere una sesión (chatSessionId): se crea la sesión primero.
+  await db.chatSession.create({ data: { id: cs, tenantId: t, userId: u, title: 'Audit' } })
+  await db.chatMessage.create({ data: { tenantId: t, userId: u, chatSessionId: cs, role: 'user', content: 'x' } })
   await db.dashboardDailyRollup.create({ data: { tenantId: t, date: new Date() } })
   await db.deal.create({ data: { id: d, tenantId: t, clientId: cl, stageId: st, title: 'D' } })
   await db.interaction.create({ data: { tenantId: t, clientId: cl, type: 'note', direction: 'outbound', content: 'x' } })
