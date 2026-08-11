@@ -330,12 +330,20 @@ export async function extractInvoice(params: {
     ? { issuer: (result as OrderExtraction).supplier?.value ?? null, nit: (result as OrderExtraction).supplierNit?.value ?? null }
     : { issuer: (result as QuoteExtraction).client?.value ?? null, nit: null as string | null }
 
+  // HU-193-B — datos SIN campo propio (para "Información adicional obtenida"). Se incluyen las notas
+  // si vienen. Ya viajan también en fullExtraction (persisten al registrar); esto es para mostrarlos.
+  const additionalFields = [
+    ...(result.additionalFields ?? []),
+    ...(result.notes?.value ? [{ label: 'Notas', value: result.notes.value }] : []),
+  ]
+
   return {
     canRead: true, kind,
     issuer: header.issuer, nit: header.nit,
     date:   result.date?.value ?? null,
     total:  result.total?.value ?? null,
     items,
+    additionalFields,       // HU-193-B — lo que no tiene casilla propia
     fullExtraction: result, // factura COMPLETA (nada se pierde)
   }
 }
@@ -408,4 +416,26 @@ export async function getInvoiceImage(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({ where: { id, tenantId }, select: { imageData: true, imageMime: true } })
   if (!inv?.imageData) throw { statusCode: 404, message: 'Imagen no encontrada', code: 'NOT_FOUND' }
   return { data: Buffer.from(inv.imageData), mime: inv.imageMime ?? 'image/jpeg' }
+}
+
+/**
+ * HU-193-B — Devuelve una factura guardada con su encabezado + la "Información adicional obtenida"
+ * (reconstruida de fullExtraction). Hace RECUPERABLE después todo lo que la factura traía.
+ */
+export async function getInvoice(tenantId: string, id: string) {
+  const inv = await prisma.quickInvoice.findFirst({
+    where:  { id, tenantId },
+    select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true },
+  })
+  if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+  const fe = (inv.fullExtraction ?? {}) as { additionalFields?: { label: string; value: string }[]; notes?: { value?: string } }
+  const additionalFields = [
+    ...(Array.isArray(fe.additionalFields) ? fe.additionalFields : []),
+    ...(fe.notes?.value ? [{ label: 'Notas', value: fe.notes.value }] : []),
+  ].filter((f) => f?.label && f?.value)
+  return {
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
+    date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
+    hasImage: !!inv.imageMime, additionalFields, fullExtraction: inv.fullExtraction, createdAt: inv.createdAt,
+  }
 }

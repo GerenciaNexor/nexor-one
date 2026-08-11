@@ -28,6 +28,12 @@ export interface LineItem {
   productId?:  string | null
 }
 
+/** HU-193-B — dato adicional presente en la factura que NO tiene campo propio (nada se pierde). */
+export interface ExtraField {
+  label: string
+  value: string
+}
+
 interface BaseExtraction {
   canRead:            boolean
   readabilityIssues:  string | null
@@ -37,6 +43,9 @@ interface BaseExtraction {
   total:              FieldValue<number> | null
   notes:              FieldValue | null
   unrecognizedItems?: string[]
+  // HU-193-B — TODA la demás información presente en la factura (número de factura, vendedor, cliente
+  // y su NIT/CC, forma de pago, subtotal, impuestos/IVA, puntos, resolución DIAN, dirección, etc.).
+  additionalFields?:  ExtraField[]
 }
 
 export interface QuoteExtraction extends BaseExtraction {
@@ -126,7 +135,17 @@ Reglas estrictas:
 - Si un campo opcional no aparece en el documento usa null directamente (no el objeto)
 - Si no hay descuento usa null, no 0
 - **PRECIOS — regla más importante**: Siempre extrae el precio real visible en el documento. NUNCA uses 0 como marcador. Si genuinamente no hay columna de precio visible para un ítem, devuelve unitPrice como null (el valor null directamente, no {"value": null}). Un 0 en la respuesta SOLO significa que el documento literalmente muestra "0" o "$0".
-- PDFs de varias páginas: analiza solo la primera página`
+- PDFs de varias páginas: analiza solo la primera página
+
+CAPTURA TOTAL (regla dura — nada se pierde): además de los campos de arriba, extrae TODA otra
+información que aparezca en la factura y NO tenga un campo propio, en el arreglo "additionalFields"
+como pares { "label": "...", "value": "..." }. Incluye (solo si aparecen, nunca inventes): número de
+factura/documento, cliente y su NIT/CC/identificación, vendedor/cajero, forma de pago, subtotal,
+IVA/impuestos y su base, descuentos, retenciones, puntos/fidelización, resolución DIAN y su rango,
+dirección, teléfono/contacto, correo, moneda, términos, observaciones, código QR/CUFE, etc. Usa el
+mismo nombre/etiqueta que muestra la factura ("Vendedor", "Factura Nro.", "CC", "Puntos"…). Si un dato
+YA está en un campo propio (emisor, NIT del emisor, fecha, total, ítems) NO lo repitas aquí. Si la
+factura no trae datos adicionales, devuelve "additionalFields": [].`
 }
 
 // ─── Prompt de matching semántico ─────────────────────────────────────────────
