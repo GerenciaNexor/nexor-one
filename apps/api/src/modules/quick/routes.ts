@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, extractInvoice, registerInvoice, getInvoiceImage } from './service'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, extractInvoice, registerInvoice, getInvoice, getInvoiceImage } from './service'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -115,6 +115,16 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
     try {
       const result = await registerInvoice(request.user.tenantId, request.user.userId, branchId, parsed.data)
       return reply.code(201).send({ success: true, data: result })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices/:id — factura guardada: encabezado + "Información adicional obtenida" (HU-193-B). */
+  app.get('/invoices/:id', {
+    schema: { tags: ['Quick'], summary: 'Factura guardada (incluye información adicional)', security: bearerAuth, params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    try {
+      return reply.code(200).send({ success: true, data: await getInvoice(request.user.tenantId, (request.params as { id: string }).id) })
     } catch (err) { return errReply(reply, err) }
   })
 
