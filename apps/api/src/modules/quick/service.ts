@@ -328,7 +328,8 @@ export async function extractInvoice(params: {
 
   const header = kind === 'purchase'
     ? { issuer: (result as OrderExtraction).supplier?.value ?? null, nit: (result as OrderExtraction).supplierNit?.value ?? null }
-    : { issuer: (result as QuoteExtraction).client?.value ?? null, nit: null as string | null }
+    // HU-194-B — paridad: en venta también se llena el NIT dedicado (NIT/CC del cliente).
+    : { issuer: (result as QuoteExtraction).client?.value ?? null, nit: (result as QuoteExtraction).clientNit?.value ?? null }
 
   // HU-193-B — datos SIN campo propio (para "Información adicional obtenida"). Se incluyen las notas
   // si vienen. Ya viajan también en fullExtraction (persisten al registrar); esto es para mostrarlos.
