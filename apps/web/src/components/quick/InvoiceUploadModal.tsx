@@ -29,6 +29,7 @@ interface ExtractResult {
   date?: string | null
   total?: number | null
   items?: ExtractedItem[]
+  additionalFields?: { label: string; value: string }[]
   fullExtraction?: unknown
 }
 
@@ -104,6 +105,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
   const [items, setItems]       = useState<ItemState[]>([])
 
+  const [additional, setAdditional] = useState<{ label: string; value: string }[]>([])
   const [counterparties, setCP] = useState<Opt[]>([])
   const [branches, setBranches] = useState<Opt[]>([])
   const [products, setProducts] = useState<Prod[]>([])
@@ -136,6 +138,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
       if (!data.canRead) { setUnreadable(data.message ?? 'Lo siento, la imagen no se logró entender, ingresa los valores manualmente.'); return }
 
       setFull(data.fullExtraction ?? null)
+      setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
       setIssuer(data.issuer ?? ''); setNit(data.nit ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
       setItems((data.items ?? []).map((it) => ({
         description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',
@@ -315,9 +318,28 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
               </div>
 
               <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
-                <span className="text-slate-500">{isSale ? 'Ingreso' : 'Gasto'} de los ítems con stock</span>
+                <span className="text-slate-500">{isSale ? 'Ingreso' : 'Gasto'} a registrar</span>
                 <span className={`font-semibold ${isSale ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-100'}`}>{money(preview)}</span>
               </div>
+
+              {/* HU-193-B — todo lo demás que trae la factura (sin campo propio): secundario pero visible.
+                  Se guarda con la factura (fullExtraction) al confirmar → recuperable después. */}
+              {additional.length > 0 && (
+                <details className="rounded-lg border border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Información adicional obtenida ({additional.length}) — se guarda con la factura
+                  </summary>
+                  <dl className="divide-y divide-slate-100 px-3 pb-2 dark:divide-slate-700/60">
+                    {additional.map((f, i) => (
+                      <div key={i} className="flex gap-3 py-1.5 text-xs">
+                        <dt className="w-2/5 shrink-0 font-medium text-slate-500 dark:text-slate-400">{f.label}</dt>
+                        <dd className="min-w-0 flex-1 break-words text-slate-700 dark:text-slate-200">{f.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              )}
+
               {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
             </div>
           )}

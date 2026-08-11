@@ -1,5 +1,5 @@
 import { prisma, directPrisma } from '../../lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
 import { businessToday } from '../../lib/dates'
@@ -330,12 +330,20 @@ export async function extractInvoice(params: {
     ? { issuer: (result as OrderExtraction).supplier?.value ?? null, nit: (result as OrderExtraction).supplierNit?.value ?? null }
     : { issuer: (result as QuoteExtraction).client?.value ?? null, nit: null as string | null }
 
+  // HU-193-B — datos SIN campo propio (para "Información adicional obtenida"). Se incluyen las notas
+  // si vienen. Ya viajan también en fullExtraction (persisten al registrar); esto es para mostrarlos.
+  const additionalFields = [
+    ...(result.additionalFields ?? []),
+    ...(result.notes?.value ? [{ label: 'Notas', value: result.notes.value }] : []),
+  ]
+
   return {
     canRead: true, kind,
     issuer: header.issuer, nit: header.nit,
     date:   result.date?.value ?? null,
     total:  result.total?.value ?? null,
     items,
+    additionalFields,       // HU-193-B — lo que no tiene casilla propia
     fullExtraction: result, // factura COMPLETA (nada se pierde)
   }
 }
@@ -370,12 +378,14 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     for (const item of input.items) {
       if (input.kind === 'purchase') {
         const adds = item.addToInventory !== false && (item.productId || item.newProduct)
-        if (!adds) { resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: false, affectsStock: false }); continue }
-        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, {
-          affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined,
-          newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue,
-        })
-        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: !!item.newProduct, affectsStock: true, ...r })
+        // HU-193-A — un ítem "no agregado al inventario" NO toca stock, pero SÍ se registra como gasto
+        // (la factura se pagó): así aparece en "Compras rápidas" y las finanzas quedan completas. Antes
+        // se saltaba (continue) → la factura se guardaba pero no aparecía por ningún lado (bug silencioso).
+        const line = adds
+          ? { affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined, newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue }
+          : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
+        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now }, line)
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
       } else {
         const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now }, {
           affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
@@ -406,4 +416,79 @@ export async function getInvoiceImage(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({ where: { id, tenantId }, select: { imageData: true, imageMime: true } })
   if (!inv?.imageData) throw { statusCode: 404, message: 'Imagen no encontrada', code: 'NOT_FOUND' }
   return { data: Buffer.from(inv.imageData), mime: inv.imageMime ?? 'image/jpeg' }
+}
+
+/**
+ * HU-193-B — Devuelve una factura guardada con su encabezado + la "Información adicional obtenida"
+ * (reconstruida de fullExtraction). Hace RECUPERABLE después todo lo que la factura traía.
+ */
+export async function getInvoice(tenantId: string, id: string) {
+  const inv = await prisma.quickInvoice.findFirst({
+    where:  { id, tenantId },
+    select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true },
+  })
+  if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+  const fe = (inv.fullExtraction ?? {}) as {
+    additionalFields?: { label: string; value: string }[]
+    notes?: { value?: string }
+    _resolution?: Array<Record<string, unknown>>
+  }
+  const additionalFields = [
+    ...(Array.isArray(fe.additionalFields) ? fe.additionalFields : []),
+    ...(fe.notes?.value ? [{ label: 'Notas', value: fe.notes.value }] : []),
+  ].filter((f) => f?.label && f?.value)
+  // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
+  const items = Array.isArray(fe._resolution) ? fe._resolution : []
+  return {
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
+    date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
+    hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction, createdAt: inv.createdAt,
+  }
+}
+
+/** Etiqueta que parece "número de factura" dentro de la información adicional (para la lista/búsqueda). */
+function invoiceNumberOf(fe: unknown): string | null {
+  const af = (fe as { additionalFields?: { label: string; value: string }[] })?.additionalFields
+  if (!Array.isArray(af)) return null
+  const f = af.find((x) => /(factura|comprobante|documento|invoice|folio|consecutivo).*(n[uú]m|nro|no\b|#)|n[uú]mero|nro|folio|consecutivo/i.test(x.label))
+  return f?.value ?? null
+}
+
+/**
+ * HU-194-A — Lista de facturas cargadas por OCR (por tipo compra/venta), con búsqueda por número de
+ * factura / emisor / NIT (texto), rango de fecha y rango de total. RLS por tenant (proxy + filtro).
+ */
+export async function listInvoices(tenantId: string, opts: {
+  kind: 'purchase' | 'sale'; q?: string; from?: string; to?: string; minTotal?: number; maxTotal?: number; page: number; limit: number
+}) {
+  const conds: Prisma.Sql[] = [Prisma.sql`tenant_id = ${tenantId}`, Prisma.sql`kind = ${opts.kind}`]
+  if (opts.from)             conds.push(Prisma.sql`invoice_date >= ${new Date(opts.from)}`)
+  if (opts.to)               conds.push(Prisma.sql`invoice_date <= ${new Date(opts.to)}`)
+  if (opts.minTotal != null) conds.push(Prisma.sql`total >= ${opts.minTotal}`)
+  if (opts.maxTotal != null) conds.push(Prisma.sql`total <= ${opts.maxTotal}`)
+  if (opts.q?.trim()) {
+    const like = `%${opts.q.trim()}%`
+    // El número de factura vive en full_extraction (info adicional): se busca sobre el texto del JSON.
+    conds.push(Prisma.sql`(issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like})`)
+  }
+  const where  = Prisma.join(conds, ' AND ')
+  const offset = (opts.page - 1) * opts.limit
+
+  const rows = await prisma.$queryRaw<Array<{
+    id: string; kind: string; issuer: string | null; nit: string | null; invoice_date: Date | null
+    total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
+  }>>(Prisma.sql`
+    SELECT id, kind, issuer, nit, invoice_date, total, image_mime, full_extraction, created_at
+    FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
+  const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
+  const total = Number(countRes[0]?.n ?? 0)
+
+  return {
+    data: rows.map((r) => ({
+      id: r.id, kind: r.kind, issuer: r.issuer, nit: r.nit,
+      date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
+      invoiceNumber: invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
+    })),
+    total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
+  }
 }
