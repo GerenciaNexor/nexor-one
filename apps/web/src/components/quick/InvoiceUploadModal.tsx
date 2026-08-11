@@ -315,7 +315,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
               </div>
 
               <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
-                <span className="text-slate-500">{isSale ? 'Ingreso' : 'Gasto'} de los ítems con stock</span>
+                <span className="text-slate-500">{isSale ? 'Ingreso' : 'Gasto'} a registrar</span>
                 <span className={`font-semibold ${isSale ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-100'}`}>{money(preview)}</span>
               </div>
               {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
