@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, extractInvoice, registerInvoice, getInvoice, getInvoiceImage } from './service'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, extractInvoice, registerInvoice, listInvoices, getInvoice, getInvoiceImage } from './service'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -118,6 +118,30 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
     try {
       const result = await registerInvoice(request.user.tenantId, request.user.userId, branchId, parsed.data)
       return reply.code(201).send({ success: true, data: result })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices — HU-194-A: lista de facturas cargadas (por tipo), con búsqueda por número
+   *  de factura / emisor / NIT (q), rango de fecha (from/to) y rango de total (minTotal/maxTotal). */
+  app.get('/invoices', {
+    schema: { tags: ['Quick'], summary: 'Listar facturas cargadas (con búsqueda)', security: bearerAuth,
+      querystring: { type: 'object', properties: {
+        kind: { type: 'string', enum: ['purchase', 'sale'] }, q: { type: 'string' },
+        from: { type: 'string' }, to: { type: 'string' }, minTotal: { type: 'string' }, maxTotal: { type: 'string' },
+        page: { type: 'string' }, limit: { type: 'string' },
+      } },
+      response: { 200: listRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    const q = request.query as { kind?: string; q?: string; from?: string; to?: string; minTotal?: string; maxTotal?: string; page?: string; limit?: string }
+    const kind = q.kind === 'sale' ? 'sale' : 'purchase'
+    const num = (v?: string) => { const n = v != null && v !== '' ? Number(v) : NaN; return Number.isFinite(n) ? n : undefined }
+    const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '30', 10) || 30))
+    try {
+      return reply.code(200).send(await listInvoices(request.user.tenantId, {
+        kind, q: q.q, from: q.from, to: q.to, minTotal: num(q.minTotal), maxTotal: num(q.maxTotal), page, limit,
+      }))
     } catch (err) { return errReply(reply, err) }
   })
 

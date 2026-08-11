@@ -1,5 +1,5 @@
 import { prisma, directPrisma } from '../../lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
 import { businessToday } from '../../lib/dates'
@@ -428,14 +428,67 @@ export async function getInvoice(tenantId: string, id: string) {
     select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
-  const fe = (inv.fullExtraction ?? {}) as { additionalFields?: { label: string; value: string }[]; notes?: { value?: string } }
+  const fe = (inv.fullExtraction ?? {}) as {
+    additionalFields?: { label: string; value: string }[]
+    notes?: { value?: string }
+    _resolution?: Array<Record<string, unknown>>
+  }
   const additionalFields = [
     ...(Array.isArray(fe.additionalFields) ? fe.additionalFields : []),
     ...(fe.notes?.value ? [{ label: 'Notas', value: fe.notes.value }] : []),
   ].filter((f) => f?.label && f?.value)
+  // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
+  const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
     id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
-    hasImage: !!inv.imageMime, additionalFields, fullExtraction: inv.fullExtraction, createdAt: inv.createdAt,
+    hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction, createdAt: inv.createdAt,
+  }
+}
+
+/** Etiqueta que parece "número de factura" dentro de la información adicional (para la lista/búsqueda). */
+function invoiceNumberOf(fe: unknown): string | null {
+  const af = (fe as { additionalFields?: { label: string; value: string }[] })?.additionalFields
+  if (!Array.isArray(af)) return null
+  const f = af.find((x) => /(factura|comprobante|documento|invoice|folio|consecutivo).*(n[uú]m|nro|no\b|#)|n[uú]mero|nro|folio|consecutivo/i.test(x.label))
+  return f?.value ?? null
+}
+
+/**
+ * HU-194-A — Lista de facturas cargadas por OCR (por tipo compra/venta), con búsqueda por número de
+ * factura / emisor / NIT (texto), rango de fecha y rango de total. RLS por tenant (proxy + filtro).
+ */
+export async function listInvoices(tenantId: string, opts: {
+  kind: 'purchase' | 'sale'; q?: string; from?: string; to?: string; minTotal?: number; maxTotal?: number; page: number; limit: number
+}) {
+  const conds: Prisma.Sql[] = [Prisma.sql`tenant_id = ${tenantId}`, Prisma.sql`kind = ${opts.kind}`]
+  if (opts.from)             conds.push(Prisma.sql`invoice_date >= ${new Date(opts.from)}`)
+  if (opts.to)               conds.push(Prisma.sql`invoice_date <= ${new Date(opts.to)}`)
+  if (opts.minTotal != null) conds.push(Prisma.sql`total >= ${opts.minTotal}`)
+  if (opts.maxTotal != null) conds.push(Prisma.sql`total <= ${opts.maxTotal}`)
+  if (opts.q?.trim()) {
+    const like = `%${opts.q.trim()}%`
+    // El número de factura vive en full_extraction (info adicional): se busca sobre el texto del JSON.
+    conds.push(Prisma.sql`(issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like})`)
+  }
+  const where  = Prisma.join(conds, ' AND ')
+  const offset = (opts.page - 1) * opts.limit
+
+  const rows = await prisma.$queryRaw<Array<{
+    id: string; kind: string; issuer: string | null; nit: string | null; invoice_date: Date | null
+    total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
+  }>>(Prisma.sql`
+    SELECT id, kind, issuer, nit, invoice_date, total, image_mime, full_extraction, created_at
+    FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
+  const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
+  const total = Number(countRes[0]?.n ?? 0)
+
+  return {
+    data: rows.map((r) => ({
+      id: r.id, kind: r.kind, issuer: r.issuer, nit: r.nit,
+      date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
+      invoiceNumber: invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
+    })),
+    total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
   }
 }
