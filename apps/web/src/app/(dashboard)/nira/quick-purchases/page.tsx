@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { fmtCalendarDate } from '@/lib/format-date'
+import { fmtDateTime } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
@@ -84,7 +84,7 @@ export default function QuickPurchasesPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
                   <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtCalendarDate(r.date)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.counterparty ?? '—'}</td>
                     <td className="px-4 py-3">
                       {r.product

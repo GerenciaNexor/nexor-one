@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { fmtCalendarDate } from '@/lib/format-date'
+import { fmtCalendarDate, fmtDateTime } from '@/lib/format-date'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 
@@ -80,7 +80,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
                   <tr key={r.id} onClick={() => setDetailId(r.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.invoiceNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.issuer ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.nit ?? '—'}</td>
@@ -137,7 +137,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Factura de {isSale ? 'venta' : 'compra'}</h3>
-              {inv && <p className="mt-0.5 text-xs text-slate-500">📄 Origen: factura por foto{inv.createdByName ? ` · Subida por ${inv.createdByName}` : ''}{inv.createdAt ? ` · ${fmtDate(inv.createdAt)}` : ''}</p>}
+              {inv && <p className="mt-0.5 text-xs text-slate-500">📄 Origen: factura por foto{inv.createdByName ? ` · Subida por ${inv.createdByName}` : ''}{inv.createdAt ? ` · ${fmtDateTime(inv.createdAt)}` : ''}</p>}
             </div>
             <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
