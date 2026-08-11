@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
+import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Register {
@@ -99,6 +100,9 @@ export default function QuickSalesPage() {
           )}
         </div>
       </div>
+
+      {/* HU-194-A — facturas de venta cargadas por OCR: lista + búsqueda + detalle */}
+      <InvoicesPanel kind="sale" />
 
       {modal && <QuickRegisterModal initialMode="sale" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
       {invoice && <InvoiceUploadModal kind="sale" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); load() }} />}
