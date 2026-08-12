@@ -22,6 +22,7 @@ import { decrypt } from './encryption'
 import { markIntegrationDown, markIntegrationHealthy } from './integration-status'
 import { isOwnGmailMessage } from './gmail-loop-guard'
 import { runAgent } from '../modules/agents/agent.runner'
+import { evaluateAgentGate } from '../modules/agent-settings/service'
 import type { AgentModule } from '../modules/agents/types'
 import { extractDocument } from '../modules/ocr/service'
 import type { OrderExtraction, QuoteExtraction } from '../modules/ocr/service'
@@ -337,6 +338,32 @@ async function findUsersToNotify(tenantId: string, module: 'NIRA' | 'ARI'): Prom
     select: { id: true },
   })
   return users.map((u) => u.id)
+}
+
+/**
+ * HU-196 — "Solo notificar": el agente NO responde al cliente; en su lugar avisa al negocio (admins y
+ * jefes de área) que llegó un mensaje que requiere atención. También se usa cuando el canal está
+ * apagado o fuera de horario. El mensaje ya quedó guardado en la bandeja.
+ */
+async function notifyIncomingToBusiness(tenantId: string, channel: 'whatsapp' | 'gmail', sender: string, content: string): Promise<void> {
+  try {
+    const managers = await directPrisma.user.findMany({
+      where:  { tenantId, isActive: true, role: { in: ['AREA_MANAGER', 'TENANT_ADMIN'] } },
+      select: { id: true },
+    })
+    if (!managers.length) return
+    const label = channel === 'gmail' ? 'correo' : 'WhatsApp'
+    await directPrisma.notification.createMany({
+      data: managers.map((u) => ({
+        tenantId, userId: u.id, module: 'ATENCION' as ModuleName, type: 'mensaje_sin_responder',
+        title:   `Nuevo ${label} sin responder`,
+        message: `${sender}: "${(content ?? '').slice(0, 160)}". El asistente no respondió automáticamente (configuración de IA). Revisa la Bandeja.`,
+        link:    '/inbox',
+      })),
+    })
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'notify_incoming_failed', tenantId, channel, error: String(err) }))
+  }
 }
 
 /** Crea notificaciones in-app para los usuarios dados. */
@@ -725,7 +752,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     // vencido, el envío falla y se marca caído (sin relanzar) — pero el agente ya respondió.
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'WHATSAPP' },
-      select: { tokenEncrypted: true, status: true, identifier: true },
+      select: { tokenEncrypted: true, status: true, identifier: true, branchId: true },
     })
     if (!integration?.tokenEncrypted) {
       throw new Error(`No hay integración de WhatsApp — tenant: ${d.tenantId}`)
@@ -805,6 +832,19 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       return
     }
 
+    // ── HU-196 — la configuración de IA gobierna el comportamiento (canal activo / responder vs solo
+    // notificar / horario). Solo aplica al agente de ATENCIÓN (canales externos). ──────────────────
+    let disableScheduling = false
+    if (module === 'ATENCION') {
+      const gate = await evaluateAgentGate(d.tenantId, integration.branchId, 'whatsapp')
+      if (gate.notifyOnly) {
+        await notifyIncomingToBusiness(d.tenantId, 'whatsapp', d.from, d.content)
+        console.info(JSON.stringify({ event: 'worker_whatsapp_notify_only', jobId: job.id, tenantId: d.tenantId, enabled: gate.enabled, withinHours: gate.withinHours }))
+        return
+      }
+      disableScheduling = !gate.canSchedule
+    }
+
     // Invocar AgentRunner (para el contenido de texto) — con memoria de la conversación (HU-186)
     const result = await runAgent({
       tenantId:      d.tenantId,
@@ -814,6 +854,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
       senderId:      d.from,
       integrationId: d.integrationId,
       history,
+      disableScheduling,
     })
 
     console.info(JSON.stringify({
@@ -896,7 +937,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     // intentar responder; el fetch va antes del bucle, así un fallo aquí no consume ningún mensaje.
     const integration = await directPrisma.integration.findFirst({
       where:  { id: d.integrationId, tenantId: d.tenantId, channel: 'GMAIL' },
-      select: { tokenEncrypted: true, identifier: true, metadata: true, status: true },
+      select: { tokenEncrypted: true, identifier: true, metadata: true, status: true, branchId: true },
     })
 
     if (!integration?.tokenEncrypted) {
@@ -1071,6 +1112,18 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           }
         }
 
+        // HU-196 — la configuración de IA gobierna el comportamiento también en Gmail.
+        let disableScheduling = false
+        if (module === 'ATENCION') {
+          const gate = await evaluateAgentGate(d.tenantId, integration.branchId, 'gmail')
+          if (gate.notifyOnly) {
+            await notifyIncomingToBusiness(d.tenantId, 'gmail', from, emailMessage)
+            console.info(JSON.stringify({ event: 'worker_gmail_notify_only', jobId: job.id, tenantId: d.tenantId, enabled: gate.enabled, withinHours: gate.withinHours }))
+            continue
+          }
+          disableScheduling = !gate.canSchedule
+        }
+
         const result = await runAgent({
           tenantId:      d.tenantId,
           module,
@@ -1079,6 +1132,7 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
           senderId:      from,
           integrationId: d.integrationId,
           history,
+          disableScheduling,
         })
 
         console.info(JSON.stringify({

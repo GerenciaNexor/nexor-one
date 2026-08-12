@@ -78,6 +78,8 @@ const BUSINESS_TABLES = [
   'incoming_rentals',
   // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido (tenant_id propio).
   'quick_invoices',
+  // HU-196 — configuración del comportamiento del agente de IA por sucursal/tenant.
+  'agent_settings',
 ] as const
 
 async function setupRLS(): Promise<void> {

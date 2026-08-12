@@ -29,6 +29,8 @@ const TABLES = [
   'incoming_rentals',
   // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido.
   'quick_invoices',
+  // HU-196 — configuración del comportamiento del agente de IA.
+  'agent_settings',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -75,6 +77,8 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.incomingRental.create({ data: { tenantId: t, supplierId: sp, userId: u, branchId: br, description: 'IR', quantity: new Prisma.Decimal(1), project: 'Proj', returnDate: new Date(), rentalCost: new Prisma.Decimal(100) } })
   // HU-191 — factura por imagen (OCR)
   await db.quickInvoice.create({ data: { tenantId: t, branchId: br, userId: u, kind: 'purchase', fullExtraction: { s } } })
+  // HU-196 — configuración del agente de IA
+  await db.agentSetting.create({ data: { tenantId: t, branchId: br, settings: { whatsapp: { enabled: true } } } })
 }
 
 async function main(): Promise<void> {

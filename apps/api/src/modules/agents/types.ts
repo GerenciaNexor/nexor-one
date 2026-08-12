@@ -42,6 +42,9 @@ export interface AgentRunnerInput {
   internalFull?:  AgentModule[]
   internalRead?:  AgentModule[]
   internalAreas?: string[]
+  /** HU-196 — si es true, el agente de ATENCIÓN NO puede agendar (se le quita crear_cita y el prompt
+   *  le dice que tome los datos y derive a un asesor en vez de reservar). */
+  disableScheduling?: boolean
 }
 
 export interface AgentRunnerResult {

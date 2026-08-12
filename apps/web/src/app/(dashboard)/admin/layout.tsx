@@ -7,9 +7,10 @@ import type { ReactNode } from 'react'
 // Administración del TENANT (para TENANT_ADMIN). La supervisión de plataforma (SUPER_ADMIN)
 // vive en /platform (HU-137/HU-140), fuera del panel de cliente.
 const TENANT_TABS = [
-  { href: '/admin/branches',      label: 'Sucursales'     },
-  { href: '/admin/users',         label: 'Usuarios'       },
-  { href: '/admin/modules',       label: 'Módulos'        },
+  { href: '/admin/branches',      label: 'Sucursales'        },
+  { href: '/admin/users',         label: 'Usuarios'          },
+  { href: '/admin/modules',       label: 'Módulos'           },
+  { href: '/admin/ai',            label: 'Configuración de IA' },
 ] as const
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -122,6 +122,7 @@ model Tenant {
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
   quickInvoices         QuickInvoice[]
+  agentSettings         AgentSetting[]
   subscription          Subscription?
 
   /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
@@ -852,6 +853,26 @@ model QuickInvoice {
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@map("quick_invoices")
+}
+
+/**
+ * HU-196 — Configuración de comportamiento del agente de IA, por sucursal (branchId) o del tenant
+ * completo (branchId null = default que aplica a las sucursales sin config propia). `settings` es JSON
+ * extensible: canales activos, responder/solo-notificar y agendar por canal, y horario de respuesta.
+ * Ej: { whatsapp:{enabled,respond,schedule}, gmail:{...}, hours:{mode:'24_7'|'business',start,end} }.
+ */
+model AgentSetting {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  tenantId  String   @map("tenant_id") @db.VarChar(30)
+  branchId  String?  @map("branch_id") @db.VarChar(30)   // null = default del tenant
+  settings  Json                                          // comportamiento del agente (extensible)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, branchId])
+  @@map("agent_settings")
 }
 
 /// Historial INMUTABLE de cada cambio en el inventario.
