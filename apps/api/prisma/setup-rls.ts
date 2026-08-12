@@ -80,6 +80,8 @@ const BUSINESS_TABLES = [
   'quick_invoices',
   // HU-196 — configuración del comportamiento del agente de IA por sucursal/tenant.
   'agent_settings',
+  // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio.
+  'proyectos',
 ] as const
 
 async function setupRLS(): Promise<void> {

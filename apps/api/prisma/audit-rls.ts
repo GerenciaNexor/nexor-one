@@ -31,6 +31,8 @@ const TABLES = [
   'quick_invoices',
   // HU-196 — configuración del comportamiento del agente de IA.
   'agent_settings',
+  // HU-198 — proyectos (metas/objetivos y límites/presupuestos).
+  'proyectos',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -79,6 +81,8 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.quickInvoice.create({ data: { tenantId: t, branchId: br, userId: u, kind: 'purchase', fullExtraction: { s } } })
   // HU-196 — configuración del agente de IA
   await db.agentSetting.create({ data: { tenantId: t, branchId: br, settings: { whatsapp: { enabled: true } } } })
+  // HU-198 — proyecto (objetivo)
+  await db.proyecto.create({ data: { tenantId: t, name: 'Meta ventas', type: 'objetivo', targetAmount: new Prisma.Decimal(1000), startDate: new Date(), endDate: new Date(Date.now() + 30 * 864e5) } })
 }
 
 async function main(): Promise<void> {

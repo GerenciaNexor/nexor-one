@@ -44,6 +44,7 @@ enum ModuleName {
   VERA
   ATENCION // HU-180 — agente de atención al cliente para canales externos (WhatsApp/Gmail)
   INTERNO  // HU-187 — agente interno unificado del dashboard (todos los módulos según el rol)
+  PROYECTOS // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio
 }
 
 enum Channel {
@@ -123,6 +124,7 @@ model Tenant {
   dashboardRollups      DashboardDailyRollup[]
   quickInvoices         QuickInvoice[]
   agentSettings         AgentSetting[]
+  proyectos             Proyecto[]
   subscription          Subscription?
 
   /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
@@ -450,6 +452,39 @@ model Reminder {
   @@index([tenantId, userId])
   @@index([isActive, remindAt])
   @@map("reminders")
+}
+
+/// HU-198 — Proyecto: línea de negocio con una meta cuantificada. Tipo `objetivo` (mínimo a
+/// alcanzar/superar) o `limite` (techo a no exceder, con umbral de aviso). El avance/consumo se
+/// calcula a partir de las transacciones asignadas — se conecta en HU-199. Cada proyecto pertenece a
+/// UN solo tenant (RLS lo aísla). Estados: activo | en_curso | terminado | cancelado.
+model Proyecto {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  tenantId    String   @map("tenant_id") @db.VarChar(30)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  /// objetivo | limite — define el comportamiento (meta a superar vs. techo a controlar).
+  type        String   @db.VarChar(20)
+  /// Meta cuantificada (monto): objetivo = mínimo a alcanzar; límite = techo a no exceder.
+  targetAmount Decimal @map("target_amount") @db.Decimal(15, 2)
+  /// Solo `limite`: umbral de aviso como MONTO (p. ej. avisar al llegar a $18M). Opcional.
+  alertAmount Decimal? @map("alert_amount") @db.Decimal(15, 2)
+  /// Solo `limite`: umbral de aviso como % del límite (0–100). Alternativa a alertAmount.
+  alertPct    Int?     @map("alert_pct")
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  /// activo | en_curso | terminado | cancelado (gestionables).
+  status      String   @default("activo") @db.VarChar(20)
+  /// Quién lo creó (sello de auditoría; sin FK para no acoplar a User).
+  createdBy   String?  @map("created_by") @db.VarChar(30)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("proyectos")
 }
 
 // =============================================================================

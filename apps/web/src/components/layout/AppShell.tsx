@@ -25,11 +25,12 @@ function resolveNotifLink(link: string): string {
 // ─── Configuracion de modulos ─────────────────────────────────────────────────
 
 const MODULES = [
-  { key: 'ARI',    label: 'Ventas',     href: '/ari',    badge: 'ARI'  },
-  { key: 'NIRA',   label: 'Compras',    href: '/nira',   badge: 'NIRA' },
-  { key: 'KIRA',   label: 'Inventario', href: '/kira',   badge: 'KIRA' },
-  { key: 'AGENDA', label: 'Agenda',     href: '/agenda', badge: 'REI'  },
-  { key: 'VERA',   label: 'Finanzas',   href: '/vera',   badge: 'VERA' },
+  { key: 'ARI',       label: 'Ventas',     href: '/ari',       badge: 'ARI'  },
+  { key: 'NIRA',      label: 'Compras',    href: '/nira',      badge: 'NIRA' },
+  { key: 'KIRA',      label: 'Inventario', href: '/kira',      badge: 'KIRA' },
+  { key: 'AGENDA',    label: 'Agenda',     href: '/agenda',    badge: 'REI'  },
+  { key: 'VERA',      label: 'Finanzas',   href: '/vera',      badge: 'VERA' },
+  { key: 'PROYECTOS', label: 'Proyectos',  href: '/proyectos', badge: 'PRO'  },
 ] as const
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ function ModuleIcon({ module: mod }: { module: string | null }) {
     NIRA:   { l: 'N', bg: 'bg-purple-500' },
     AGENDA: { l: 'G', bg: 'bg-orange-500' },
     VERA:   { l: 'V', bg: 'bg-rose-500' },
+    PROYECTOS: { l: 'P', bg: 'bg-teal-500' },
   }
   const { l, bg } = MAP[mod ?? ''] ?? { l: '·', bg: 'bg-slate-400' }
   return (

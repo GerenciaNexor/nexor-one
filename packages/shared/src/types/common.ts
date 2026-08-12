@@ -1,5 +1,5 @@
 /** Modulos de negocio disponibles en V1. */
-export type ModuleName = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA'
+export type ModuleName = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA' | 'PROYECTOS'
 
 /** Canales de comunicacion soportados. */
 export type ChannelType = 'WHATSAPP' | 'GMAIL' | 'MANUAL'
