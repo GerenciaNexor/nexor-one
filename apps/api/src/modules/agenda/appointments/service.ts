@@ -213,6 +213,23 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
       if (overlap) {
         throw { statusCode: 409, message: 'El profesional ya tiene una cita en ese horario', code: 'SLOT_TAKEN' }
       }
+    } else if (service.professionals.length === 0) {
+      // HU-195 — servicio SIN profesionales: el recurso es el servicio en la sucursal. Verificar que
+      // no exista ya una cita (no cancelada) de ESE servicio solapando → nunca pisar una cita existente.
+      const overlap = await tx.appointment.findFirst({
+        where: {
+          tenantId,
+          branchId:      data.branchId,
+          serviceTypeId: data.serviceTypeId,
+          status:        { notIn: ['cancelled'] },
+          startAt:       { lt: endAt },
+          endAt:         { gt: startAt },
+        },
+        select: { id: true },
+      })
+      if (overlap) {
+        throw { statusCode: 409, message: 'Ese horario ya está reservado', code: 'SLOT_TAKEN' }
+      }
     }
 
     return tx.appointment.create({

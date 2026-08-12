@@ -73,6 +73,8 @@ export interface ToolDetail {
 export interface ExecutionContext {
   userId?:   string
   userRole?: string
+  /** Canal por el que llega el mensaje (whatsapp/gmail/internal) — HU-195: origen real de la cita. */
+  channel?:  string
 }
 
 // ─── Definición de una Tool ───────────────────────────────────────────────────

@@ -41,6 +41,15 @@ function fakeProduct(disponible: number) {
 const INTERNOS = ['costPrice', 'costo', 'precioCompra', 'margen', 'minStock', 'abcClass',
   'preferredSupplierId', 'stockTotal', 'sucursales', 'quantity', 'rentedQuantity']
 
+describe('HU-195 — el agente de atención puede agendar citas', () => {
+  it('ATENCION_TOOLS incluye crear_cita y ver_horarios (para agendar en huecos libres)', () => {
+    const names = ATENCION_TOOLS.map((t) => t.definition.name)
+    expect(names).toContain('crear_cita')
+    expect(names).toContain('ver_horarios')
+    expect(names).toContain('ver_servicios')
+  })
+})
+
 describe('HU-180 — consultar_disponibilidad respeta la frontera', () => {
   beforeEach(() => vi.clearAllMocks())
 

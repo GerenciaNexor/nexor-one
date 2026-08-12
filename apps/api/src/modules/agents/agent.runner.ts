@@ -447,7 +447,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
               tool.execute(
                 block.input as Record<string, unknown>,
                 input.tenantId,
-                { userId: input.userId, userRole: input.userRole },
+                { userId: input.userId, userRole: input.userRole, channel: input.channel },
               ),
             )
             const content = JSON.stringify(output)

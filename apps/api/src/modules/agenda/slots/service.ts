@@ -175,7 +175,7 @@ export async function getAvailableSlots(tenantId: string, query: SlotsQuery) {
       startAt: { gte: dayStartUTC },
       endAt:   { lte: new Date(dayEndUTC.getTime() + 60_000) },
     },
-    select: { startAt: true, endAt: true, professionalId: true },
+    select: { startAt: true, endAt: true, professionalId: true, serviceTypeId: true },
   })
 
   // ── 6. Filtrar por disponibilidad real ────────────────────────────────────
@@ -184,6 +184,13 @@ export async function getAvailableSlots(tenantId: string, query: SlotsQuery) {
   const isProfFree = (profId: string, slotStart: Date, slotEnd: Date): boolean =>
     !appointments.some(
       (a) => a.professionalId === profId && a.startAt < slotEnd && a.endAt > slotStart,
+    )
+
+  // HU-195 — servicio SIN profesionales: el "recurso" es el propio servicio en la sucursal; un slot
+  // está ocupado si ya hay una cita (no cancelada) de ESE servicio solapando (evita doble-reserva).
+  const isServiceSlotFree = (slotStart: Date, slotEnd: Date): boolean =>
+    !appointments.some(
+      (a) => a.serviceTypeId === serviceId && a.startAt < slotEnd && a.endAt > slotStart,
     )
 
   const availableSlots: Array<{
@@ -224,7 +231,9 @@ export async function getAvailableSlots(tenantId: string, query: SlotsQuery) {
       availableSlots.push({ ...base, availableProfessionals: freeProfessionals })
 
     } else {
-      // Sin profesionales asignados → disponibilidad de sucursal aplica
+      // Sin profesionales asignados → disponibilidad de sucursal; el slot debe estar LIBRE (HU-195:
+      // no ofrecer como disponible un horario ya reservado para este servicio).
+      if (!isServiceSlotFree(slotStart, slotEnd)) continue
       availableSlots.push(base)
     }
   }
