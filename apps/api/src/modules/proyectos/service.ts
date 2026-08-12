@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma'
+import type { Prisma } from '@prisma/client'
 import type { CreateProjectInput, UpdateProjectInput } from './schema'
 
 // Campos que se exponen (nunca tenant_id en la respuesta).
@@ -72,6 +73,21 @@ export async function createProject(tenantId: string, userId: string, input: Cre
   return { ...p, progress: computeProgress(p) }
 }
 
+/**
+ * HU-199 — Suma de las transacciones asignadas por proyecto. `current` = Σ monto de las transacciones
+ * ligadas (RLS aísla por tenant). El monto es una magnitud positiva; el usuario asigna ingresos a los
+ * objetivos y egresos a los límites.
+ */
+async function sumByProject(tenantId: string, projectIds: string[]): Promise<Map<string, number>> {
+  if (projectIds.length === 0) return new Map()
+  const rows = await prisma.transaction.groupBy({
+    by:    ['projectId'],
+    where: { tenantId, projectId: { in: projectIds } },
+    _sum:  { amount: true },
+  })
+  return new Map(rows.map((r) => [r.projectId as string, Number(r._sum.amount ?? 0)]))
+}
+
 /** Lista los proyectos del tenant (RLS aísla). Filtros opcionales por estado y tipo. */
 export async function listProjects(tenantId: string, opts: { status?: string; type?: string } = {}) {
   const data = await prisma.proyecto.findMany({
@@ -83,15 +99,55 @@ export async function listProjects(tenantId: string, opts: { status?: string; ty
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     select:  SELECT,
   })
-  return { data: data.map((p) => ({ ...p, progress: computeProgress(p) })), total: data.length }
+  const sums = await sumByProject(tenantId, data.map((p) => p.id))
+  return { data: data.map((p) => ({ ...p, progress: computeProgress(p, sums.get(p.id) ?? 0) })), total: data.length }
 }
 
-/** Detalle: proyecto + avance + transacciones asignadas (vacío hasta HU-199). */
+/** Detalle: proyecto + avance (suma de asignadas) + las transacciones asignadas (HU-199). */
 export async function getProject(tenantId: string, id: string) {
   const p = await prisma.proyecto.findFirst({ where: { id, tenantId }, select: SELECT })
   if (!p) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
-  // HU-199 conectará las transacciones asignadas; por ahora no hay ninguna ligada.
-  return { ...p, progress: computeProgress(p), transactions: [] as unknown[] }
+  const transactions = await prisma.transaction.findMany({
+    where:  { tenantId, projectId: id },
+    select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, category: true, createdAt: true },
+    orderBy: { date: 'desc' },
+  })
+  const current = transactions.reduce((s, t) => s + Number(t.amount), 0)
+  return {
+    ...p,
+    progress: computeProgress(p, current),
+    transactions: transactions.map((t) => ({ ...t, amount: Number(t.amount) })),
+  }
+}
+
+/**
+ * HU-199 — Asigna/quita/cambia el proyecto de una transacción (manual, opcional). Valida que la
+ * transacción y el proyecto sean del MISMO tenant (nunca cross-tenant). `projectId = null` la desasigna.
+ */
+export async function assignTransaction(tenantId: string, transactionId: string, projectId: string | null) {
+  const tx = await prisma.transaction.findFirst({ where: { id: transactionId, tenantId }, select: { id: true } })
+  if (!tx) throw { statusCode: 404, message: 'Transacción no encontrada', code: 'NOT_FOUND' }
+  if (projectId) {
+    const proj = await prisma.proyecto.findFirst({ where: { id: projectId, tenantId }, select: { id: true } })
+    if (!proj) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
+  }
+  await prisma.transaction.update({ where: { id: transactionId }, data: { projectId } })
+  return { id: transactionId, projectId }
+}
+
+/** Cliente de lectura: el proxy `prisma` o un `tx` de transacción abierta (ambos exponen `.proyecto`). */
+type ProjectReader = Pick<Prisma.TransactionClient, 'proyecto'>
+
+/**
+ * Valida que un projectId (si viene) pertenezca al tenant → aislamiento cross-tenant (HU-199).
+ * Devuelve el id validado o null. `client` permite validar dentro de una transacción existente
+ * (quick/alquiler entrante usan su `tx`); por defecto usa el proxy con contexto de la request.
+ */
+export async function validateProjectId(tenantId: string, projectId?: string | null, client: ProjectReader = prisma): Promise<string | null> {
+  if (!projectId) return null
+  const proj = await client.proyecto.findFirst({ where: { id: projectId, tenantId }, select: { id: true } })
+  if (!proj) throw { statusCode: 400, message: 'El proyecto no existe en tu empresa', code: 'PROJECT_NOT_FOUND' }
+  return proj.id
 }
 
 export async function updateProject(tenantId: string, id: string, input: UpdateProjectInput) {

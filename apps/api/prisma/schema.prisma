@@ -482,6 +482,9 @@ model Proyecto {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // HU-199 — transacciones y alquileres entrantes asignados (alimentan el avance/consumo).
+  transactions    Transaction[]
+  incomingRentals IncomingRental[]
 
   @@index([tenantId, status])
   @@map("proyectos")
@@ -833,7 +836,10 @@ model IncomingRental {
 
   description String  @db.VarChar(500)              // qué se rentó
   quantity    Decimal @db.Decimal(10, 2)
-  project     String  @db.VarChar(255)              // texto simple (a futuro: vínculo a Proyectos)
+  // HU-199 — antes texto obligatorio; ahora es OPCIONAL y se reemplaza por un vínculo real a Proyectos
+  // (`projectId`). Se conserva la columna para no perder los textos ya registrados (legacy).
+  project     String? @db.VarChar(255)
+  projectId   String? @map("project_id") @db.VarChar(30)
   returnDate  DateTime @map("return_date") @db.Date // fecha de devolución (calendario)
   rentalCost  Decimal @map("rental_cost") @db.Decimal(15, 2)  // egreso
   deposit     Decimal @default(0) @db.Decimal(15, 2)          // retención por cobrar (opcional)
@@ -855,10 +861,12 @@ model IncomingRental {
   supplier       Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   user           User?     @relation("IncomingRentalCreatedBy",  fields: [userId],     references: [id])
   returnedByUser User?     @relation("IncomingRentalReturnedBy", fields: [returnedBy], references: [id])
+  proyecto       Proyecto? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, supplierId])
   @@index([supplierId])
+  @@index([tenantId, projectId])
   @@map("incoming_rentals")
 }
 
@@ -1245,6 +1253,10 @@ model Transaction {
   // OCR (y liga con quick_invoices para el detalle); null → registro manual. `createdBy` = user.id.
   createdBy         String?  @map("created_by") @db.VarChar(30)
   quickInvoiceId    String?  @map("quick_invoice_id") @db.VarChar(30)
+  // HU-199 — asignación MANUAL y opcional a un proyecto (mismo tenant). El monto de la transacción
+  // asignada suma al avance (objetivo) o consumo (límite) del proyecto. SetNull: borrar el proyecto
+  // no borra la transacción, solo la desasigna.
+  projectId         String?  @map("project_id") @db.VarChar(30)
   date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1254,6 +1266,7 @@ model Transaction {
   branch     Branch?              @relation(fields: [branchId], references: [id])
   txCategory TransactionCategory? @relation(fields: [categoryId], references: [id])
   costCenter CostCenter?          @relation(fields: [costCenterId], references: [id])
+  proyecto   Proyecto?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, date(sort: Desc)])
   @@index([tenantId, type])
@@ -1261,6 +1274,7 @@ model Transaction {
   @@index([tenantId, categoryId])
   @@index([referenceType, referenceId])
   @@index([tenantId, quickInvoiceId])
+  @@index([tenantId, projectId])
   @@map("transactions")
 }
 

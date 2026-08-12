@@ -8,7 +8,11 @@ import { useAuthStore } from '@/store/auth'
 import { ProjectFormModal, type Project } from '@/components/proyectos/ProjectFormModal'
 import { money, StatusBadge, TypeBadge, ProgressBar } from '@/components/proyectos/util'
 
-interface ProjectDetail extends Project { transactions: unknown[] }
+interface AssignedTx {
+  id: string; type: 'income' | 'expense'; amount: number; description: string
+  date: string; referenceType: string | null; category: string | null
+}
+interface ProjectDetail extends Project { transactions: AssignedTx[] }
 
 const fmtDate = (iso: string): string =>
   iso ? new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso)) : '—'
@@ -45,6 +49,17 @@ export default function ProyectoDetailPage() {
     } catch (e: unknown) {
       setErr((e as { message?: string }).message ?? 'No se pudo eliminar.')
       setDeleting(false)
+    }
+  }
+
+  // HU-199 — quitar la asignación de una transacción (no la borra, solo la desvincula).
+  async function unassign(txId: string) {
+    if (!confirm('¿Quitar esta transacción del proyecto? El monto dejará de contar en el avance.')) return
+    try {
+      await apiClient.patch(`/v1/proyectos/transacciones/${txId}`, { projectId: null })
+      load()
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo quitar la asignación.')
     }
   }
 
@@ -120,13 +135,36 @@ export default function ProyectoDetailPage() {
         ))}
       </div>
 
-      {/* Transacciones asignadas — se conectan en HU-199 */}
+      {/* Transacciones asignadas (HU-199) */}
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Transacciones asignadas</h2>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Transacciones asignadas</h2>
+          <span className="text-xs text-slate-400">{project.transactions.length} · suma {money(pr.current)}</span>
+        </div>
         {project.transactions.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Todavía no hay transacciones asignadas a este proyecto. La asignación de transacciones (que alimenta el avance/consumo) se habilita próximamente.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Aún no hay transacciones asignadas. Asigna compras, ventas, gastos o alquileres a este proyecto
+            desde su formulario de registro (campo «Proyecto») para que su monto cuente en el {isLimit ? 'consumo' : 'avance'}.
+          </p>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">{project.transactions.length} transacción(es).</p>
+          <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-700">
+            {project.transactions.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-slate-800 dark:text-slate-200">{t.description}</p>
+                  <p className="text-xs text-slate-400">{fmtDate(t.date)}{t.category ? ` · ${t.category}` : ''}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className={`text-sm font-medium ${t.type === 'income' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-200'}`}>
+                    {t.type === 'income' ? '+' : '−'}{money(t.amount)}
+                  </span>
+                  {isManager && (
+                    <button onClick={() => unassign(t.id)} className="text-xs text-slate-400 hover:text-red-600" title="Quitar del proyecto">Quitar</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

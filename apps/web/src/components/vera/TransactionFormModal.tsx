@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 interface Category   { id: string; name: string; type: 'income' | 'expense' | 'both' }
 interface CostCenter { id: string; name: string }
@@ -21,6 +22,7 @@ export interface TxItem {
   branchId:          string | null
   categoryId:        string | null
   costCenterId:      string | null
+  projectId:         string | null
   branch:            { id: string; name: string } | null
   txCategory:        { id: string; name: string; type: string; color: string | null } | null
   costCenter:        { id: string; name: string } | null
@@ -44,6 +46,7 @@ export function TransactionFormModal({ tx, branches, onClose, onSuccess }: Props
   const [categoryId,   setCategoryId]   = useState(tx?.categoryId ?? '')
   const [costCenterId, setCostCenterId] = useState(tx?.costCenterId ?? '')
   const [extRef,       setExtRef]       = useState(tx?.externalReference ?? '')
+  const [projectId,    setProjectId]    = useState(tx?.projectId ?? '')
   const [categories,   setCategories]   = useState<Category[]>([])
   const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
   const [saving,       setSaving]       = useState(false)
@@ -80,6 +83,7 @@ export function TransactionFormModal({ tx, branches, onClose, onSuccess }: Props
         categoryId:        categoryId   || undefined,
         costCenterId:      costCenterId || undefined,
         externalReference: extRef       || undefined,
+        projectId:         projectId    || null, // HU-199 — asignar / quitar (null)
       }
       const result = isEdit
         ? await apiClient.put<TxItem>(`/v1/vera/transactions/${tx!.id}`, payload)
@@ -226,6 +230,9 @@ export function TransactionFormModal({ tx, branches, onClose, onSuccess }: Props
                 className={inputCls}
               />
             </div>
+
+            {/* Proyecto (HU-199) — asignación manual y opcional */}
+            <ProjectSelect value={projectId} onChange={setProjectId} className={inputCls} />
 
             {error && <p className="text-sm text-red-600">{error}</p>}
           </div>

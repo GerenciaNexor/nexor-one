@@ -22,7 +22,8 @@ async function ensureIncomingRentalCategory(tx: Prisma.TransactionClient, tenant
 }
 
 interface RentalRow {
-  id: string; status: string; description: string; quantity: Prisma.Decimal | number; project: string
+  id: string; status: string; description: string; quantity: Prisma.Decimal | number
+  project: string | null; projectId: string | null; proyecto?: { name: string } | null
   returnDate: Date; rentalCost: Prisma.Decimal | number; deposit: Prisma.Decimal | number
   supplierId: string | null; thirdPartyName: string | null; thirdPartyContact: string | null
   branchId: string | null; notes: string | null; returnedAt: Date | null
@@ -39,7 +40,8 @@ function shape(r: RentalRow) {
     status:             r.status,
     description:        r.description,
     quantity:           num(r.quantity),
-    project:            r.project,
+    project:            r.proyecto?.name ?? r.project ?? null, // etiqueta: proyecto vinculado o texto legacy
+    projectId:          r.projectId ?? null,
     returnDate:         r.returnDate,
     rentalCost:         num(r.rentalCost),
     deposit,
@@ -64,6 +66,7 @@ const LIST_INCLUDE = {
   supplier:       { select: { name: true } },
   branch:         { select: { name: true } },
   returnedByUser: { select: { name: true } },
+  proyecto:       { select: { name: true } }, // HU-199 — nombre del proyecto vinculado
 } as const
 
 /**
@@ -95,6 +98,16 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
     const returnDateObj = new Date(`${input.returnDate}T00:00:00.000Z`)
     const description = input.description.trim()
 
+    // HU-199 — vínculo real (opcional) a un proyecto del mismo tenant. Se denormaliza el nombre en la
+    // columna `project` (texto) para la vista/legacy; el vínculo canónico es `projectId`.
+    let projectId: string | null = null
+    let projectLabel: string | null = input.project?.trim() || null
+    if (input.projectId) {
+      const proj = await tx.proyecto.findFirst({ where: { id: input.projectId, tenantId }, select: { id: true, name: true } })
+      if (!proj) throw { statusCode: 400, message: 'El proyecto no existe en tu empresa', code: 'PROJECT_NOT_FOUND' }
+      projectId = proj.id; projectLabel = proj.name
+    }
+
     const rental = await tx.incomingRental.create({
       data: {
         tenantId, branchId, userId,
@@ -103,7 +116,8 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
         thirdPartyContact: supplierId ? null : (input.thirdPartyContact ?? null),
         description,
         quantity:    input.quantity,
-        project:     input.project.trim(),
+        project:     projectLabel,
+        projectId,
         returnDate:  returnDateObj,
         rentalCost:  input.rentalCost,
         deposit:     input.deposit ?? 0,
@@ -119,7 +133,7 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
       data: {
         tenantId, userId,
         title:       `Devolver alquiler entrante: ${description}`,
-        description: `${input.quantity} und — devolver a ${thirdPartyLabel} (proyecto: ${input.project.trim()})`,
+        description: `${input.quantity} und — devolver a ${thirdPartyLabel}${projectLabel ? ` (proyecto: ${projectLabel})` : ''}`,
         remindAt:    returnDateObj,
         alertLevel:  'urgent',
         recurrence:  'none',
@@ -137,6 +151,7 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
           description:   `Alquiler entrante — ${input.description.trim()} (${thirdPartyLabel})`,
           category:      'Alquileres pagados',
           referenceType: 'incoming_rental', referenceId: rental.id,
+          projectId, // HU-199 — el egreso cuenta en el consumo del proyecto asignado
           date: businessToday(), isManual: true,
         },
       })

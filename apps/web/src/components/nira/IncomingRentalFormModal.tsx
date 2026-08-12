@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
+import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 interface SupplierOpt { id: string; name: string; isGeneric: boolean }
 
@@ -29,7 +30,7 @@ export function IncomingRentalFormModal({ onClose, onSuccess }: { onClose: () =>
 
   const [description, setDescription] = useState('')
   const [quantity, setQuantity]   = useState('1')
-  const [project, setProject]     = useState('')
+  const [projectId, setProjectId] = useState('')   // HU-199 — vínculo real (opcional) a Proyectos
   const [returnDate, setReturnDate] = useState(todayPlus(7))
   const [rentalCost, setRentalCost] = useState('')
   const [deposit, setDeposit]     = useState('')
@@ -49,7 +50,6 @@ export function IncomingRentalFormModal({ onClose, onSuccess }: { onClose: () =>
     if (!description.trim()) { setErr('Describe lo que rentas.'); return }
     const qty = parseFloat(quantity)
     if (!(qty > 0)) { setErr('La cantidad debe ser mayor a 0.'); return }
-    if (!project.trim()) { setErr('Indica el proyecto.'); return }
     if (!returnDate) { setErr('Indica la fecha de devolución.'); return }
     const cost = parseFloat(rentalCost)
     if (!(cost >= 0) || rentalCost === '') { setErr('Indica el costo del alquiler.'); return }
@@ -61,7 +61,7 @@ export function IncomingRentalFormModal({ onClose, onSuccess }: { onClose: () =>
         : { thirdPartyName: tpName.trim(), thirdPartyContact: tpContact.trim() || null }),
       description: description.trim(),
       quantity:   qty,
-      project:    project.trim(),
+      projectId:  projectId || null,    // HU-199 — vínculo opcional a un proyecto del mismo tenant
       returnDate,                       // YYYY-MM-DD (fecha de calendario)
       rentalCost: cost,
       deposit:    deposit !== '' ? parseFloat(deposit) : 0,
@@ -133,10 +133,8 @@ export function IncomingRentalFormModal({ onClose, onSuccess }: { onClose: () =>
               </div>
             </div>
 
-            <div>
-              <label className={lbl}>Proyecto *</label>
-              <input value={project} onChange={(e) => setProject(e.target.value)} className={inp} placeholder="Ej. Obra Norte" />
-            </div>
+            {/* HU-199 — vínculo real (opcional) a un proyecto, antes texto libre obligatorio */}
+            <ProjectSelect value={projectId} onChange={setProjectId} className={inp} label="Proyecto (opcional)" />
 
             <div className="grid grid-cols-2 gap-3">
               <div>

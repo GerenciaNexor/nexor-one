@@ -9,7 +9,10 @@ import { z } from 'zod'
 export const CreateIncomingRentalSchema = z.object({
   description: z.string({ required_error: 'La descripción es requerida' }).min(1, 'La descripción es requerida').max(500),
   quantity:    z.number({ required_error: 'La cantidad es requerida', invalid_type_error: 'La cantidad es requerida' }).positive('La cantidad debe ser mayor a 0'),
-  project:     z.string({ required_error: 'El proyecto es requerido' }).min(1, 'El proyecto es requerido').max(255),
+  // HU-199 — vínculo real a Proyectos (opcional; antes era texto libre obligatorio). `project` texto
+  // se mantiene opcional solo por compatibilidad de escritura; el vínculo canónico es `projectId`.
+  projectId:   z.string().min(1).nullish(),
+  project:     z.string().max(255).nullish(),
   returnDate:  z.string({ required_error: 'La fecha de devolución es requerida' }).regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de devolución inválida (YYYY-MM-DD)'),
   rentalCost:  z.number({ required_error: 'El costo del alquiler es requerido', invalid_type_error: 'El costo del alquiler es requerido' }).nonnegative('El costo no puede ser negativo'),
   deposit:     z.number().min(0, 'El depósito no puede ser negativo').default(0),

@@ -46,6 +46,8 @@ export const QuickPurchaseSchema = z.object({
   amount:      z.number().positive('El monto debe ser mayor a 0').optional(),
   /** Fecha de la transacción (ya ocurrió). Por defecto hoy. */
   date:        z.string().optional(),
+  /** HU-199 — proyecto al que se asigna (opcional, mismo tenant). */
+  projectId:   z.string().min(1).nullish(),
 }).superRefine((d, ctx) => {
   if (d.affectsInventory) {
     if (!d.productId && !d.newProduct) ctx.addIssue({ code: 'custom', message: 'Selecciona un producto existente o crea uno nuevo', path: ['productId'] })
@@ -71,6 +73,8 @@ export const QuickSaleSchema = z.object({
   description: z.string().max(500).optional(),
   amount:      z.number().positive('El monto debe ser mayor a 0').optional(),
   date:        z.string().optional(),
+  /** HU-199 — proyecto al que se asigna (opcional, mismo tenant). */
+  projectId:   z.string().min(1).nullish(),
 }).superRefine((d, ctx) => {
   if (d.affectsInventory) {
     if (!d.productId) ctx.addIssue({ code: 'custom', message: 'Selecciona el producto', path: ['productId'] })
@@ -113,6 +117,7 @@ export const RegisterInvoiceSchema = z.object({
   clientId:       z.string().min(1).nullish(),  // venta;  null → genérico "Consumidor final"
   branchId:       z.string().min(1).nullish(),
   date:           z.string().optional(),
+  projectId:      z.string().min(1).nullish(), // HU-199 — proyecto al que se asigna (opcional)
   // Encabezado leído (columnas propias de la factura).
   issuer:         z.string().max(255).nullish(),
   nit:            z.string().max(50).nullish(),

@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateProjectSchema, UpdateProjectSchema } from './schema'
-import { createProject, listProjects, getProject, updateProject, deleteProject } from './service'
-import { requireRoleAndModule } from '../../lib/guards'
+import { createProject, listProjects, getProject, updateProject, deleteProject, assignTransaction } from './service'
+import { requireRole } from '../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
 const errReply = (reply: FastifyReply, err: unknown) => {
@@ -9,9 +9,12 @@ const errReply = (reply: FastifyReply, err: unknown) => {
   return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
 }
 
-// Lectura: cualquiera del módulo (OPERATIVE+). Gestión (crear/editar/eliminar): AREA_MANAGER+.
-const canRead   = requireRoleAndModule('OPERATIVE', 'PROYECTOS')
-const canManage = requireRoleAndModule('AREA_MANAGER', 'PROYECTOS')
+// El módulo ya exige el feature-flag PROYECTOS a nivel de tenant (index.ts). Proyectos es transversal
+// (metas/presupuestos de toda la empresa; la asignación de transacciones cruza módulos), así que:
+//   · Lectura (lista/detalle/selector): cualquier usuario del tenant (OPERATIVE+).
+//   · Gestión (crear/editar/eliminar/asignar): jefe de área o superior (AREA_MANAGER+), por ROL.
+const canRead   = requireRole('OPERATIVE')
+const canManage = requireRole('AREA_MANAGER')
 
 export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
   /** GET /v1/proyectos — lista con tipo, meta, avance/consumo y estado. `status`/`type` filtran. */
@@ -64,6 +67,28 @@ export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
     try {
       const p = await updateProject(request.user.tenantId, id, parsed.data)
       return reply.code(200).send({ success: true, data: p })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** PATCH /v1/proyectos/transacciones/:txId — asignar / cambiar / quitar (projectId=null) el proyecto
+   *  de una transacción. Manual y opcional; solo transacciones y proyectos del mismo tenant. */
+  app.patch('/transacciones/:txId', {
+    preHandler: canManage,
+    schema: {
+      tags: ['Proyectos'], summary: 'Asignar/quitar el proyecto de una transacción', security: bearerAuth,
+      params: { type: 'object', required: ['txId'], properties: { txId: { type: 'string' } } },
+      body: { type: 'object', properties: { projectId: { type: ['string', 'null'] } } },
+      response: { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const { txId } = request.params as { txId: string }
+    const { projectId } = (request.body ?? {}) as { projectId?: string | null }
+    if (projectId !== null && projectId !== undefined && typeof projectId !== 'string') {
+      return reply.code(400).send({ error: 'projectId inválido', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const r = await assignTransaction(request.user.tenantId, txId, projectId ?? null)
+      return reply.code(200).send({ success: true, data: r })
     } catch (err) { return errReply(reply, err) }
   })
 

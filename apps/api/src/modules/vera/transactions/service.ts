@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma'
+import { validateProjectId } from '../../proyectos/service'
 import type {
   CreateManualTransactionInput,
   UpdateManualTransactionInput,
@@ -10,10 +11,12 @@ const TX_SELECT = {
   id: true, tenantId: true, branchId: true, categoryId: true, costCenterId: true,
   isManual: true, type: true, amount: true, currency: true, description: true,
   externalReference: true, referenceType: true, referenceId: true,
+  projectId: true,
   date: true, createdAt: true, updatedAt: true,
   branch:     { select: { id: true, name: true } },
   txCategory: { select: { id: true, name: true, type: true, color: true } },
   costCenter: { select: { id: true, name: true } },
+  proyecto:   { select: { id: true, name: true } }, // HU-199 — proyecto asignado
 } as const
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -95,6 +98,7 @@ export async function getTransaction(tenantId: string, id: string) {
 
 export async function createManualTransaction(tenantId: string, input: CreateManualTransactionInput) {
   await validateClassification(tenantId, input.type, input.categoryId, input.costCenterId)
+  const projectId = await validateProjectId(tenantId, input.projectId) // HU-199 — mismo tenant
 
   return prisma.transaction.create({
     data: {
@@ -109,6 +113,7 @@ export async function createManualTransaction(tenantId: string, input: CreateMan
       categoryId:        input.categoryId        ?? null,
       costCenterId:      input.costCenterId      ?? null,
       externalReference: input.externalReference ?? null,
+      projectId,
     },
     select: TX_SELECT,
   })
@@ -132,6 +137,8 @@ export async function updateManualTransaction(
     input.categoryId !== undefined ? input.categoryId : tx.categoryId,
     input.costCenterId !== undefined ? input.costCenterId : tx.costCenterId,
   )
+  // HU-199 — si viene projectId (string = asignar/cambiar, null = quitar), validar el tenant.
+  if (input.projectId !== undefined) await validateProjectId(tenantId, input.projectId)
 
   return prisma.transaction.update({
     where:  { id },

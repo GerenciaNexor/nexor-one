@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { ProductFormModal, type Product } from '@/components/kira/ProductFormModal'
+import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 type Mode = 'purchase' | 'sale'
 interface Opt   { id: string; name: string; isGeneric?: boolean }
@@ -39,6 +40,7 @@ export function QuickRegisterModal({ initialMode = 'purchase', lockMode = false,
   const [price, setPrice]       = useState('')   // costo (compra) o precio (venta)
   const [description, setDesc]  = useState('')
   const [amount, setAmount]     = useState('')
+  const [projectId, setProjectId] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -101,6 +103,7 @@ export function QuickRegisterModal({ initialMode = 'purchase', lockMode = false,
     const body: Record<string, unknown> = {
       affectsInventory: affects,
       ...(mode === 'purchase' ? { supplierId: cpId || null } : { clientId: cpId || null }),
+      ...(projectId ? { projectId } : {}), // HU-199 — asignación opcional a un proyecto
     }
     if (affects) {
       Object.assign(body, {
@@ -240,6 +243,9 @@ export function QuickRegisterModal({ initialMode = 'purchase', lockMode = false,
                 <span className={`font-semibold ${isSale ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-100'}`}>{money(totalPreview)}</span>
               </div>
             )}
+
+            {/* Proyecto (HU-199) — asignación manual y opcional */}
+            {affects !== null && <ProjectSelect value={projectId} onChange={setProjectId} className={inp} />}
 
             {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
           </div>
