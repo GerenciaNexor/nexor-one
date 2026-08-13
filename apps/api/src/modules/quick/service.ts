@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
 import { businessToday } from '../../lib/dates'
+import { validateProjectId } from '../proyectos/service'
+import { applyAssignment } from '../proyectos/budget'
 import { matchProductByName } from '../../lib/text-match'
 import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
 import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput } from './schema'
@@ -141,7 +143,7 @@ type SaleLine = {
 /** Aplica UN ítem de compra dentro de una transacción abierta (stock entrada + gasto VERA, o solo VERA). */
 async function applyPurchaseItem(
   tx: Prisma.TransactionClient, tenantId: string, userId: string,
-  ctx: { supplierName: string; categoryId: string; now: Date; quickInvoiceId?: string }, line: PurchaseLine,
+  ctx: { supplierName: string; categoryId: string; now: Date; quickInvoiceId?: string; projectId?: string | null }, line: PurchaseLine,
 ) {
   if (line.affectsInventory) {
     const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
@@ -188,7 +190,8 @@ async function applyPurchaseItem(
     const txn = await tx.transaction.create({
       data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
         description: `Compra rápida — ${product.name} (${ctx.supplierName})`, category: 'Compras',
-        referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
+        referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null,
+        projectId: ctx.projectId ?? null },
       select: { id: true },
     })
     // Movimiento inmutable (HU-128): quién/cómo/por qué, con costo congelado.
@@ -197,6 +200,7 @@ async function applyPurchaseItem(
         quantity: qty, quantityBefore: before, quantityAfter: after, costPriceFrozen: cost,
         referenceType: 'quick_purchase', referenceId: txn.id, notes: 'Compra rápida' },
     })
+    if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
     return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: before, stockAfter: after }
   }
 
@@ -204,16 +208,18 @@ async function applyPurchaseItem(
   const txn = await tx.transaction.create({
     data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'expense', amount, currency: 'COP',
       description: `Compra rápida — ${line.description} (${ctx.supplierName})`, category: 'Compras',
-      referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
+      referenceType: 'quick_purchase', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null,
+      projectId: ctx.projectId ?? null },
     select: { id: true },
   })
+  if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
   return { transactionId: txn.id, affectsInventory: false, amount }
 }
 
 /** Aplica UN ítem de venta dentro de una transacción abierta (stock salida del disponible + ingreso VERA, o solo VERA). */
 async function applySaleItem(
   tx: Prisma.TransactionClient, tenantId: string, userId: string,
-  ctx: { clientName: string; categoryId: string; now: Date; quickInvoiceId?: string }, line: SaleLine,
+  ctx: { clientName: string; categoryId: string; now: Date; quickInvoiceId?: string; projectId?: string | null }, line: SaleLine,
 ) {
   if (line.affectsInventory) {
     const branch = await tx.branch.findFirst({ where: { id: line.branchId!, tenantId, isActive: true }, select: { id: true } })
@@ -237,7 +243,8 @@ async function applySaleItem(
     const txn = await tx.transaction.create({
       data: { tenantId, branchId: branch.id, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
         description: `Venta rápida — ${product.name} (${ctx.clientName})`, category: 'Ventas',
-        referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
+        referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null,
+        projectId: ctx.projectId ?? null },
       select: { id: true },
     })
     await tx.stockMovement.create({
@@ -246,6 +253,7 @@ async function applySaleItem(
         salePriceFrozen: price, costPriceFrozen: product.costPrice ?? null,
         referenceType: 'quick_sale', referenceId: txn.id, notes: 'Venta rápida' },
     })
+    if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
     return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: total, stockAfter: after }
   }
 
@@ -253,9 +261,11 @@ async function applySaleItem(
   const txn = await tx.transaction.create({
     data: { tenantId, branchId: line.branchId ?? null, categoryId: ctx.categoryId, type: 'income', amount, currency: 'COP',
       description: `Venta rápida — ${line.description} (${ctx.clientName})`, category: 'Ventas',
-      referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null },
+      referenceType: 'quick_sale', date: ctx.now, isManual: true, createdBy: userId, quickInvoiceId: ctx.quickInvoiceId ?? null,
+      projectId: ctx.projectId ?? null },
     select: { id: true },
   })
+  if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
   return { transactionId: txn.id, affectsInventory: false, amount }
 }
 
@@ -269,7 +279,8 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true, name: true } })
     if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
     const categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
-    return applyPurchaseItem(tx, tenantId, userId, { supplierName: supplier.name, categoryId, now }, {
+    const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
+    return applyPurchaseItem(tx, tenantId, userId, { supplierName: supplier.name, categoryId, now, projectId }, {
       affectsInventory: input.affectsInventory, branchId: input.branchId, productId: input.productId,
       newProduct: input.newProduct, quantity: input.quantity, unitCost: input.unitCost,
       description: input.description, amount: input.amount,
@@ -287,7 +298,8 @@ export async function quickSale(tenantId: string, userId: string, input: QuickSa
     const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true, name: true } })
     if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
     const categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
-    return applySaleItem(tx, tenantId, userId, { clientName: client.name, categoryId, now }, {
+    const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
+    return applySaleItem(tx, tenantId, userId, { clientName: client.name, categoryId, now, projectId }, {
       affectsInventory: input.affectsInventory, branchId: input.branchId, productId: input.productId,
       quantity: input.quantity, unitPrice: input.unitPrice, description: input.description, amount: input.amount,
     })
@@ -373,6 +385,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
   return prisma.$transaction(async (tx) => {
     const now = input.date ? new Date(input.date) : businessToday()
     const effectiveBranch = branchId ?? input.branchId ?? null
+    const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
 
     let counterpartyName: string
     let categoryId: string
@@ -413,10 +426,10 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
         const line = adds
           ? { affectsInventory: true, branchId: effectiveBranch, productId: item.productId ?? undefined, newProduct: item.newProduct, quantity: item.quantity, unitCost: item.unitValue }
           : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
-        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id }, line)
+        const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id, projectId }, line)
         resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
       } else {
-        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id }, {
+        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id, projectId }, {
           affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
         })
         resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: true, ...r })

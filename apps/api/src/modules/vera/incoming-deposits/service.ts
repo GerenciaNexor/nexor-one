@@ -76,7 +76,7 @@ export async function getIncomingRentalDeposits(
   return {
     totalOutstanding,                     // retención por cobrar (recuperable) — NO es gasto
     count:             items.length,
-    byProject:         groupBy((i) => i.project,      (i) => i.project),
+    byProject:         groupBy((i) => i.project,      (i) => i.project ?? 'Sin proyecto'),
     byThirdParty:      groupBy((i) => i.thirdPartyId, (i) => i.thirdParty),
     items,
     rentalCostExpense:  num(costAgg._sum.amount),   // egreso: costo de los alquileres pagados

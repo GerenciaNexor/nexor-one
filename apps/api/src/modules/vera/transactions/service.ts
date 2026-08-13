@@ -1,4 +1,6 @@
 import { prisma } from '../../../lib/prisma'
+import { validateProjectId } from '../../proyectos/service'
+import { applyAssignment } from '../../proyectos/budget'
 import type {
   CreateManualTransactionInput,
   UpdateManualTransactionInput,
@@ -10,10 +12,12 @@ const TX_SELECT = {
   id: true, tenantId: true, branchId: true, categoryId: true, costCenterId: true,
   isManual: true, type: true, amount: true, currency: true, description: true,
   externalReference: true, referenceType: true, referenceId: true,
+  projectId: true, assignmentStatus: true,
   date: true, createdAt: true, updatedAt: true,
   branch:     { select: { id: true, name: true } },
   txCategory: { select: { id: true, name: true, type: true, color: true } },
   costCenter: { select: { id: true, name: true } },
+  proyecto:   { select: { id: true, name: true } }, // HU-199 — proyecto asignado
 } as const
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -93,10 +97,11 @@ export async function getTransaction(tenantId: string, id: string) {
 
 // ── Create (manual only) ───────────────────────────────────────────────────────
 
-export async function createManualTransaction(tenantId: string, input: CreateManualTransactionInput) {
+export async function createManualTransaction(tenantId: string, input: CreateManualTransactionInput, userId?: string) {
   await validateClassification(tenantId, input.type, input.categoryId, input.costCenterId)
+  const projectId = await validateProjectId(tenantId, input.projectId) // HU-199 — mismo tenant
 
-  return prisma.transaction.create({
+  const created = await prisma.transaction.create({
     data: {
       tenantId,
       isManual:          true,
@@ -109,9 +114,13 @@ export async function createManualTransaction(tenantId: string, input: CreateMan
       categoryId:        input.categoryId        ?? null,
       costCenterId:      input.costCenterId      ?? null,
       externalReference: input.externalReference ?? null,
+      projectId,
     },
-    select: TX_SELECT,
+    select: { id: true },
   })
+  // HU-200 — evalúa el presupuesto (assigned/pending + solicitud de sobregasto si supera el tope).
+  if (projectId) await applyAssignment(prisma, tenantId, created.id, userId)
+  return getTransaction(tenantId, created.id)
 }
 
 // ── Update (manual only) ───────────────────────────────────────────────────────
@@ -120,6 +129,7 @@ export async function updateManualTransaction(
   tenantId: string,
   id: string,
   input: UpdateManualTransactionInput,
+  userId?: string,
 ) {
   const tx = await prisma.transaction.findFirst({ where: { id, tenantId } })
   if (!tx)          throw { statusCode: 404, message: 'Transacción no encontrada', code: 'NOT_FOUND' }
@@ -132,23 +142,32 @@ export async function updateManualTransaction(
     input.categoryId !== undefined ? input.categoryId : tx.categoryId,
     input.costCenterId !== undefined ? input.costCenterId : tx.costCenterId,
   )
+  // HU-199 — si viene projectId (string = asignar/cambiar, null = quitar), validar el tenant.
+  if (input.projectId !== undefined) await validateProjectId(tenantId, input.projectId)
 
-  return prisma.transaction.update({
+  await prisma.transaction.update({
     where:  { id },
     data:   {
       ...input,
       ...(input.date ? { date: new Date(input.date) } : {}),
     },
-    select: TX_SELECT,
+    select: { id: true },
   })
+  // HU-200 — re-evalúa el presupuesto (cambio de proyecto o de monto puede activar/limpiar sobregasto).
+  await applyAssignment(prisma, tenantId, id, userId)
+  return getTransaction(tenantId, id)
 }
 
 // ── Delete (manual only) ───────────────────────────────────────────────────────
 
 export async function deleteManualTransaction(tenantId: string, id: string) {
-  const tx = await prisma.transaction.findFirst({ where: { id, tenantId } })
+  const tx = await prisma.transaction.findFirst({ where: { id, tenantId }, select: { id: true, isManual: true, assignmentStatus: true } })
   if (!tx)          throw { statusCode: 404, message: 'Transacción no encontrada', code: 'NOT_FOUND' }
   if (!tx.isManual) throw { statusCode: 403, message: 'Las transacciones automáticas no pueden eliminarse', code: 'NOT_MANUAL' }
+  // HU-200 — el exceso (sobre-límite) es un gasto real con trazabilidad: no se borra.
+  if (tx.assignmentStatus === 'over_limit') {
+    throw { statusCode: 422, message: 'Este gasto entró como SOBRE-LÍMITE (exceso) y no se puede eliminar; quítalo del proyecto si corresponde.', code: 'OVER_LIMIT_LOCKED' }
+  }
 
   await prisma.transaction.delete({ where: { id } })
 }

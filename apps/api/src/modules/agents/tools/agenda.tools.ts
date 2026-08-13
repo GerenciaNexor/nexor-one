@@ -180,7 +180,7 @@ export const verHorarios: AgentTool = {
 
 // ─── crear_cita ───────────────────────────────────────────────────────────────
 
-const crearCita: AgentTool = {
+export const crearCita: AgentTool = {
   definition: {
     name:        'crear_cita',
     description: 'Creates an appointment after the client has confirmed the time slot. Always call ver_horarios first. If the slot was taken in the meantime, returns SLOT_TAKEN so you can offer alternatives immediately.',
@@ -200,7 +200,7 @@ const crearCita: AgentTool = {
     },
   },
 
-  async execute({ serviceId, branchId, startAt, clientName, clientPhone, clientEmail, professionalId, notes }, tenantId) {
+  async execute({ serviceId, branchId, startAt, clientName, clientPhone, clientEmail, professionalId, notes }, tenantId, ctx) {
     // ── Vincular con cliente CRM si existe ────────────────────────────────────
     let resolvedClientId: string | undefined
     let resolvedEmail = clientEmail as string | undefined
@@ -234,7 +234,9 @@ const crearCita: AgentTool = {
         clientPhone:    clientPhone as string | undefined,
         professionalId: professionalId as string | undefined,
         notes:          notes as string | undefined,
-        channel:        'whatsapp',
+        // HU-195 — canal real de la cita. El canal del agente (whatsapp/gmail/internal) se mapea al
+        // enum de la cita (email/whatsapp/manual).
+        channel:        ({ whatsapp: 'whatsapp', gmail: 'email', internal: 'manual' } as const)[ctx?.channel ?? ''] ?? 'whatsapp',
         status:         'confirmed',
         createdByAgent: true,
       })

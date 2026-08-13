@@ -21,7 +21,7 @@
 import { prisma } from '../../../lib/prisma'
 import type { AgentTool } from '../types'
 import { consultarSucursales } from './empresa.tools'
-import { verServicios, verHorarios } from './agenda.tools'
+import { verServicios, verHorarios, crearCita } from './agenda.tools'
 
 /** Minúsculas + sin acentos — para buscar productos sin importar tildes ni mayúsculas. */
 function normalize(s: string): string {
@@ -234,6 +234,7 @@ export const ATENCION_TOOLS: AgentTool[] = [
   consultarDisponibilidad,
   verServicios,        // público: catálogo de servicios (nombre, precio, duración)
   verHorarios,         // solo horarios LIBRES (sin detalles de la cita)
+  crearCita,           // HU-195 — agenda la cita directamente en un horario libre (sin pisar citas)
   consultarSucursales, // público: ubicaciones y teléfono de tienda
   registrarInteres,
 ]

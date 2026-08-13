@@ -78,6 +78,12 @@ const BUSINESS_TABLES = [
   'incoming_rentals',
   // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido (tenant_id propio).
   'quick_invoices',
+  // HU-196 — configuración del comportamiento del agente de IA por sucursal/tenant.
+  'agent_settings',
+  // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio.
+  'proyectos',
+  // HU-200 — solicitudes de sobregasto (aprobación de asignación sobre el tope del proyecto-límite).
+  'budget_approvals',
 ] as const
 
 async function setupRLS(): Promise<void> {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { fmtCalendarDate } from '@/lib/format-date'
+import { fmtDateTime } from '@/lib/format-date'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
@@ -16,6 +16,7 @@ export default function QuickPurchasesPage() {
   const [modal, setModal] = useState(false)
   const [invoice, setInvoice] = useState(false)
   const [detail, setDetail] = useState<QuickRegister | null>(null)
+  const [tab, setTab] = useState<'registers' | 'invoices'>('registers')
 
   function load() {
     apiClient.get<{ data: QuickRegister[] }>('/v1/quick/registers?kind=purchase')
@@ -45,6 +46,19 @@ export default function QuickPurchasesPage() {
         </div>
       </div>
 
+      {/* Dos pestañas: historial de compras rápidas vs facturas cargadas (no se estorban con muchos datos) */}
+      <div className="mt-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        {(['registers', 'invoices'] as const).map((v) => (
+          <button key={v} onClick={() => setTab(v)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${tab === v ? 'border-blue-600 text-blue-700 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+            {v === 'registers' ? 'Compras rápidas' : 'Facturas cargadas'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'invoices' ? (
+        <InvoicesPanel kind="purchase" hideHeader />
+      ) : (
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         <div className="overflow-x-auto">
           {rows === null ? (
@@ -70,7 +84,7 @@ export default function QuickPurchasesPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
                   <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtCalendarDate(r.date)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.counterparty ?? '—'}</td>
                     <td className="px-4 py-3">
                       {r.product
@@ -96,9 +110,7 @@ export default function QuickPurchasesPage() {
           )}
         </div>
       </div>
-
-      {/* HU-194-A — facturas de compra cargadas por OCR: lista + búsqueda + detalle */}
-      <InvoicesPanel kind="purchase" />
+      )}
 
       {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
       {modal && <QuickRegisterModal initialMode="purchase" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}

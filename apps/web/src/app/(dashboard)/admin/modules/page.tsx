@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api-client'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type ModuleKey = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA'
+type ModuleKey = 'ARI' | 'NIRA' | 'KIRA' | 'AGENDA' | 'VERA' | 'PROYECTOS'
 
 interface ModuleMeta {
   key:         ModuleKey
@@ -52,6 +52,13 @@ const MODULES: ModuleMeta[] = [
     description: 'Registro de ingresos y egresos, reportes de flujo de caja.',
     color:       'bg-rose-500',
     letter:      'V',
+  },
+  {
+    key:         'PROYECTOS',
+    label:       'Proyectos',
+    description: 'Metas (objetivo) y presupuestos (límite) por línea de negocio, con avance y control.',
+    color:       'bg-teal-500',
+    letter:      'P',
   },
 ]
 

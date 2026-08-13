@@ -7,6 +7,7 @@ import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
 import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
 import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders'
 import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
+import { startBudgetControlScheduler }        from './jobs/budget-control'
 import { startDashboardRollupScheduler }      from './jobs/dashboard-rollup'
 import { startDemoExpiryScheduler }           from './jobs/demo-expiry'
 import { startReminderScheduler }             from './jobs/reminder-fire'
@@ -59,6 +60,8 @@ import chatModule from './modules/chat/index'
 import agendaModule from './modules/agenda/index'
 import veraModule from './modules/vera/index'
 import quickModule from './modules/quick/index'
+import agentSettingsModule from './modules/agent-settings/index'
+import proyectosModule from './modules/proyectos/index'
 import dashboardModule from './modules/dashboard/index'
 import bulkUploadModule from './modules/bulk-upload/index'
 import inboxModule from './modules/inbox/index'
@@ -208,6 +211,8 @@ app.register(
     api.register(agendaModule,        { prefix: '/agenda' })
     api.register(veraModule,          { prefix: '/vera' })
     api.register(quickModule,         { prefix: '/quick' })
+    api.register(agentSettingsModule, { prefix: '/agent-settings' })
+    api.register(proyectosModule,     { prefix: '/proyectos' })
     api.register(dashboardModule,     { prefix: '/dashboard' })
     api.register(bulkUploadModule,    { prefix: '/bulk-upload' })
     api.register(inboxModule,         { prefix: '/inbox' })
@@ -231,6 +236,7 @@ const start = async (): Promise<void> => {
     startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
     startAppointmentRemindersScheduler() // Envía recordatorios de citas del día siguiente
     startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
+    startBudgetControlScheduler()        // HU-200 — vencimiento de sobregastos → sobre-límite, cada 1 h
     startDashboardRollupScheduler()      // Rollup diario del Dashboard (HU-127) — corre cada 24 h
     startDemoExpiryScheduler()           // HU-142 — suspende demos vencidas cada 1 h (sin borrar)
     startReminderScheduler()             // HU-156 — dispara recordatorios cada 1 min → notificación

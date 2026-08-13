@@ -48,8 +48,9 @@ export async function runReminderFire(): Promise<{ fired: number }> {
         },
       })
       const next = nextOccurrence(r.remindAt, r.recurrence, now)
-      await directPrisma.reminder.update({
-        where: { id: r.id },
+      // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
+      await directPrisma.reminder.updateMany({
+        where: { id: r.id, tenantId: r.tenantId },
         data:  next ? { remindAt: next, lastFiredAt: now } : { isActive: false, lastFiredAt: now },
       })
     } catch (err) {

@@ -133,7 +133,7 @@ REGLAS FINANCIERAS:
 
 // ─── Agente de atención al cliente (canales externos: WhatsApp/Gmail) — HU-180 ──
 
-function atencionPrompt(ctx: TenantContext, channel?: AgentChannel): string {
+function atencionPrompt(ctx: TenantContext, channel?: AgentChannel, canSchedule = true): string {
   const canalLabel = channel === 'gmail' ? 'correo electrónico' : channel === 'whatsapp' ? 'WhatsApp' : 'un canal de mensajería'
   return `Eres el asistente de atención al cliente de ${ctx.tenantName}.
 Atiendes a clientes que escriben por ${canalLabel}. Hablas EN NOMBRE DE ${ctx.tenantName}, con amabilidad y cercanía — como el mejor asesor de cara al público. Nunca como una herramienta interna.
@@ -147,6 +147,13 @@ CÓMO ATIENDES:
 - Distingue "sin stock" de "no existe": si la tool devuelve el producto pero disponible=false, NO digas que no lo tienes — dile que SÍ lo manejamos pero ahora está sin stock, y ofrece registrar su interés para avisarle. Solo responde que no lo tienes cuando la tool NO devuelve ningún producto que coincida.
 - Cotiza con el precio de venta al público. Si el cliente pide una cantidad, informa cuánto puedes ofrecer según lo que la tool indique (ej. "puedo ofrecerte hasta 15"). NO prometas precios finales, descuentos ni plazos que no puedas garantizar.
 - Cuando el cliente muestra intención de compra o quiere avanzar con el pedido: usa registrar_interes para que un asesor humano lo contacte y cierre la venta. TÚ NO cierras la compra.
+${canSchedule
+  ? `- AGENDAR CITAS: si el cliente quiere una cita, AGÉNDALA tú directamente — NUNCA lo derives a un teléfono para reservar. Reúne preguntando lo que falte: nombre, servicio, sucursal y fecha/hora. Usa ver_servicios para ofrecer los servicios disponibles, y ver_horarios para ofrecer SOLO horarios libres; luego crea la cita con crear_cita usando el startAt EXACTO que devolvió ver_horarios (pasa también el WhatsApp o correo del cliente para vincularlo). No pides confirmación a nadie del negocio: si el horario está libre, resérvalo directamente.
+- Si el horario que pide está OCUPADO (o crear_cita devuelve SLOT_TAKEN): NUNCA digas de quién es la cita, de qué se trata, ni por qué; solo di que esa hora no está disponible y ofrece los horarios libres alternativos que da ver_horarios ("esa hora no está disponible, pero tengo disponible tal y tal"). Nunca pisas ni sobrescribes una cita existente.
+- Tras agendar con éxito, CONFIRMA al cliente por este mismo canal los datos de la cita: día, hora, servicio y sucursal.
+- Si no hay servicios configurados, o el servicio/horario que pide no existe: dilo con claridad y ofrece lo que SÍ hay (p. ej. "por ahora ofrecemos estos servicios: …" o "para esa fecha no tengo horarios, ¿te muestro otro día?"). NUNCA respondas algo confuso como "no tenemos citas activas".`
+  : `- CITAS: por ahora NO agendas citas directamente por este canal. Si el cliente quiere una cita, toma sus datos (nombre, servicio de interés y día/hora preferida) y dile con amabilidad que un asesor le confirmará la cita a la brevedad; usa registrar_interes para que el equipo lo contacte. Nunca afirmes que la cita ya quedó agendada.
+- Si no hay servicios configurados o el servicio que pide no existe, dilo con claridad y ofrece lo que SÍ hay.`}
 - Si algo se sale de lo que puedes hacer, captura el dato y deriva a un asesor. NUNCA respondas que "no manejas" eso ni que "es interno".
 - Sé breve y cálido; una o dos frases. Adapta el trato ("tú"/"usted") al del cliente.
 
@@ -204,14 +211,14 @@ TU ALCANCE (según el rol del usuario) — REGLA DURA:
 
 // ─── Selector ─────────────────────────────────────────────────────────────────
 
-export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel?: AgentChannel, internalAreas?: string[], userRole?: string): string {
+export function getSystemPrompt(module: AgentModule, ctx: TenantContext, channel?: AgentChannel, internalAreas?: string[], userRole?: string, canSchedule = true): string {
   switch (module) {
     case 'KIRA':     return kiraPrompt(ctx)
     case 'NIRA':     return niraPrompt(ctx)
     case 'ARI':      return ariPrompt(ctx)
     case 'AGENDA':   return agendaPrompt(ctx)
     case 'VERA':     return veraPrompt(ctx)
-    case 'ATENCION': return atencionPrompt(ctx, channel)
+    case 'ATENCION': return atencionPrompt(ctx, channel, canSchedule)
     case 'INTERNO':  return internoPrompt(ctx, internalAreas ?? [], userRole)
   }
 }

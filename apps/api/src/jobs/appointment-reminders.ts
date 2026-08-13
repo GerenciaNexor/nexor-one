@@ -113,8 +113,9 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
         cancelUrl:        `${CANCEL_BASE_URL}/v1/agenda/cancel/${rawToken}`,
       })
 
-      await prisma.appointment.update({
-        where: { id: appt.id },
+      // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
+      await prisma.appointment.updateMany({
+        where: { id: appt.id, tenantId },
         data:  { reminderSent: true },
       })
 

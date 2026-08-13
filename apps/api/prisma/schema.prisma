@@ -44,6 +44,7 @@ enum ModuleName {
   VERA
   ATENCION // HU-180 — agente de atención al cliente para canales externos (WhatsApp/Gmail)
   INTERNO  // HU-187 — agente interno unificado del dashboard (todos los módulos según el rol)
+  PROYECTOS // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio
 }
 
 enum Channel {
@@ -122,6 +123,9 @@ model Tenant {
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
   quickInvoices         QuickInvoice[]
+  agentSettings         AgentSetting[]
+  proyectos             Proyecto[]
+  budgetApprovals       BudgetApproval[] // HU-200
   subscription          Subscription?
 
   /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
@@ -449,6 +453,79 @@ model Reminder {
   @@index([tenantId, userId])
   @@index([isActive, remindAt])
   @@map("reminders")
+}
+
+/// HU-198 — Proyecto: línea de negocio con una meta cuantificada. Tipo `objetivo` (mínimo a
+/// alcanzar/superar) o `limite` (techo a no exceder, con umbral de aviso). El avance/consumo se
+/// calcula a partir de las transacciones asignadas — se conecta en HU-199. Cada proyecto pertenece a
+/// UN solo tenant (RLS lo aísla). Estados: activo | en_curso | terminado | cancelado.
+model Proyecto {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  tenantId    String   @map("tenant_id") @db.VarChar(30)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  /// objetivo | limite — define el comportamiento (meta a superar vs. techo a controlar).
+  type        String   @db.VarChar(20)
+  /// Meta cuantificada (monto): objetivo = mínimo a alcanzar; límite = techo a no exceder.
+  targetAmount Decimal @map("target_amount") @db.Decimal(15, 2)
+  /// Solo `limite`: umbral de aviso como MONTO (p. ej. avisar al llegar a $18M). Opcional.
+  alertAmount Decimal? @map("alert_amount") @db.Decimal(15, 2)
+  /// Solo `limite`: umbral de aviso como % del límite (0–100). Alternativa a alertAmount.
+  alertPct    Int?     @map("alert_pct")
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  /// activo | en_curso | terminado | cancelado (gestionables).
+  status      String   @default("activo") @db.VarChar(20)
+  /// Quién lo creó (sello de auditoría; sin FK para no acoplar a User).
+  createdBy   String?  @map("created_by") @db.VarChar(30)
+  /// HU-200 — plazo (días) para resolver un sobregasto antes de que entre como exceso. null → 2.
+  graceDays       Int?      @map("overspend_grace_days")
+  /// HU-200 — cuándo se avisó por última vez el umbral (para no re-notificar en cada asignación).
+  alertNotifiedAt DateTime? @map("alert_notified_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // HU-199 — transacciones y alquileres entrantes asignados (alimentan el avance/consumo).
+  transactions    Transaction[]
+  incomingRentals IncomingRental[]
+  budgetApprovals BudgetApproval[] // HU-200
+
+  @@index([tenantId, status])
+  @@map("proyectos")
+}
+
+/// HU-200 — Control de sobregasto de un proyecto-LÍMITE. El gasto YA está en VERA (verdad contable,
+/// nunca se niega); esto controla su ASIGNACIÓN al presupuesto del proyecto cuando se supera el tope.
+/// Estados: pending (en espera) → approved (admin lo aprueba como exceso) | rejected (queda solo en
+/// VERA, fuera del proyecto) | expired (venció el plazo → entra como sobre-límite). `trace` es
+/// append-only: [{at, event, by?, note?}] — se informó, esperó, venció, entró como exceso. La aprobación
+/// solo la dan admins del MISMO tenant (RLS).
+model BudgetApproval {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  tenantId      String    @map("tenant_id") @db.VarChar(30)
+  projectId     String    @map("project_id") @db.VarChar(30)
+  transactionId String    @unique @map("transaction_id") @db.VarChar(30)
+  amount        Decimal   @db.Decimal(15, 2)
+  status        String    @default("pending") @db.VarChar(20)
+  reason        String?   @db.Text
+  requestedBy   String?   @map("requested_by") @db.VarChar(30)
+  resolvedBy    String?   @map("resolved_by") @db.VarChar(30)
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz(6)
+  dueAt         DateTime  @map("due_at") @db.Timestamptz(6)
+  trace         Json      @default("[]")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  proyecto    Proyecto    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, dueAt])
+  @@map("budget_approvals")
 }
 
 // =============================================================================
@@ -797,7 +874,10 @@ model IncomingRental {
 
   description String  @db.VarChar(500)              // qué se rentó
   quantity    Decimal @db.Decimal(10, 2)
-  project     String  @db.VarChar(255)              // texto simple (a futuro: vínculo a Proyectos)
+  // HU-199 — antes texto obligatorio; ahora es OPCIONAL y se reemplaza por un vínculo real a Proyectos
+  // (`projectId`). Se conserva la columna para no perder los textos ya registrados (legacy).
+  project     String? @db.VarChar(255)
+  projectId   String? @map("project_id") @db.VarChar(30)
   returnDate  DateTime @map("return_date") @db.Date // fecha de devolución (calendario)
   rentalCost  Decimal @map("rental_cost") @db.Decimal(15, 2)  // egreso
   deposit     Decimal @default(0) @db.Decimal(15, 2)          // retención por cobrar (opcional)
@@ -819,10 +899,12 @@ model IncomingRental {
   supplier       Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   user           User?     @relation("IncomingRentalCreatedBy",  fields: [userId],     references: [id])
   returnedByUser User?     @relation("IncomingRentalReturnedBy", fields: [returnedBy], references: [id])
+  proyecto       Proyecto? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, supplierId])
   @@index([supplierId])
+  @@index([tenantId, projectId])
   @@map("incoming_rentals")
 }
 
@@ -852,6 +934,26 @@ model QuickInvoice {
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@map("quick_invoices")
+}
+
+/**
+ * HU-196 — Configuración de comportamiento del agente de IA, por sucursal (branchId) o del tenant
+ * completo (branchId null = default que aplica a las sucursales sin config propia). `settings` es JSON
+ * extensible: canales activos, responder/solo-notificar y agendar por canal, y horario de respuesta.
+ * Ej: { whatsapp:{enabled,respond,schedule}, gmail:{...}, hours:{mode:'24_7'|'business',start,end} }.
+ */
+model AgentSetting {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  tenantId  String   @map("tenant_id") @db.VarChar(30)
+  branchId  String?  @map("branch_id") @db.VarChar(30)   // null = default del tenant
+  settings  Json                                          // comportamiento del agente (extensible)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, branchId])
+  @@map("agent_settings")
 }
 
 /// Historial INMUTABLE de cada cambio en el inventario.
@@ -1189,6 +1291,14 @@ model Transaction {
   // OCR (y liga con quick_invoices para el detalle); null → registro manual. `createdBy` = user.id.
   createdBy         String?  @map("created_by") @db.VarChar(30)
   quickInvoiceId    String?  @map("quick_invoice_id") @db.VarChar(30)
+  // HU-199 — asignación MANUAL y opcional a un proyecto (mismo tenant). El monto de la transacción
+  // asignada suma al avance (objetivo) o consumo (límite) del proyecto. SetNull: borrar el proyecto
+  // no borra la transacción, solo la desasigna.
+  projectId         String?  @map("project_id") @db.VarChar(30)
+  // HU-200 — estado de la ASIGNACIÓN a un proyecto-límite: assigned (cuenta, dentro del tope) |
+  // pending (en espera de aprobación, NO cuenta) | over_limit (exceso aprobado/vencido, cuenta y se
+  // marca sobre-límite). null = sin proyecto. El gasto en VERA existe siempre, independiente de esto.
+  assignmentStatus  String?  @map("assignment_status") @db.VarChar(20)
   date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1198,6 +1308,8 @@ model Transaction {
   branch     Branch?              @relation(fields: [branchId], references: [id])
   txCategory TransactionCategory? @relation(fields: [categoryId], references: [id])
   costCenter CostCenter?          @relation(fields: [costCenterId], references: [id])
+  proyecto   Proyecto?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  budgetApproval BudgetApproval?  // HU-200 — solicitud de sobregasto de esta asignación (si aplica)
 
   @@index([tenantId, date(sort: Desc)])
   @@index([tenantId, type])
@@ -1205,6 +1317,7 @@ model Transaction {
   @@index([tenantId, categoryId])
   @@index([referenceType, referenceId])
   @@index([tenantId, quickInvoiceId])
+  @@index([tenantId, projectId])
   @@map("transactions")
 }
 

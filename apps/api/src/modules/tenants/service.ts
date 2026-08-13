@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import type { UpdateTenantInput } from './schema'
 import { createDefaultPipelineStages } from '../ari/pipeline/service'
 
-const ALL_MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'] as const
+const ALL_MODULES = ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA', 'PROYECTOS'] as const
 
 const TENANT_SELECT = {
   id: true,
@@ -75,13 +75,13 @@ export async function updateFeatureFlag(
     }
   }
 
-  const result = await prisma.featureFlag.updateMany({
-    where: { tenantId, module: module as never },
-    data: { enabled },
+  // upsert: los módulos añadidos después de crear el tenant (p. ej. PROYECTOS — HU-198) pueden no
+  // tener aún su fila; activarlos la crea. Para los módulos existentes es equivalente a un update.
+  await prisma.featureFlag.upsert({
+    where:  { tenantId_module: { tenantId, module: module as never } },
+    create: { tenantId, module: module as never, enabled },
+    update: { enabled },
   })
-  if (result.count === 0) {
-    throw { statusCode: 404, message: 'Feature flag no encontrado', code: 'NOT_FOUND' }
-  }
 
   // Al activar ARI por primera vez → crear las 6 etapas por defecto si no existen
   if (module === 'ARI' && enabled) {

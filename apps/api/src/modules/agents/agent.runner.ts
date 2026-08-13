@@ -281,9 +281,13 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   const startTime  = Date.now()
   const client     = getAnthropicClient()
   // INTERNO (HU-187): catálogo unificado según el alcance del rol; el resto, tools de su módulo.
-  const agentTools = input.module === 'INTERNO'
+  const baseTools = input.module === 'INTERNO'
     ? buildInternalTools(input.internalFull ?? [], input.internalRead ?? [])
     : getToolsForModule(input.module)
+  // HU-196 — si la config desactiva "agendar", el agente de ATENCIÓN pierde crear_cita (no puede reservar).
+  const agentTools = (input.module === 'ATENCION' && input.disableScheduling)
+    ? baseTools.filter((t) => t.definition.name !== 'crear_cita')
+    : baseTools
   const toolMap    = new Map(agentTools.map((t) => [t.definition.name, t]))
 
   // ── 1. Verificar que el módulo está habilitado para el tenant ────────────
@@ -369,7 +373,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   //  1. Estable (reglas + contexto del tenant) → con cache_control: se cachea junto a las tools.
   //  2. Volátil (fecha/hora al minuto, solo INTERNO) → SIN cache: cambia cada minuto y rompería el
   //     cache si fuera parte del bloque estable. Va pequeño y aparte.
-  const stableSystem = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas, input.userRole)
+  const stableSystem = getSystemPrompt(input.module, tenantCtx, input.channel, input.internalAreas, input.userRole, !input.disableScheduling)
   const volatile     = getVolatileContext(input.module, tenantCtx)
   const systemBlocks: Anthropic.TextBlockParam[] = [
     { type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } },
@@ -447,7 +451,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
               tool.execute(
                 block.input as Record<string, unknown>,
                 input.tenantId,
-                { userId: input.userId, userRole: input.userRole },
+                { userId: input.userId, userRole: input.userRole, channel: input.channel },
               ),
             )
             const content = JSON.stringify(output)

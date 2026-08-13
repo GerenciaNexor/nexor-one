@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
+import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 type Kind = 'purchase' | 'sale'
 interface Opt  { id: string; name: string; isGeneric?: boolean }
@@ -103,6 +104,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
 
   const [cpId, setCpId]         = useState('')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
+  const [projectId, setProjectId] = useState('')
   const [items, setItems]       = useState<ItemState[]>([])
 
   const [additional, setAdditional] = useState<{ label: string; value: string }[]>([])
@@ -191,6 +193,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
       await apiClient.post('/v1/quick/invoices', {
         kind, ...(isSale ? { clientId: cpId || null } : { supplierId: cpId || null }),
         branchId: branchId || undefined, date: date || undefined,
+        ...(projectId ? { projectId } : {}), // HU-199 — asignación opcional a un proyecto
         issuer: issuer || null, nit: nit || null, total: total ? Number(total) : null,
         imageBase64: image?.base64, imageMime: image?.mime, fullExtraction: fullExtraction ?? {},
         items: payloadItems,
@@ -255,6 +258,8 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                 <div><label className={lbl}>NIT</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>Fecha</label><input type="date" value={date?.slice(0, 10) ?? ''} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>Total (leído)</label><input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className={inp} /></div>
+                {/* Proyecto (HU-199) — asigna toda la factura a un proyecto (opcional) */}
+                <div className="col-span-2"><ProjectSelect value={projectId} onChange={setProjectId} className={inp} /></div>
               </div>
 
               {/* Ítems */}

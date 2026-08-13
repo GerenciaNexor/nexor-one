@@ -85,7 +85,7 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
     }
     try {
-      const tx = await createManualTransaction(request.user.tenantId, parsed.data)
+      const tx = await createManualTransaction(request.user.tenantId, parsed.data, request.user.userId)
       return reply.code(201).send(tx)
     } catch (err) { return errReply(reply, err) }
   })
@@ -111,7 +111,7 @@ export async function transactionsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
     }
     try {
-      const tx = await updateManualTransaction(request.user.tenantId, id, parsed.data)
+      const tx = await updateManualTransaction(request.user.tenantId, id, parsed.data, request.user.userId)
       return reply.code(200).send(tx)
     } catch (err) { return errReply(reply, err) }
   })

@@ -10,6 +10,7 @@ export const CreateManualTransactionSchema = z.object({
   costCenterId:      z.string().optional(),
   externalReference: z.string().max(255).optional(),
   currency:          z.string().length(3).default('COP'),
+  projectId:         z.string().optional().nullable(), // HU-199 — asignación opcional a un proyecto
 })
 
 export const UpdateManualTransactionSchema = z.object({
@@ -22,6 +23,7 @@ export const UpdateManualTransactionSchema = z.object({
   costCenterId:      z.string().optional().nullable(),
   externalReference: z.string().max(255).optional().nullable(),
   currency:          z.string().length(3).optional(),
+  projectId:         z.string().optional().nullable(), // HU-199 — asignar / cambiar / quitar (null)
 })
 
 export const ClassifyTransactionSchema = z.object({
