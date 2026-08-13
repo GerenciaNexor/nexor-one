@@ -251,9 +251,11 @@ export async function expireOverdueApprovals(now: Date = new Date()): Promise<nu
   })
   for (const ap of due) {
     await directPrisma.$transaction(async (tx) => {
-      await tx.transaction.update({ where: { id: ap.transactionId }, data: { assignmentStatus: 'over_limit' } })
-      await tx.budgetApproval.update({
-        where: { id: ap.id },
+      // HU-202 — defensa en profundidad: `directPrisma` bypasea RLS, así que además del id (que ya es
+      // de la misma empresa por la FK) se fuerza `tenantId: ap.tenantId` en el where (updateMany).
+      await tx.transaction.updateMany({ where: { id: ap.transactionId, tenantId: ap.tenantId }, data: { assignmentStatus: 'over_limit' } })
+      await tx.budgetApproval.updateMany({
+        where: { id: ap.id, tenantId: ap.tenantId },
         data:  { status: 'expired', resolvedAt: now,
           trace: pushTrace(ap.trace, { at: now.toISOString(), event: 'expired_over_limit', note: 'Venció el plazo sin resolución; entra como sobre-límite (exceso).' }) },
       })

@@ -913,8 +913,9 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
 
       // Marcar conversación como replied si el agente respondió sin fallback
       if (conversationId && !result.hitMaxTurns) {
-        directPrisma.conversation.update({
-          where: { id: conversationId },
+        // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
+        directPrisma.conversation.updateMany({
+          where: { id: conversationId, tenantId: d.tenantId },
           data:  { status: 'replied' },
         }).catch((err: unknown) => {
           console.error(JSON.stringify({ event: 'worker_status_update_failed', error: String(err) }))
@@ -962,8 +963,9 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
     const startHid  = storedHid ?? d.historyId
 
     const advanceHistoryId = async (to: string): Promise<void> => {
-      await directPrisma.integration.update({
-        where: { id: d.integrationId },
+      // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
+      await directPrisma.integration.updateMany({
+        where: { id: d.integrationId, tenantId: d.tenantId },
         data:  { metadata: { ...meta, historyId: to } },
       }).catch((e) => console.error('[worker gmail] avanzar historyId:', e))
     }
@@ -1253,8 +1255,9 @@ async function processIncomingMessage(job: Job<IncomingMessageJob>): Promise<voi
               }
 
               if (capConvId) {
-                await directPrisma.conversation.update({
-                  where: { id: capConvId },
+                // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
+                await directPrisma.conversation.updateMany({
+                  where: { id: capConvId, tenantId: d.tenantId },
                   data:  { status: 'replied' },
                 })
               }
