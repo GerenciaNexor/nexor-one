@@ -124,6 +124,13 @@ export default function ProyectoDetailPage() {
         )}
       </div>
 
+      {/* HU-201 — objetivo logrado (positivo, sin bloqueo) */}
+      {!isLimit && pr.reached && (
+        <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+          🎉 <span className="font-semibold">¡Objetivo logrado!</span> {pr.current > pr.target ? `Superaste tu meta de ${money(pr.target)} (llevas ${money(pr.current)}).` : `Alcanzaste tu meta de ${money(pr.target)}.`}
+        </div>
+      )}
+
       {/* HU-200 — indicador SOBRE-LÍMITE */}
       {project.overLimit && (
         <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">

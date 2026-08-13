@@ -26,15 +26,23 @@ function alertThreshold(p: { alertAmount: Prisma.Decimal | null; alertPct: numbe
   return null
 }
 
-/** Notifica a TODOS los admins del tenant (TENANT_ADMIN + BRANCH_ADMIN). Cualquier admin puede aprobar. */
-export async function notifyProjectAdmins(client: Client, tenantId: string, n: { type: string; title: string; message: string; link: string }) {
-  const admins = await client.user.findMany({
-    where:  { tenantId, isActive: true, role: { in: ['TENANT_ADMIN', 'BRANCH_ADMIN'] } },
+// Aprobación de sobregasto → solo admins. Aviso positivo del objetivo → también jefes de área.
+const ADMIN_ROLES = ['TENANT_ADMIN', 'BRANCH_ADMIN'] as const
+const MANAGER_ROLES = ['TENANT_ADMIN', 'BRANCH_ADMIN', 'AREA_MANAGER'] as const
+
+/** Notifica a los usuarios del tenant con alguno de los roles indicados (por defecto, admins). */
+export async function notifyProjectAdmins(
+  client: Client, tenantId: string,
+  n: { type: string; title: string; message: string; link: string },
+  roles: readonly string[] = ADMIN_ROLES,
+) {
+  const users = await client.user.findMany({
+    where:  { tenantId, isActive: true, role: { in: roles as unknown as ('OPERATIVE' | 'AREA_MANAGER' | 'BRANCH_ADMIN' | 'TENANT_ADMIN' | 'SUPER_ADMIN')[] } },
     select: { id: true },
   })
-  if (admins.length === 0) return
+  if (users.length === 0) return
   await client.notification.createMany({
-    data: admins.map((u) => ({ tenantId, userId: u.id, module: 'PROYECTOS', type: n.type, title: n.title, message: n.message, link: n.link })) as Prisma.NotificationCreateManyInput[],
+    data: users.map((u) => ({ tenantId, userId: u.id, module: 'PROYECTOS', type: n.type, title: n.title, message: n.message, link: n.link })) as Prisma.NotificationCreateManyInput[],
   })
 }
 
@@ -71,6 +79,22 @@ export async function applyAssignment(client: Client, tenantId: string, transact
   // Los proyectos de OBJETIVO (o si no se halló) no controlan el tope: la asignación cuenta directo.
   if (!project || project.type !== 'limite') {
     await client.transaction.update({ where: { id: transactionId }, data: { assignmentStatus: 'assigned' } })
+    // HU-201 — objetivo: la meta se puede superar libremente (sin bloqueo). Al ALCANZARLA por primera
+    // vez, se avisa positivamente (una sola vez; alertNotifiedAt marca que ya se felicitó).
+    if (project && project.type === 'objetivo') {
+      const target = num(project.targetAmount)
+      const total  = await confirmedConsumption(client, tenantId, project.id) // ya incluye esta transacción
+      if (target > 0 && total >= target && !project.alertNotifiedAt) {
+        await client.proyecto.update({ where: { id: project.id }, data: { alertNotifiedAt: new Date() } })
+        const superado = total > target
+        await notifyProjectAdmins(client, tenantId, {
+          type:    'OBJETIVO_LOGRADO',
+          title:   `🎉 ¡Objetivo logrado: ${project.name}!`,
+          message: `¡Felicidades! El proyecto «${project.name}» ${superado ? 'superó' : 'alcanzó'} su meta de ${fmt(target)} (llevas ${fmt(total)}). ${superado ? '¡Y lo superaste!' : '¡Meta cumplida!'}`,
+          link:    `/proyectos/${project.id}`,
+        }, MANAGER_ROLES)
+      }
+    }
     return { status: 'assigned' as const }
   }
 

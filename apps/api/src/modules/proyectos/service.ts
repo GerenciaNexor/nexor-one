@@ -182,7 +182,8 @@ export async function updateProject(tenantId: string, id: string, input: UpdateP
       ...(input.name        !== undefined && { name:         input.name }),
       ...(input.description !== undefined && { description:  input.description }),
       ...(input.type        !== undefined && { type:         input.type }),
-      ...(input.targetAmount !== undefined && { targetAmount: input.targetAmount }),
+      // Cambiar la meta/tope re-arma el aviso (objetivo logrado / umbral) — HU-200/HU-201.
+      ...(input.targetAmount !== undefined && { targetAmount: input.targetAmount, alertNotifiedAt: null }),
       ...(alert.alertAmount !== undefined && { alertAmount:  alert.alertAmount }),
       ...(alert.alertPct    !== undefined && { alertPct:     alert.alertPct }),
       ...(input.graceDays   !== undefined && { graceDays:    effectiveType === 'objetivo' ? null : input.graceDays }),
