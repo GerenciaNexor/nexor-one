@@ -125,6 +125,7 @@ model Tenant {
   quickInvoices         QuickInvoice[]
   agentSettings         AgentSetting[]
   proyectos             Proyecto[]
+  budgetApprovals       BudgetApproval[] // HU-200
   subscription          Subscription?
 
   /// HU-141 — soporte del anti-duplicado: búsqueda por NIT/documento estable.
@@ -477,6 +478,10 @@ model Proyecto {
   status      String   @default("activo") @db.VarChar(20)
   /// Quién lo creó (sello de auditoría; sin FK para no acoplar a User).
   createdBy   String?  @map("created_by") @db.VarChar(30)
+  /// HU-200 — plazo (días) para resolver un sobregasto antes de que entre como exceso. null → 2.
+  graceDays       Int?      @map("overspend_grace_days")
+  /// HU-200 — cuándo se avisó por última vez el umbral (para no re-notificar en cada asignación).
+  alertNotifiedAt DateTime? @map("alert_notified_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -485,9 +490,42 @@ model Proyecto {
   // HU-199 — transacciones y alquileres entrantes asignados (alimentan el avance/consumo).
   transactions    Transaction[]
   incomingRentals IncomingRental[]
+  budgetApprovals BudgetApproval[] // HU-200
 
   @@index([tenantId, status])
   @@map("proyectos")
+}
+
+/// HU-200 — Control de sobregasto de un proyecto-LÍMITE. El gasto YA está en VERA (verdad contable,
+/// nunca se niega); esto controla su ASIGNACIÓN al presupuesto del proyecto cuando se supera el tope.
+/// Estados: pending (en espera) → approved (admin lo aprueba como exceso) | rejected (queda solo en
+/// VERA, fuera del proyecto) | expired (venció el plazo → entra como sobre-límite). `trace` es
+/// append-only: [{at, event, by?, note?}] — se informó, esperó, venció, entró como exceso. La aprobación
+/// solo la dan admins del MISMO tenant (RLS).
+model BudgetApproval {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  tenantId      String    @map("tenant_id") @db.VarChar(30)
+  projectId     String    @map("project_id") @db.VarChar(30)
+  transactionId String    @unique @map("transaction_id") @db.VarChar(30)
+  amount        Decimal   @db.Decimal(15, 2)
+  status        String    @default("pending") @db.VarChar(20)
+  reason        String?   @db.Text
+  requestedBy   String?   @map("requested_by") @db.VarChar(30)
+  resolvedBy    String?   @map("resolved_by") @db.VarChar(30)
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz(6)
+  dueAt         DateTime  @map("due_at") @db.Timestamptz(6)
+  trace         Json      @default("[]")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  proyecto    Proyecto    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, dueAt])
+  @@map("budget_approvals")
 }
 
 // =============================================================================
@@ -1257,6 +1295,10 @@ model Transaction {
   // asignada suma al avance (objetivo) o consumo (límite) del proyecto. SetNull: borrar el proyecto
   // no borra la transacción, solo la desasigna.
   projectId         String?  @map("project_id") @db.VarChar(30)
+  // HU-200 — estado de la ASIGNACIÓN a un proyecto-límite: assigned (cuenta, dentro del tope) |
+  // pending (en espera de aprobación, NO cuenta) | over_limit (exceso aprobado/vencido, cuenta y se
+  // marca sobre-límite). null = sin proyecto. El gasto en VERA existe siempre, independiente de esto.
+  assignmentStatus  String?  @map("assignment_status") @db.VarChar(20)
   date              DateTime @db.Date
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -1267,6 +1309,7 @@ model Transaction {
   txCategory TransactionCategory? @relation(fields: [categoryId], references: [id])
   costCenter CostCenter?          @relation(fields: [costCenterId], references: [id])
   proyecto   Proyecto?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  budgetApproval BudgetApproval?  // HU-200 — solicitud de sobregasto de esta asignación (si aplica)
 
   @@index([tenantId, date(sort: Desc)])
   @@index([tenantId, type])

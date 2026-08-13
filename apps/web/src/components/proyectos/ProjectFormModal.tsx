@@ -15,6 +15,7 @@ export interface Project {
   targetAmount: number | string
   alertAmount:  number | string | null
   alertPct:     number | null
+  graceDays:    number | null
   startDate:    string
   endDate:      string
   status:       ProjectStatus
@@ -57,6 +58,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
     project?.alertPct != null ? String(project.alertPct)
       : project?.progress.alertAt != null ? String(project.progress.alertAt) : '',
   )
+  const [graceDays, setGraceDays] = useState(project?.graceDays != null ? String(project.graceDays) : '')
 
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -79,6 +81,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
       status,
       alertAmount: null,
       alertPct: null,
+      graceDays: type === 'limite' && graceDays.trim() ? Math.max(1, Math.min(30, Math.round(Number(graceDays)))) : null,
     }
     if (type === 'limite' && alertValue.trim()) {
       const v = Number(alertValue)
@@ -153,6 +156,11 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
                     placeholder={alertMode === 'pct' ? 'Ej: 90' : 'Ej: 18000000'} />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">Avisar al acercarse al límite (p. ej. al llegar al 90% o a $18M).</p>
+                <div className="mt-3">
+                  <label className={lbl}>Plazo de aprobación del sobregasto (días)</label>
+                  <input type="number" min="1" max="30" step="1" value={graceDays} onChange={(e) => setGraceDays(e.target.value)} className={inp} placeholder="2 (por defecto)" />
+                  <p className="mt-1 text-[11px] text-slate-400">Si al superar el tope nadie resuelve en este plazo, el exceso entra igual (sobre-límite) con trazabilidad.</p>
+                </div>
               </div>
             )}
 

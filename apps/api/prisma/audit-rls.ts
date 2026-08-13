@@ -33,6 +33,8 @@ const TABLES = [
   'agent_settings',
   // HU-198 — proyectos (metas/objetivos y límites/presupuestos).
   'proyectos',
+  // HU-200 — solicitudes de sobregasto (aprobación de asignación sobre el tope).
+  'budget_approvals',
 ] as const
 
 async function seedTenant(db: PrismaClient, s: string): Promise<void> {
@@ -52,7 +54,7 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.supplier.create({ data: { id: sp, tenantId: t, name: 'S' } })
   await db.serviceType.create({ data: { id: `svc_${s}`, tenantId: t, name: 'Svc' } })
   await db.availability.create({ data: { tenantId: t, dayOfWeek: 1, startTime: T(9), endTime: T(5) } })
-  await db.transaction.create({ data: { tenantId: t, type: 'income', amount: new Prisma.Decimal(100), description: 'x', date: new Date() } })
+  const txn0 = await db.transaction.create({ data: { tenantId: t, type: 'income', amount: new Prisma.Decimal(100), description: 'x', date: new Date() } })
   await db.conversation.create({ data: { id: cv, tenantId: t, channel: 'WHATSAPP', senderIdentifier: `snd-${s}`, lastMessageAt: new Date() } })
   await db.conversationMessage.create({ data: { tenantId: t, conversationId: cv, direction: 'inbound', content: 'x', timestamp: new Date() } })
   await db.bulkUploadLog.create({ data: { tenantId: t, userId: u, type: 'products', fileName: 'f', status: 'success' } })
@@ -81,8 +83,11 @@ async function seedTenant(db: PrismaClient, s: string): Promise<void> {
   await db.quickInvoice.create({ data: { tenantId: t, branchId: br, userId: u, kind: 'purchase', fullExtraction: { s } } })
   // HU-196 — configuración del agente de IA
   await db.agentSetting.create({ data: { tenantId: t, branchId: br, settings: { whatsapp: { enabled: true } } } })
-  // HU-198 — proyecto (objetivo)
-  await db.proyecto.create({ data: { tenantId: t, name: 'Meta ventas', type: 'objetivo', targetAmount: new Prisma.Decimal(1000), startDate: new Date(), endDate: new Date(Date.now() + 30 * 864e5) } })
+  // HU-198 — proyecto (límite, para poder colgar una solicitud de sobregasto)
+  const prj = await db.proyecto.create({ data: { id: `prj_${s}`, tenantId: t, name: 'Presupuesto', type: 'limite', targetAmount: new Prisma.Decimal(1000), startDate: new Date(), endDate: new Date(Date.now() + 30 * 864e5) } })
+  // HU-200 — reusa la transacción existente (1 fila por tabla) asignándola + solicitud de sobregasto.
+  await db.transaction.update({ where: { id: txn0.id }, data: { projectId: prj.id, assignmentStatus: 'pending' } })
+  await db.budgetApproval.create({ data: { tenantId: t, projectId: prj.id, transactionId: txn0.id, amount: new Prisma.Decimal(200), dueAt: new Date(Date.now() + 2 * 864e5) } })
 }
 
 async function main(): Promise<void> {

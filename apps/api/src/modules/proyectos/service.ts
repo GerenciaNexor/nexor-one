@@ -1,11 +1,12 @@
 import { prisma } from '../../lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { applyAssignment } from './budget'
 import type { CreateProjectInput, UpdateProjectInput } from './schema'
 
 // Campos que se exponen (nunca tenant_id en la respuesta).
 const SELECT = {
   id: true, name: true, description: true, type: true, targetAmount: true,
-  alertAmount: true, alertPct: true, startDate: true, endDate: true, status: true,
+  alertAmount: true, alertPct: true, graceDays: true, startDate: true, endDate: true, status: true,
   createdBy: true, createdAt: true, updatedAt: true,
 } as const
 
@@ -63,6 +64,7 @@ export async function createProject(tenantId: string, userId: string, input: Cre
       targetAmount: input.targetAmount,
       alertAmount:  alert.alertAmount ?? null,
       alertPct:     alert.alertPct ?? null,
+      graceDays:    input.type === 'objetivo' ? null : (input.graceDays ?? null),
       startDate:    toDate(input.startDate),
       endDate:      toDate(input.endDate),
       status:       input.status,
@@ -82,7 +84,9 @@ async function sumByProject(tenantId: string, projectIds: string[]): Promise<Map
   if (projectIds.length === 0) return new Map()
   const rows = await prisma.transaction.groupBy({
     by:    ['projectId'],
-    where: { tenantId, projectId: { in: projectIds } },
+    // HU-200 — solo cuentan las asignaciones confirmadas: 'assigned' (dentro del tope) y 'over_limit'
+    // (exceso aprobado/vencido). Las 'pending' (en espera de aprobación) NO suman al consumo.
+    where: { tenantId, projectId: { in: projectIds }, assignmentStatus: { in: ['assigned', 'over_limit'] } },
     _sum:  { amount: true },
   })
   return new Map(rows.map((r) => [r.projectId as string, Number(r._sum.amount ?? 0)]))
@@ -103,20 +107,31 @@ export async function listProjects(tenantId: string, opts: { status?: string; ty
   return { data: data.map((p) => ({ ...p, progress: computeProgress(p, sums.get(p.id) ?? 0) })), total: data.length }
 }
 
-/** Detalle: proyecto + avance (suma de asignadas) + las transacciones asignadas (HU-199). */
+/** Detalle: proyecto + avance (suma CONFIRMADA) + transacciones (con estado) + sobregastos en espera. */
 export async function getProject(tenantId: string, id: string) {
   const p = await prisma.proyecto.findFirst({ where: { id, tenantId }, select: SELECT })
   if (!p) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
-  const transactions = await prisma.transaction.findMany({
-    where:  { tenantId, projectId: id },
-    select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, category: true, createdAt: true },
-    orderBy: { date: 'desc' },
-  })
-  const current = transactions.reduce((s, t) => s + Number(t.amount), 0)
+  const [transactions, pending] = await Promise.all([
+    prisma.transaction.findMany({
+      where:  { tenantId, projectId: id },
+      select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, category: true, assignmentStatus: true, createdAt: true },
+      orderBy: { date: 'desc' },
+    }),
+    prisma.budgetApproval.findMany({
+      where:  { tenantId, projectId: id, status: 'pending' },
+      select: { id: true, amount: true, dueAt: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ])
+  // HU-200 — el consumo solo cuenta lo CONFIRMADO (assigned + over_limit); lo pending está en espera.
+  const current = transactions.filter((t) => t.assignmentStatus !== 'pending').reduce((s, t) => s + Number(t.amount), 0)
+  const progress = computeProgress(p, current)
   return {
     ...p,
-    progress: computeProgress(p, current),
+    progress,
+    overLimit: p.type === 'limite' && transactions.some((t) => t.assignmentStatus === 'over_limit'), // indicador sobre-límite
     transactions: transactions.map((t) => ({ ...t, amount: Number(t.amount) })),
+    pendingApprovals: pending.map((a) => ({ id: a.id, amount: Number(a.amount), dueAt: a.dueAt, createdAt: a.createdAt })),
   }
 }
 
@@ -124,15 +139,19 @@ export async function getProject(tenantId: string, id: string) {
  * HU-199 — Asigna/quita/cambia el proyecto de una transacción (manual, opcional). Valida que la
  * transacción y el proyecto sean del MISMO tenant (nunca cross-tenant). `projectId = null` la desasigna.
  */
-export async function assignTransaction(tenantId: string, transactionId: string, projectId: string | null) {
-  const tx = await prisma.transaction.findFirst({ where: { id: transactionId, tenantId }, select: { id: true } })
-  if (!tx) throw { statusCode: 404, message: 'Transacción no encontrada', code: 'NOT_FOUND' }
-  if (projectId) {
-    const proj = await prisma.proyecto.findFirst({ where: { id: projectId, tenantId }, select: { id: true } })
-    if (!proj) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
-  }
-  await prisma.transaction.update({ where: { id: transactionId }, data: { projectId } })
-  return { id: transactionId, projectId }
+export async function assignTransaction(tenantId: string, transactionId: string, projectId: string | null, requestedBy?: string) {
+  return prisma.$transaction(async (tx) => {
+    const t = await tx.transaction.findFirst({ where: { id: transactionId, tenantId }, select: { id: true } })
+    if (!t) throw { statusCode: 404, message: 'Transacción no encontrada', code: 'NOT_FOUND' }
+    if (projectId) {
+      const proj = await tx.proyecto.findFirst({ where: { id: projectId, tenantId }, select: { id: true } })
+      if (!proj) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
+    }
+    await tx.transaction.update({ where: { id: transactionId }, data: { projectId } })
+    // HU-200 — evalúa el presupuesto: define assigned/pending y abre la solicitud de sobregasto si aplica.
+    const r = await applyAssignment(tx, tenantId, transactionId, requestedBy)
+    return { id: transactionId, projectId, status: r?.status ?? null }
+  })
 }
 
 /** Cliente de lectura: el proxy `prisma` o un `tx` de transacción abierta (ambos exponen `.proyecto`). */
@@ -166,6 +185,7 @@ export async function updateProject(tenantId: string, id: string, input: UpdateP
       ...(input.targetAmount !== undefined && { targetAmount: input.targetAmount }),
       ...(alert.alertAmount !== undefined && { alertAmount:  alert.alertAmount }),
       ...(alert.alertPct    !== undefined && { alertPct:     alert.alertPct }),
+      ...(input.graceDays   !== undefined && { graceDays:    effectiveType === 'objetivo' ? null : input.graceDays }),
       ...(input.startDate   !== undefined && { startDate:    toDate(input.startDate) }),
       ...(input.endDate     !== undefined && { endDate:      toDate(input.endDate) }),
       ...(input.status      !== undefined && { status:       input.status }),

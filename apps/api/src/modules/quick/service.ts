@@ -4,6 +4,7 @@ import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
 import { businessToday } from '../../lib/dates'
 import { validateProjectId } from '../proyectos/service'
+import { applyAssignment } from '../proyectos/budget'
 import { matchProductByName } from '../../lib/text-match'
 import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
 import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput } from './schema'
@@ -199,6 +200,7 @@ async function applyPurchaseItem(
         quantity: qty, quantityBefore: before, quantityAfter: after, costPriceFrozen: cost,
         referenceType: 'quick_purchase', referenceId: txn.id, notes: 'Compra rápida' },
     })
+    if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
     return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: before, stockAfter: after }
   }
 
@@ -210,6 +212,7 @@ async function applyPurchaseItem(
       projectId: ctx.projectId ?? null },
     select: { id: true },
   })
+  if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
   return { transactionId: txn.id, affectsInventory: false, amount }
 }
 
@@ -250,6 +253,7 @@ async function applySaleItem(
         salePriceFrozen: price, costPriceFrozen: product.costPrice ?? null,
         referenceType: 'quick_sale', referenceId: txn.id, notes: 'Venta rápida' },
     })
+    if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
     return { transactionId: txn.id, productId: product.id, productName: product.name, affectsInventory: true, amount, stockBefore: total, stockAfter: after }
   }
 
@@ -261,6 +265,7 @@ async function applySaleItem(
       projectId: ctx.projectId ?? null },
     select: { id: true },
   })
+  if (ctx.projectId) await applyAssignment(tx, tenantId, txn.id, userId) // HU-200 — control de presupuesto
   return { transactionId: txn.id, affectsInventory: false, amount }
 }
 

@@ -82,6 +82,8 @@ const BUSINESS_TABLES = [
   'agent_settings',
   // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio.
   'proyectos',
+  // HU-200 — solicitudes de sobregasto (aprobación de asignación sobre el tope del proyecto-límite).
+  'budget_approvals',
 ] as const
 
 async function setupRLS(): Promise<void> {

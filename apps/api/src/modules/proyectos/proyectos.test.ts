@@ -71,4 +71,22 @@ describe('HU-198 — CreateProjectSchema', () => {
     expect(PROJECT_TYPES).toEqual(['objetivo', 'limite'])
     expect(PROJECT_STATUSES).toEqual(['activo', 'en_curso', 'terminado', 'cancelado'])
   })
+
+  it('HU-200 — plazo (graceDays) válido en un límite', () => {
+    expect(CreateProjectSchema.safeParse({ ...base, type: 'limite', alertAmount: 800, graceDays: 3 }).success).toBe(true)
+  })
+
+  it('HU-200 — plazo fuera de rango (0 o > 30) → inválido', () => {
+    expect(CreateProjectSchema.safeParse({ ...base, type: 'limite', graceDays: 0 }).success).toBe(false)
+    expect(CreateProjectSchema.safeParse({ ...base, type: 'limite', graceDays: 45 }).success).toBe(false)
+  })
+})
+
+describe('HU-200 — computeProgress marca el exceso (sobre-límite)', () => {
+  it('límite superado → exceeded, pct sobre 100 (cap en la barra), remaining 0', () => {
+    const p = computeProgress({ type: 'limite', targetAmount: 1000, alertAmount: null, alertPct: null }, 1200)
+    expect(p.exceeded).toBe(true)
+    expect(p.remaining).toBe(0)
+    expect(p.pct).toBe(120)
+  })
 })

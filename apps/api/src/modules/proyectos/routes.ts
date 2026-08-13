@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateProjectSchema, UpdateProjectSchema } from './schema'
 import { createProject, listProjects, getProject, updateProject, deleteProject, assignTransaction } from './service'
+import { listPendingApprovals, resolveApproval } from './budget'
 import { requireRole } from '../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -13,8 +14,10 @@ const errReply = (reply: FastifyReply, err: unknown) => {
 // (metas/presupuestos de toda la empresa; la asignación de transacciones cruza módulos), así que:
 //   · Lectura (lista/detalle/selector): cualquier usuario del tenant (OPERATIVE+).
 //   · Gestión (crear/editar/eliminar/asignar): jefe de área o superior (AREA_MANAGER+), por ROL.
-const canRead   = requireRole('OPERATIVE')
-const canManage = requireRole('AREA_MANAGER')
+//   · Aprobar sobregastos (HU-200): SOLO admins del tenant — TENANT_ADMIN o BRANCH_ADMIN.
+const canRead    = requireRole('OPERATIVE')
+const canManage  = requireRole('AREA_MANAGER')
+const canApprove = requireRole('BRANCH_ADMIN')
 
 export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
   /** GET /v1/proyectos — lista con tipo, meta, avance/consumo y estado. `status`/`type` filtran. */
@@ -70,6 +73,34 @@ export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) { return errReply(reply, err) }
   })
 
+  /** GET /v1/proyectos/aprobaciones — sobregastos EN ESPERA del tenant (para los admins). */
+  app.get('/aprobaciones', {
+    preHandler: canApprove,
+    schema: { tags: ['Proyectos'], summary: 'Sobregastos pendientes de aprobación', security: bearerAuth, response: { 200: listRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const result = await listPendingApprovals(request.user.tenantId)
+    return reply.code(200).send(result)
+  })
+
+  /** POST /v1/proyectos/aprobaciones/:id/resolver — aprobar / rechazar / aumentar tope (admin del tenant). */
+  app.post('/aprobaciones/:id/resolver', {
+    preHandler: canApprove,
+    schema: {
+      tags: ['Proyectos'], summary: 'Resolver un sobregasto', security: bearerAuth, params: idParam,
+      body: { type: 'object', required: ['action'], properties: { action: { type: 'string', enum: ['approve', 'reject', 'increase_tope'] }, newTope: { type: 'number' }, reason: { type: 'string' } } },
+      response: { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { action, newTope, reason } = (request.body ?? {}) as { action: 'approve' | 'reject' | 'increase_tope'; newTope?: number; reason?: string }
+    if (!['approve', 'reject', 'increase_tope'].includes(action)) return reply.code(400).send({ error: 'Acción inválida', code: 'VALIDATION_ERROR' })
+    if (action === 'increase_tope' && !(typeof newTope === 'number' && newTope > 0)) return reply.code(400).send({ error: 'Indica el nuevo tope', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await resolveApproval(request.user.tenantId, id, request.user.userId, action, { newTope, reason })
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return errReply(reply, err) }
+  })
+
   /** PATCH /v1/proyectos/transacciones/:txId — asignar / cambiar / quitar (projectId=null) el proyecto
    *  de una transacción. Manual y opcional; solo transacciones y proyectos del mismo tenant. */
   app.patch('/transacciones/:txId', {
@@ -87,7 +118,7 @@ export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'projectId inválido', code: 'VALIDATION_ERROR' })
     }
     try {
-      const r = await assignTransaction(request.user.tenantId, txId, projectId ?? null)
+      const r = await assignTransaction(request.user.tenantId, txId, projectId ?? null, request.user.userId)
       return reply.code(200).send({ success: true, data: r })
     } catch (err) { return errReply(reply, err) }
   })

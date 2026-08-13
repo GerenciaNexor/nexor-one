@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { businessToday } from '../../../lib/dates'
+import { applyAssignment } from '../../proyectos/budget'
 import type { CreateIncomingRentalInput, IncomingRentalQuery, ReturnIncomingRentalInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
@@ -145,7 +146,7 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
     // Costo del alquiler → EGRESO en VERA. (El producto no es de la empresa: no toca KIRA.)
     if (input.rentalCost > 0) {
       const categoryId = await ensureIncomingRentalCategory(tx, tenantId)
-      await tx.transaction.create({
+      const egreso = await tx.transaction.create({
         data: {
           tenantId, branchId, categoryId, type: 'expense', amount: input.rentalCost, currency: 'COP',
           description:   `Alquiler entrante — ${input.description.trim()} (${thirdPartyLabel})`,
@@ -154,7 +155,10 @@ export async function createIncomingRental(tenantId: string, userId: string, inp
           projectId, // HU-199 — el egreso cuenta en el consumo del proyecto asignado
           date: businessToday(), isManual: true,
         },
+        select: { id: true },
       })
+      // HU-200 — control de presupuesto del proyecto-límite (sobregasto/aprobación si supera el tope).
+      if (projectId) await applyAssignment(tx, tenantId, egreso.id, userId)
     }
     // El depósito NO se asienta como transacción: es retención por cobrar derivada del registro.
 

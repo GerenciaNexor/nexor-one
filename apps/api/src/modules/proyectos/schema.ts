@@ -20,6 +20,8 @@ const dateField = z.string({ required_error: 'La fecha es obligatoria', invalid_
 // El umbral de aviso solo aplica al tipo "límite" y se expresa como MONTO o como %.
 const alertAmount = z.number({ invalid_type_error: 'El umbral debe ser un número' }).positive('El umbral debe ser mayor a 0').nullish()
 const alertPct    = z.number({ invalid_type_error: 'El umbral % debe ser un número' }).int('El umbral % debe ser entero').min(1, 'El % debe estar entre 1 y 100').max(100, 'El % debe estar entre 1 y 100').nullish()
+// HU-200 — plazo (días) para resolver un sobregasto antes de que entre como exceso (solo límite). null → 2.
+const graceDays   = z.number({ invalid_type_error: 'El plazo debe ser un número' }).int('El plazo debe ser entero').min(1, 'El plazo mínimo es 1 día').max(30, 'El plazo máximo es 30 días').nullish()
 
 const baseShape = {
   name:        nameField,
@@ -28,6 +30,7 @@ const baseShape = {
   targetAmount: amountField,
   alertAmount,
   alertPct,
+  graceDays,
   startDate:   dateField,
   endDate:     dateField,
   status:      statusField.default('activo'),
@@ -67,6 +70,7 @@ export const UpdateProjectSchema = refineProject(
     targetAmount: amountField.optional(),
     alertAmount,
     alertPct,
+    graceDays,
     startDate:   dateField.optional(),
     endDate:     dateField.optional(),
     status:      statusField.optional(),

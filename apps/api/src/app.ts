@@ -7,6 +7,7 @@ import { startOverdueDeliveriesScheduler } from './jobs/overdue-deliveries'
 import { startQuoteExpiryScheduler } from './jobs/quote-expiry'
 import { startAppointmentRemindersScheduler } from './jobs/appointment-reminders'
 import { startBudgetAlertsScheduler }         from './jobs/budget-alerts'
+import { startBudgetControlScheduler }        from './jobs/budget-control'
 import { startDashboardRollupScheduler }      from './jobs/dashboard-rollup'
 import { startDemoExpiryScheduler }           from './jobs/demo-expiry'
 import { startReminderScheduler }             from './jobs/reminder-fire'
@@ -235,6 +236,7 @@ const start = async (): Promise<void> => {
     startQuoteExpiryScheduler()         // Vence cotizaciones y alerta por vencimiento próximo
     startAppointmentRemindersScheduler() // Envía recordatorios de citas del día siguiente
     startBudgetAlertsScheduler()         // Alertas de presupuesto VERA — corre cada 24 h
+    startBudgetControlScheduler()        // HU-200 — vencimiento de sobregastos → sobre-límite, cada 1 h
     startDashboardRollupScheduler()      // Rollup diario del Dashboard (HU-127) — corre cada 24 h
     startDemoExpiryScheduler()           // HU-142 — suspende demos vencidas cada 1 h (sin borrar)
     startReminderScheduler()             // HU-156 — dispara recordatorios cada 1 min → notificación

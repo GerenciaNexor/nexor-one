@@ -11,8 +11,14 @@ import { money, StatusBadge, TypeBadge, ProgressBar } from '@/components/proyect
 interface AssignedTx {
   id: string; type: 'income' | 'expense'; amount: number; description: string
   date: string; referenceType: string | null; category: string | null
+  assignmentStatus: 'assigned' | 'pending' | 'over_limit' | null
 }
-interface ProjectDetail extends Project { transactions: AssignedTx[] }
+interface PendingApproval { id: string; amount: number; dueAt: string; createdAt: string }
+interface ProjectDetail extends Project {
+  transactions: AssignedTx[]
+  pendingApprovals: PendingApproval[]
+  overLimit: boolean
+}
 
 const fmtDate = (iso: string): string =>
   iso ? new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso)) : '—'
@@ -22,6 +28,7 @@ export default function ProyectoDetailPage() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const isManager = user?.role !== 'OPERATIVE'
+  const isAdmin = user?.role === 'TENANT_ADMIN' || user?.role === 'BRANCH_ADMIN'
 
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [err, setErr]     = useState<string | null>(null)
@@ -63,6 +70,28 @@ export default function ProyectoDetailPage() {
     }
   }
 
+  // HU-200 — resolver un sobregasto EN ESPERA (solo admins del tenant).
+  const [busy, setBusy] = useState(false)
+  async function resolve(approvalId: string, action: 'approve' | 'reject' | 'increase_tope') {
+    let newTope: number | undefined
+    if (action === 'increase_tope') {
+      const cur = project?.progress.target ?? 0
+      const input = prompt(`Nuevo tope (mayor a ${cur}):`, String(cur))
+      if (input == null) return
+      newTope = Number(input)
+      if (!(newTope > cur)) { setErr('El nuevo tope debe ser mayor al actual.'); return }
+    } else if (action === 'reject') {
+      if (!confirm('¿Rechazar la asignación? El gasto queda registrado en VERA, pero fuera de este proyecto.')) return
+    }
+    setBusy(true); setErr(null)
+    try {
+      await apiClient.post(`/v1/proyectos/aprobaciones/${approvalId}/resolver`, { action, newTope })
+      load()
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo resolver el sobregasto.')
+    } finally { setBusy(false) }
+  }
+
   if (err) return (
     <div className="mx-auto max-w-3xl p-6">
       <Link href="/proyectos" className="text-sm text-blue-600 hover:underline">← Proyectos</Link>
@@ -94,6 +123,41 @@ export default function ProyectoDetailPage() {
           </div>
         )}
       </div>
+
+      {/* HU-200 — indicador SOBRE-LÍMITE */}
+      {project.overLimit && (
+        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          <span className="font-semibold">SOBRE-LÍMITE:</span> este proyecto superó su tope. El exceso quedó asignado con trazabilidad (el gasto ya estaba en VERA; no se borra).
+        </div>
+      )}
+
+      {/* HU-200 — sobregastos EN ESPERA de aprobación */}
+      {project.pendingApprovals.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/15">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">En espera de aprobación ({project.pendingApprovals.length})</span>
+          </div>
+          <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+            Superan el tope. El gasto ya está en VERA; su asignación al proyecto está EN ESPERA. {isAdmin ? 'Como admin, puedes resolver:' : 'Un administrador debe resolver.'}
+          </p>
+          <div className="mt-3 space-y-2">
+            {project.pendingApprovals.map((a) => (
+              <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 dark:bg-slate-800/60">
+                <div className="text-sm text-slate-800 dark:text-slate-200">
+                  {money(a.amount)} <span className="text-xs text-slate-400">· vence {fmtDate(a.dueAt)}</span>
+                </div>
+                {isAdmin && (
+                  <div className="flex gap-2">
+                    <button disabled={busy} onClick={() => resolve(a.id, 'approve')} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Aprobar (exceso)</button>
+                    <button disabled={busy} onClick={() => resolve(a.id, 'increase_tope')} className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Aumentar tope</button>
+                    <button disabled={busy} onClick={() => resolve(a.id, 'reject')} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300">Rechazar</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Avance / consumo */}
       <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
@@ -151,11 +215,15 @@ export default function ProyectoDetailPage() {
             {project.transactions.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-800 dark:text-slate-200">{t.description}</p>
+                  <p className="truncate text-sm text-slate-800 dark:text-slate-200">
+                    {t.description}
+                    {t.assignmentStatus === 'pending' && <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">en espera</span>}
+                    {t.assignmentStatus === 'over_limit' && <span className="ml-2 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">sobre-límite</span>}
+                  </p>
                   <p className="text-xs text-slate-400">{fmtDate(t.date)}{t.category ? ` · ${t.category}` : ''}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className={`text-sm font-medium ${t.type === 'income' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-200'}`}>
+                  <span className={`text-sm font-medium ${t.assignmentStatus === 'pending' ? 'text-amber-500' : t.type === 'income' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-200'}`}>
                     {t.type === 'income' ? '+' : '−'}{money(t.amount)}
                   </span>
                   {isManager && (
