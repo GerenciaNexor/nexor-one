@@ -149,14 +149,14 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
               <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <label className={lbl}>Umbral de aviso (opcional)</label>
                 <div className="flex gap-2">
-                  <select value={alertMode} onChange={(e) => setAlertMode(e.target.value as 'amount' | 'pct')} className={`${inp} w-28`}>
+                  <select value={alertMode} onChange={(e) => setAlertMode(e.target.value as 'amount' | 'pct')} className={`${inp} w-28 shrink-0`}>
                     <option value="amount">Monto</option>
                     <option value="pct">%</option>
                   </select>
                   {alertMode === 'amount' ? (
-                    <div className="flex-1"><MoneyInput value={alertValue} onChange={setAlertValue} className={inp} placeholder="Ej: 18.000.000" /></div>
+                    <MoneyInput value={alertValue} onChange={setAlertValue} className={inp} wrapperClassName="flex-1 min-w-0" placeholder="Ej: 18.000.000" />
                   ) : (
-                    <input type="number" min="1" max="100" step="1" value={alertValue} onChange={(e) => setAlertValue(e.target.value)} className={`${inp} flex-1`} placeholder="Ej: 90" />
+                    <input type="number" min="1" max="100" step="1" value={alertValue} onChange={(e) => setAlertValue(e.target.value)} className={`${inp} min-w-0 flex-1`} placeholder="Ej: 90" />
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">Avisar al acercarse al límite (p. ej. al llegar al 90% o a $18M).</p>

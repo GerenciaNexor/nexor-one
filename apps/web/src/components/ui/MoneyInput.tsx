@@ -16,18 +16,19 @@ export function groupThousands(digits: string): string {
 }
 
 interface MoneyInputProps {
-  value:        string | number          // dígitos crudos ("50000") o número
-  onChange:     (rawDigits: string) => void
-  placeholder?: string
-  className?:   string
-  id?:          string
-  disabled?:    boolean
+  value:            string | number      // dígitos crudos ("50000") o número
+  onChange:         (rawDigits: string) => void
+  placeholder?:     string
+  className?:       string               // clases del <input>
+  wrapperClassName?: string              // clases del contenedor (p. ej. "flex-1 min-w-0" en una fila flex)
+  id?:              string
+  disabled?:        boolean
 }
 
-export function MoneyInput({ value, onChange, placeholder, className = '', id, disabled }: MoneyInputProps) {
+export function MoneyInput({ value, onChange, placeholder, className = '', wrapperClassName = '', id, disabled }: MoneyInputProps) {
   const raw = String(value ?? '').replace(/\D/g, '')
   return (
-    <div className="relative">
+    <div className={`relative ${wrapperClassName}`}>
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
       <input
         id={id}
