@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
+import { MoneyInput } from '@/components/ui/MoneyInput'
 
 interface Category   { id: string; name: string; type: 'income' | 'expense' | 'both' }
 interface CostCenter { id: string; name: string }
@@ -152,12 +153,7 @@ export function TransactionFormModal({ tx, branches, onClose, onSuccess }: Props
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                   Monto *
                 </label>
-                <input
-                  type="number" min="0.01" step="0.01" required
-                  value={amount} onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0"
-                  className={inputCls}
-                />
+                <MoneyInput value={amount} onChange={setAmount} placeholder="0" className={inputCls} />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">

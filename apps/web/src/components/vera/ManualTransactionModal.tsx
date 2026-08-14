@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { MoneyInput } from '@/components/ui/MoneyInput'
 
 interface Category { id: string; name: string; type: 'income' | 'expense' | 'both' }
 interface Branch   { id: string; name: string }
@@ -92,12 +93,7 @@ export function ManualTransactionModal({ branches, onClose, onSuccess }: Props) 
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Monto *</label>
-            <input
-              type="number" min="0.01" step="0.01"
-              value={amount} onChange={(e) => setAmount(e.target.value)}
-              required placeholder="0"
-              className={inputCls}
-            />
+            <MoneyInput value={amount} onChange={setAmount} placeholder="0" className={inputCls} />
           </div>
 
           <div>
