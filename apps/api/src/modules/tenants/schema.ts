@@ -10,7 +10,7 @@ export const UpdateTenantSchema = z.object({
 })
 
 export const UpdateFeatureFlagSchema = z.object({
-  module: z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA']),
+  module: z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA', 'PROYECTOS']),
   enabled: z.boolean(),
 })
 
