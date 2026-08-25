@@ -2,11 +2,12 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { Reveal } from '@/components/landing/Reveal'
 import { ChatDemo } from '@/components/landing/ChatDemo'
+import { ContactForm } from '@/components/landing/ContactForm'
 
 export const metadata: Metadata = {
-  title: 'NEXOR ONE — Gestión empresarial con agentes de IA',
+  title: 'NEXOR ONE — Plataforma de gestión con IA + desarrollo a la medida (NEXOR IT)',
   description:
-    'NEXOR centraliza ventas, compras, inventario, agenda y finanzas en una sola plataforma, con agentes de IA que atienden a tus clientes por WhatsApp y Gmail.',
+    'Usa NEXOR para gestionar ventas, compras, inventario, agenda, finanzas y proyectos con IA propia; o pide a NEXOR IT una plataforma web, agentes, integraciones y automatizaciones a la medida de tu empresa.',
 }
 
 // ─── Datos ────────────────────────────────────────────────────────────────────
@@ -42,10 +43,16 @@ const MODULES = [
     desc: 'Flujo de caja, presupuestos y alertas financieras para decidir con números claros y al día.',
     icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
   },
+  {
+    badge: 'PRO',
+    title: 'Proyectos',
+    desc: 'Metas (objetivo) y presupuestos (límite) por línea de negocio, con avance, alertas y control de sobregasto.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a5 5 0 100 10 5 5 0 000-10zm0 3a2 2 0 100 4 2 2 0 000-4z" />,
+  },
 ] as const
 
 const STATS = [
-  { value: '5', label: 'Módulos de negocio' },
+  { value: '6', label: 'Módulos de negocio' },
   { value: '2', label: 'Canales: WhatsApp + Gmail' },
   { value: '24/7', label: 'Atención automática' },
   { value: '100%', label: 'Acciones auditadas' },
@@ -88,6 +95,35 @@ const BENEFITS = [
   },
 ]
 
+// NEXOR IT — servicios de desarrollo a la medida (respaldados por lo construido en NEXOR).
+const IT_SERVICES = [
+  {
+    title: 'Plataformas web a la medida',
+    desc: 'Sistemas de gestión, paneles y ERPs hechos para tu operación: como NEXOR, pero moldeado a tu negocio.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18M3 5v14h18V5M3 9h18M7 5v4" />,
+  },
+  {
+    title: 'Agentes y bots inteligentes',
+    desc: 'Asistentes que atienden y ejecutan tareas por WhatsApp y correo — como los que operan dentro de NEXOR.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a8 8 0 01-11.5 7.2L3 21l1.8-6.5A8 8 0 1121 12z" />,
+  },
+  {
+    title: 'IA personalizada',
+    desc: 'Automatización con inteligencia artificial adaptada a tu negocio: entiende tus datos y actúa sobre ellos.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 3l1.2 3 3 1.2-3 1.2L9.5 12 8.3 8.6 5.3 7.4l3-1.2L9.5 3zM17 12l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z" />,
+  },
+  {
+    title: 'Integraciones',
+    desc: 'Conectamos tus sistemas: APIs, WhatsApp Business, Gmail y las herramientas que ya usas.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6.5l4 4m-9 9l-2 2a3 3 0 01-4-4l2-2m3-3l-2 2a3 3 0 004 4l2-2m2-9l2-2a3 3 0 014 4l-2 2" />,
+  },
+  {
+    title: 'Automatización de procesos',
+    desc: 'Flujos, notificaciones y recordatorios que trabajan solos, para que tu equipo deje de hacerlo a mano.',
+    icon: <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v6h6M20 20v-6h-6M20 9A8 8 0 006 5.3M4 15a8 8 0 0014 3.7" />,
+  },
+] as const
+
 // ─── Iconos auxiliares ────────────────────────────────────────────────────────
 
 function Icon({ children }: { children: React.ReactNode }) {
@@ -119,6 +155,14 @@ function PhoneIcon() {
   return (
     <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106a1.125 1.125 0 00-1.173.417l-.97 1.293a.75.75 0 01-.982.218 12.05 12.05 0 01-5.03-5.03.75.75 0 01.218-.982l1.293-.97a1.125 1.125 0 00.417-1.173L8.212 4.02a1.125 1.125 0 00-1.091-.852H5.25A2.25 2.25 0 003 5.25v1.5z" />
+    </svg>
+  )
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M17.5 14.4c-.3-.15-1.7-.84-1.96-.94-.26-.1-.45-.15-.64.15-.19.29-.74.94-.9 1.13-.17.19-.33.22-.62.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.75-1.64-2.05-.17-.29-.02-.45.13-.6.13-.13.29-.33.44-.5.15-.17.19-.29.29-.48.1-.19.05-.36-.02-.5-.08-.15-.64-1.55-.88-2.12-.23-.56-.47-.48-.64-.49h-.55c-.19 0-.5.07-.76.36-.26.29-1 .98-1 2.38s1.02 2.76 1.17 2.95c.15.19 2.02 3.08 4.9 4.32.68.29 1.22.47 1.63.6.69.22 1.31.19 1.8.11.55-.08 1.7-.69 1.94-1.36.24-.67.24-1.24.17-1.36-.07-.12-.26-.19-.55-.34zM12 2a10 10 0 00-8.6 15.06L2 22l5.05-1.32A10 10 0 1012 2z" />
     </svg>
   )
 }
@@ -213,6 +257,12 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            <a
+              href="#nexor-it"
+              className="hidden rounded-lg px-4 py-2 text-sm font-medium text-emerald-300 transition-colors hover:text-emerald-200 sm:inline-block"
+            >
+              NEXOR IT
+            </a>
             <a
               href="#demo"
               className="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:text-white sm:inline-block"
@@ -327,7 +377,7 @@ export default function LandingPage() {
         {/* ── Módulos ────────────────────────────────────────────────────────── */}
         <section id="modulos" className="mx-auto max-w-6xl px-6 py-16">
           <Reveal className="mb-12 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">Cinco módulos, un solo sistema</h2>
+            <h2 className="text-3xl font-bold text-white sm:text-4xl">Todo tu negocio, un solo sistema</h2>
             <p className="mx-auto mt-4 max-w-2xl text-slate-400">
               Cada área de tu empresa, cubierta. Conectadas entre sí para que la información fluya sin fricción.
             </p>
@@ -492,20 +542,114 @@ export default function LandingPage() {
           </Reveal>
         </section>
 
+        {/* ── NEXOR IT — desarrollo a la medida (HU-203) ─────────────────────── */}
+        <section id="nexor-it" className="relative border-y border-emerald-400/10 bg-emerald-500/[0.03]">
+          {/* Resplandor propio de la línea de servicios */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="absolute -top-20 left-1/3 h-[26rem] w-[26rem] rounded-full bg-emerald-500/10 blur-[120px]" />
+          </div>
+
+          <div className="relative mx-auto max-w-6xl px-6 py-20">
+            <Reveal className="text-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold tracking-wide text-emerald-300">
+                <span className="font-wordmark">NEXOR IT</span> · Desarrollo a la medida
+              </span>
+              <h2 className="mx-auto mt-6 max-w-3xl text-3xl font-bold leading-tight text-white sm:text-5xl">
+                ¿La plataforma estándar no te encaja del todo?{' '}
+                <span className="bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">Te la construimos.</span>
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-300">
+                NEXOR IT es nuestro brazo de desarrollo: plataformas web, agentes, IA, integraciones y automatizaciones
+                hechas para tu empresa. Si necesitas algo propio, lo diseñamos y lo construimos contigo.
+              </p>
+            </Reveal>
+
+            {/* Servicios */}
+            <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {IT_SERVICES.map((s, i) => (
+                <Reveal key={s.title} delay={i * 80}>
+                  <div className="group h-full rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-emerald-400/25 hover:bg-emerald-500/[0.05]">
+                    <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-300 transition-transform duration-300 group-hover:scale-110">
+                      <Icon>{s.icon}</Icon>
+                    </span>
+                    <h3 className="mt-4 text-lg font-semibold text-white">{s.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-400">{s.desc}</p>
+                  </div>
+                </Reveal>
+              ))}
+
+              {/* NEXOR como portafolio / prueba de capacidad */}
+              <Reveal delay={IT_SERVICES.length * 80}>
+                <div className="flex h-full flex-col justify-center rounded-2xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur">
+                  <h3 className="text-lg font-semibold text-white">Construimos NEXOR.</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                    Todo lo que ves en esta plataforma —los agentes, el multi-tenant, las integraciones, la
+                    automatización— lo construimos nosotros. Es nuestra mejor carta de presentación.
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-emerald-300">Podemos construir lo tuyo.</p>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Llamado a la acción: formulario + contacto directo */}
+            <Reveal className="mt-14">
+              <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur sm:p-12">
+                <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">Cuéntanos tu proyecto</h3>
+                    <p className="mt-3 leading-relaxed text-slate-300">
+                      Escríbenos qué necesitas o qué problema quieres resolver. Te contactamos para entender tu caso y
+                      proponerte una solución a la medida — sin compromiso.
+                    </p>
+                    <div className="mt-7 space-y-3">
+                      <a
+                        href="https://wa.me/573134969078?text=Hola%2C%20me%20interesa%20una%20plataforma%20a%20la%20medida%20con%20NEXOR%20IT"
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.01]"
+                      >
+                        <WhatsAppIcon /> Escríbenos por WhatsApp
+                      </a>
+                      <a
+                        href="mailto:gerencia@nexor-one.com?subject=Proyecto%20a%20la%20medida%20—%20NEXOR%20IT"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-3.5 text-sm font-semibold text-slate-100 backdrop-blur transition-colors hover:bg-white/10"
+                      >
+                        <MailIcon /> gerencia@nexor-one.com
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Formulario de contacto */}
+                  <div className="rounded-2xl border border-white/10 bg-[#0d1326]/60 p-6 sm:p-7">
+                    <ContactForm />
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
         {/* ── CTA final ──────────────────────────────────────────────────────── */}
         <section className="mx-auto max-w-4xl px-6 py-20">
           <Reveal>
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-purple-600/20 via-[#0b1020] to-cyan-600/20 p-10 text-center sm:p-16">
-              <h2 className="text-3xl font-bold text-white sm:text-4xl">Lleva tu empresa al siguiente nivel</h2>
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-purple-600/20 via-[#0b1020] to-emerald-600/20 p-10 text-center sm:p-16">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">Dos caminos, una decisión</h2>
               <p className="mx-auto mt-4 max-w-xl text-slate-300">
-                Centraliza tu operación y deja que la IA trabaje contigo. Empieza a usar NEXOR hoy.
+                Usa NEXOR para gestionar tu negocio hoy — o pídenos una plataforma a la medida si necesitas algo propio.
               </p>
-              <Link
-                href="/login"
-                className="mt-8 inline-block rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.02]"
-              >
-                Entrar a la plataforma
-              </Link>
+              <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <Link
+                  href="/login"
+                  className="w-full rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 transition-transform hover:scale-[1.02] sm:w-auto"
+                >
+                  Usar NEXOR
+                </Link>
+                <a
+                  href="#nexor-it"
+                  className="w-full rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-8 py-3.5 text-sm font-semibold text-emerald-200 backdrop-blur transition-colors hover:bg-emerald-500/20 sm:w-auto"
+                >
+                  Quiero algo a la medida
+                </a>
+              </div>
             </div>
           </Reveal>
         </section>
@@ -517,7 +661,7 @@ export default function LandingPage() {
               <img src="/logos/icon-dark.png" alt="NEXOR ONE" className="h-7 w-auto object-contain" />
               <span className="font-wordmark text-lg font-semibold text-slate-300 [word-spacing:-0.2em]">nexor one</span>
             </div>
-            <p className="text-sm text-slate-500">Gestión empresarial con IA · ARI · NIRA · KIRA · REI · VERA</p>
+            <p className="text-sm text-slate-500">Gestión empresarial con IA · ARI · NIRA · KIRA · REI · VERA · PRO</p>
           </div>
           <div className="mx-auto max-w-6xl border-t border-white/5 px-6 py-5">
             <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-400 sm:justify-start">
