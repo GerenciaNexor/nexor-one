@@ -67,6 +67,7 @@ import bulkUploadModule from './modules/bulk-upload/index'
 import inboxModule from './modules/inbox/index'
 import ocrModule from './modules/ocr/index'
 import { cancelAppointmentRoutes } from './modules/agenda/cancel/routes'
+import contactModule from './modules/contact/index'
 
 const app = Fastify({
   logger: {
@@ -171,6 +172,9 @@ app.register(
 
 // ─── Cancelación de cita por email (sin JWT — token actúa como credencial) ───
 app.register(cancelAppointmentRoutes, { prefix: '/v1/agenda/cancel' })
+
+// ─── Contacto de la landing pública (HU-203) — sin JWT, sin tenantHook ────────
+app.register(contactModule, { prefix: '/v1/contact' })
 
 // ─── Rutas protegidas (/v1/*) — requieren JWT valido + tenant activo ──────────
 // Los modulos de negocio se registran dentro de este scope para que el

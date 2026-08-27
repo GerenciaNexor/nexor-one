@@ -151,9 +151,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .then((f) => { if (!cancelled) { setFlags(f); setCache('feature-flags', f) } })
         .catch(() => {})
     }
+    // Cambio hecho en /admin/modules: refleja el nuevo estado en la barra AL INSTANTE (sin recargar
+    // ni esperar al foco). El evento trae los flags ya actualizados en `detail`.
+    function onFlagsChanged(e: Event) {
+      const detail = (e as CustomEvent<Record<string, boolean>>).detail
+      if (detail && !cancelled) { setFlags(detail); setCache('feature-flags', detail) }
+      else loadFlags()
+    }
     loadFlags()
     window.addEventListener('focus', loadFlags)
-    return () => { cancelled = true; window.removeEventListener('focus', loadFlags) }
+    window.addEventListener('feature-flags-changed', onFlagsChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', loadFlags)
+      window.removeEventListener('feature-flags-changed', onFlagsChanged)
+    }
   }, [])
 
   // Polling del conteo de notificaciones no leidas cada 30s.

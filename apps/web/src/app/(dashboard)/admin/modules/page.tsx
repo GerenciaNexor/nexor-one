@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { setCache } from '@/lib/page-cache'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -113,12 +114,19 @@ export default function AdminModulesPage() {
   }, [])
 
   async function handleToggle(key: ModuleKey, next: boolean) {
+    const prev = flags
+    // Feedback inmediato: el switch se mueve YA (optimista); si el servidor falla, se revierte.
+    setFlags((f) => ({ ...f, [key]: next }))
     setToggling(key)
     setError(null)
     try {
       await apiClient.put('/v1/tenants/feature-flags', { module: key, enabled: next })
-      setFlags((prev) => ({ ...prev, [key]: next }))
+      const updated = { ...prev, [key]: next }
+      // Sincroniza la barra lateral al instante (sin recargar ni esperar al foco): caché + evento.
+      setCache('feature-flags', updated)
+      window.dispatchEvent(new CustomEvent('feature-flags-changed', { detail: updated }))
     } catch (err: unknown) {
+      setFlags(prev) // revertir
       const e = err as { message?: string }
       setError(e.message ?? 'Error al actualizar el módulo.')
     } finally {
@@ -202,12 +210,14 @@ export default function AdminModulesPage() {
                   <span
                     className={[
                       'hidden sm:inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                      enabled
+                      isBusy
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                        : enabled
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                         : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
                     ].join(' ')}
                   >
-                    {enabled ? 'Activo' : 'Inactivo'}
+                    {isBusy ? 'Guardando…' : enabled ? 'Activo' : 'Inactivo'}
                   </span>
 
                   {/* Toggle */}
@@ -224,7 +234,7 @@ export default function AdminModulesPage() {
       </div>
 
       <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-        Los cambios se aplican de inmediato. Los usuarios verán el módulo en su menú al recargar la página.
+        El cambio se refleja al instante en tu menú lateral. Los demás usuarios lo verán al recargar la página.
       </p>
     </div>
   )

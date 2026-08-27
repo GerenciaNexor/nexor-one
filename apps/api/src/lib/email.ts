@@ -20,6 +20,13 @@ function getResend(): Resend | null {
 }
 
 const FROM_EMAIL = process.env['EMAIL_FROM'] ?? 'noreply@nexor.app'
+// HU-203 — destino de las solicitudes de la landing (contacto NEXOR / NEXOR IT).
+const CONTACT_TO = process.env['CONTACT_EMAIL'] ?? 'gerencia@nexor-one.com'
+
+/** Escapa texto del visitante antes de meterlo en el HTML del correo (evita inyección). */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
 
 // ─── Helpers de formato ───────────────────────────────────────────────────────
 
@@ -157,6 +164,80 @@ export async function sendAppointmentConfirmation(params: {
   } catch (err) {
     // Email nunca debe tumbar el flujo principal
     console.error('[Email] Error enviando confirmación de cita:', err)
+  }
+}
+
+// ─── HU-203 — Contacto de la landing (NEXOR / NEXOR IT) ────────────────────────
+
+export interface ContactRequest {
+  name:     string
+  email:    string
+  company?: string
+  phone?:   string
+  message:  string
+  kind?:    'nexor' | 'nexor_it'
+}
+
+function contactHtml(p: ContactRequest): string {
+  const linea = p.kind === 'nexor_it' ? 'NEXOR IT — plataforma a la medida' : 'NEXOR — plataforma de gestión'
+  const row = (l: string, v?: string) => v
+    ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#6b7280;font-size:13px;width:120px;">${l}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#111827;font-size:14px;">${esc(v)}</td></tr>`
+    : ''
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;margin:0;padding:0;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:#6d28d9;padding:24px 32px;"><h1 style="margin:0;color:#fff;font-size:20px;">Nueva solicitud de contacto</h1>
+      <p style="margin:4px 0 0;color:#ddd6fe;font-size:13px;">${linea}</p></div>
+    <div style="padding:28px 32px;">
+      <table style="width:100%;border-collapse:collapse;">
+        ${row('Nombre', p.name)}${row('Correo', p.email)}${row('Empresa', p.company)}${row('Teléfono', p.phone)}
+      </table>
+      <p style="margin:22px 0 6px;color:#6b7280;font-size:13px;">Mensaje</p>
+      <p style="margin:0;color:#111827;font-size:14px;line-height:1.6;white-space:pre-wrap;">${esc(p.message)}</p>
+    </div>
+    <div style="background:#f8fafc;padding:14px 32px;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Responde a este correo para contactar directamente al interesado.</p>
+    </div>
+  </div></body></html>`
+}
+
+function contactAckHtml(p: ContactRequest): string {
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;margin:0;padding:0;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:#6d28d9;padding:24px 32px;"><h1 style="margin:0;color:#fff;font-size:20px;">¡Recibimos tu mensaje!</h1></div>
+    <div style="padding:28px 32px;color:#374151;font-size:15px;line-height:1.6;">
+      <p style="margin:0 0 14px;">Hola <strong>${esc(p.name)}</strong>, gracias por escribirnos.</p>
+      <p style="margin:0 0 14px;">Recibimos tu solicitud y nuestro equipo te contactará muy pronto para conversar sobre tu proyecto.</p>
+      <p style="margin:0;">Un saludo,<br/>El equipo de NEXOR</p>
+    </div>
+    <div style="background:#f8fafc;padding:14px 32px;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Mensaje automático de NEXOR. Pronto te respondemos personalmente.</p>
+    </div>
+  </div></body></html>`
+}
+
+/**
+ * HU-203 — Envía la solicitud de contacto de la landing al canal del negocio (gerencia@nexor-one.com)
+ * y una confirmación de cortesía al visitante. Fire-and-forget: siempre registra el lead en el log
+ * (no se pierde aunque el email esté apagado); si Resend no está configurado, omite el envío.
+ */
+export async function sendContactRequest(p: ContactRequest): Promise<void> {
+  console.info('[Contact] Nueva solicitud', { name: p.name, email: p.email, company: p.company, kind: p.kind })
+  const resend = getResend()
+  if (!resend) return
+  try {
+    await resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      CONTACT_TO,
+      replyTo: p.email,
+      subject: `Nuevo contacto — ${p.kind === 'nexor_it' ? 'NEXOR IT (a la medida)' : 'NEXOR'} — ${p.name}`,
+      html:    contactHtml(p),
+    })
+    // Cortesía al visitante (best-effort; no debe tumbar el flujo).
+    await resend.emails.send({ from: FROM_EMAIL, to: p.email, subject: 'Recibimos tu mensaje — NEXOR', html: contactAckHtml(p) }).catch(() => {})
+  } catch (err) {
+    console.error('[Email] Error enviando solicitud de contacto:', err)
   }
 }
 
