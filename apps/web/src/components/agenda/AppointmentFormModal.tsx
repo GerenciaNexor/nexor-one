@@ -48,6 +48,8 @@ export function AppointmentFormModal({
 
   const [services,     setServices]     = useState<Service[]>([])
   const [slots,        setSlots]        = useState<Slot[] | null>(null)
+  const [noAvail,      setNoAvail]      = useState(false)   // la sucursal no tiene horarios configurados → hora manual
+  const [manualTime,   setManualTime]   = useState(initialTime ?? '09:00')
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotsError,   setSlotsError]   = useState<string | null>(null)
   const [submitting,   setSubmitting]   = useState(false)
@@ -69,8 +71,8 @@ export function AppointmentFormModal({
     setSelectedSlot(null)
     const qs = new URLSearchParams({ serviceId, branchId, date })
     if (profId) qs.set('professionalId', profId)
-    apiClient.get<{ slots: Slot[] }>(`/v1/agenda/slots?${qs.toString()}`)
-      .then((res) => setSlots(res.slots))
+    apiClient.get<{ slots: Slot[]; noAvailabilityConfigured?: boolean }>(`/v1/agenda/slots?${qs.toString()}`)
+      .then((res) => { setSlots(res.slots); setNoAvail(!!res.noAvailabilityConfigured) })
       .catch((e: unknown) => {
         const err = e as { message?: string }
         setSlotsError(err.message ?? 'Error al cargar horarios')
@@ -88,7 +90,17 @@ export function AppointmentFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedSlot)       { setSubmitError('Selecciona un horario disponible'); return }
+    // Con horarios configurados se elige un slot; sin ellos (agenda abierta), se indica la hora manual.
+    let startAt: string
+    if (noAvail) {
+      if (!manualTime)      { setSubmitError('Indica la hora de la cita'); return }
+      const dt = new Date(`${date}T${manualTime}`)
+      if (isNaN(dt.getTime())) { setSubmitError('Hora inválida'); return }
+      startAt = dt.toISOString()
+    } else {
+      if (!selectedSlot)    { setSubmitError('Selecciona un horario disponible'); return }
+      startAt = selectedSlot.startAt
+    }
     if (!clientName.trim())  { setSubmitError('El nombre del cliente es requerido'); return }
     setSubmitting(true)
     setSubmitError(null)
@@ -96,7 +108,7 @@ export function AppointmentFormModal({
       const body: Record<string, unknown> = {
         branchId,
         serviceTypeId: serviceId,
-        startAt:       selectedSlot.startAt,
+        startAt,
         clientName:    clientName.trim(),
         status:        'confirmed',
         channel:       'internal',
@@ -188,11 +200,11 @@ export function AppointmentFormModal({
                 />
               </div>
 
-              {/* Available slots */}
+              {/* Available slots / hora manual */}
               {serviceId && branchId && date && (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Horario disponible
+                    {noAvail ? 'Hora de la cita' : 'Horario disponible'}
                   </label>
                   {slotsLoading ? (
                     <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -201,6 +213,19 @@ export function AppointmentFormModal({
                     </div>
                   ) : slotsError ? (
                     <p className="text-xs text-red-500">{slotsError}</p>
+                  ) : noAvail ? (
+                    <>
+                      <input
+                        type="time"
+                        value={manualTime}
+                        onChange={(e) => setManualTime(e.target.value)}
+                        className={inputCls}
+                      />
+                      <p className="mt-1 text-xs text-slate-400">
+                        Esta sucursal no tiene horarios configurados: indica la hora directamente. Puedes definir
+                        horarios de atención en Agenda → Disponibilidad para ver horarios sugeridos y evitar cruces.
+                      </p>
+                    </>
                   ) : slots !== null && slots.length === 0 ? (
                     <p className="text-xs text-slate-400">No hay horarios disponibles para esta fecha.</p>
                   ) : slots ? (
@@ -307,7 +332,7 @@ export function AppointmentFormModal({
               </button>
               <button
                 type="submit"
-                disabled={submitting || !selectedSlot}
+                disabled={submitting || (noAvail ? !manualTime : !selectedSlot)}
                 className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
               >
                 {submitting ? 'Agendando…' : 'Agendar cita'}

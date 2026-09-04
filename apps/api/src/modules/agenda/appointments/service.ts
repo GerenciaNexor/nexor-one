@@ -155,16 +155,27 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
   })
 
   if (availBlocks.length === 0) {
-    throw { statusCode: 409, message: 'No hay disponibilidad configurada para este día', code: 'SLOT_UNAVAILABLE' }
-  }
-
-  const slotFitsBlock = availBlocks.some((b) => {
-    const bStart = b.startTime.getUTCHours() * 60 + b.startTime.getUTCMinutes()
-    const bEnd   = b.endTime.getUTCHours()   * 60 + b.endTime.getUTCMinutes()
-    return startMinutes >= bStart && endMinutes <= bEnd
-  })
-  if (!slotFitsBlock) {
-    throw { statusCode: 409, message: 'El horario solicitado está fuera del rango de disponibilidad', code: 'SLOT_UNAVAILABLE' }
+    // ¿La sucursal tiene ALGUNA disponibilidad configurada (cualquier día)? Si NUNCA se configuró,
+    // la agenda queda "siempre abierta": se permite la hora manual (el solapamiento se valida abajo).
+    // Si sí hay horarios pero no para este día, es que ese día está cerrado → se rechaza.
+    const anyAvail = await prisma.availability.count({
+      where: data.professionalId
+        ? { tenantId, isActive: true, OR: [{ branchId: data.branchId }, { userId: data.professionalId }] }
+        : { tenantId, branchId: data.branchId, userId: null, isActive: true },
+    })
+    if (anyAvail > 0) {
+      throw { statusCode: 409, message: 'No hay disponibilidad configurada para este día', code: 'SLOT_UNAVAILABLE' }
+    }
+    // Sin horarios configurados → se acepta la hora indicada (agenda abierta).
+  } else {
+    const slotFitsBlock = availBlocks.some((b) => {
+      const bStart = b.startTime.getUTCHours() * 60 + b.startTime.getUTCMinutes()
+      const bEnd   = b.endTime.getUTCHours()   * 60 + b.endTime.getUTCMinutes()
+      return startMinutes >= bStart && endMinutes <= bEnd
+    })
+    if (!slotFitsBlock) {
+      throw { statusCode: 409, message: 'El horario solicitado está fuera del rango de disponibilidad', code: 'SLOT_UNAVAILABLE' }
+    }
   }
 
   // ── 4. Resolver nombre y email del cliente ─────────────────────────────────
