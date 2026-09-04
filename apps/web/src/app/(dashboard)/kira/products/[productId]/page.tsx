@@ -213,6 +213,7 @@ export default function ProductDetailPage() {
               Sin registros de stock aún
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -248,6 +249,7 @@ export default function ProductDetailPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

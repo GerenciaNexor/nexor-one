@@ -19,16 +19,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex items-center gap-6 py-3">
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Administracion</span>
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 sm:px-6 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center gap-4 overflow-x-auto no-scrollbar py-3 sm:gap-6">
+          <span className="shrink-0 text-sm font-semibold text-slate-900 dark:text-slate-100">Administracion</span>
           <nav className="flex">
             {tabs.map((t) => (
               <Link
                 key={t.href}
                 href={t.href}
                 className={[
-                  'border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+                  'whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors',
                   pathname.startsWith(t.href)
                     ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                     : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',

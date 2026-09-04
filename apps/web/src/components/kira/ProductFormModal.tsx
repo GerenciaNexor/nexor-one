@@ -199,8 +199,8 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
             {/* ── Identificación ─────────────────────────────────────── */}
             <div>
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Identificación</p>
-              <div className="grid grid-cols-5 gap-3">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+                <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-600">SKU *</label>
                   <input
                     type="text"
@@ -214,7 +214,7 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
                   />
                   {errors.sku && <p className="mt-1 text-xs text-red-500">{errors.sku}</p>}
                 </div>
-                <div className="col-span-3">
+                <div className="sm:col-span-3">
                   <label className="mb-1.5 block text-xs font-medium text-slate-600">Nombre *</label>
                   <input
                     type="text"

@@ -14,6 +14,9 @@ export const CreateAppointmentSchema = z
     channel:        z.enum(['manual', 'whatsapp', 'email']).default('manual'),
     status:         z.enum(['scheduled', 'confirmed']).default('scheduled'),
     createdByAgent: z.boolean().default(false),
+    // HU — cita a hora ESPECÍFICA (como Google Calendar): omite la validación de disponibilidad
+    // (los horarios son sugerencia), pero NUNCA el control de solapamiento. Solo lo usa el panel interno.
+    manualTime:     z.boolean().optional(),
   })
   .refine((d) => !!(d.clientId || d.clientName), {
     message: 'Se requiere clientId o clientName',

@@ -608,7 +608,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Contenido de la pagina */}
-        <main className="flex-1 overflow-y-auto dark:bg-slate-900">
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden dark:bg-slate-900">
           {children}
         </main>
       </div>

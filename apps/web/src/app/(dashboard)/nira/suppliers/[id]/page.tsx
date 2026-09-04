@@ -288,6 +288,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             {recentPos.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-slate-400">Sin órdenes de compra registradas</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -320,6 +321,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

@@ -142,7 +142,10 @@ export async function getAvailableSlots(tenantId: string, query: SlotsQuery) {
   })
 
   if (availBlocks.length === 0) {
-    return { date, serviceId, branchId, durationMinutes: duration, slots: [], total: 0 }
+    // ¿La sucursal NUNCA configuró horarios? Entonces la agenda está "siempre abierta": el frontend
+    // ofrece elegir la hora manualmente. Si sí hay horarios (pero no para este día) → cerrado ese día.
+    const anyAvail = await prisma.availability.count({ where: { tenantId, branchId, userId: null, isActive: true } })
+    return { date, serviceId, branchId, durationMinutes: duration, slots: [], total: 0, noAvailabilityConfigured: anyAvail === 0 }
   }
 
   // ── 4. Generar slots candidatos (minutos desde medianoche) ─────────────────
