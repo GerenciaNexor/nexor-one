@@ -307,7 +307,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                               </label>
                             )}
                             {!isSale && it.addToInventory && (
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                                 <input value={it.newSku} onChange={(e) => patch(i, { newSku: e.target.value })} className={inp} placeholder="SKU *" />
                                 <input value={it.newUnit} onChange={(e) => patch(i, { newUnit: e.target.value })} className={inp} placeholder="Unidad" />
                                 <input type="number" value={it.newSalePrice} onChange={(e) => patch(i, { newSalePrice: e.target.value })} className={inp} placeholder="Precio venta *" />

@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — guardas globales contra el scroll horizontal en móvil.
+   La página nunca debe desbordarse a lo ancho: el contenido ancho (tablas,
+   barras de pestañas) hace scroll DENTRO de su propio contenedor, no la página.
+   ═══════════════════════════════════════════════════════════════════════════ */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Scroll horizontal sin barra visible (barras de pestañas, chips de filtros). */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
    FUENTE DE MARCA — solo para el wordmark "NEXOR" (logotipo), nunca para la UI.
    Eight One (Jerry Hodge, libre para uso comercial).
    Coloca el archivo en apps/web/public/fonts/eight-one.ttf

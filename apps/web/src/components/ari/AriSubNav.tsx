@@ -19,16 +19,16 @@ const TABS = [
 export function AriSubNav() {
   const pathname = usePathname()
   return (
-    <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 dark:border-slate-700 dark:bg-slate-800">
-      <nav className="flex">
+    <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 sm:px-6 dark:border-slate-700 dark:bg-slate-800">
+      <nav className="flex overflow-x-auto no-scrollbar">
         {TABS.map((t) => {
           const active = pathname.startsWith(t.href)
           return (
-            <span key={t.href} className="inline-flex items-center">
+            <span key={t.href} className="inline-flex shrink-0 items-center">
               <Link
                 href={t.href}
                 className={[
-                  'border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+                  'whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors',
                   active
                     ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
