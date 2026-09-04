@@ -24,6 +24,10 @@ interface Props {
   onSuccess:        (a: Appointment) => void
 }
 
+// Opciones para el selector de hora propio (limpio, sin el picker nativo del navegador).
+const HOURS_OPT = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
+const MINS_OPT  = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55']
+
 export function AppointmentFormModal({
   initialDate,
   initialTime,
@@ -49,7 +53,8 @@ export function AppointmentFormModal({
   const [services,     setServices]     = useState<Service[]>([])
   const [slots,        setSlots]        = useState<Slot[] | null>(null)
   const [noAvail,      setNoAvail]      = useState(false)   // la sucursal no tiene horarios configurados → hora manual
-  const [manualTime,   setManualTime]   = useState(initialTime ?? '09:00')
+  const [timeMode,     setTimeMode]     = useState<'slots' | 'manual'>('slots') // "otra hora" (específica)
+  const [manualTime,   setManualTime]   = useState(initialTime ?? '09:00')       // "HH:MM"
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotsError,   setSlotsError]   = useState<string | null>(null)
   const [submitting,   setSubmitting]   = useState(false)
@@ -90,9 +95,10 @@ export function AppointmentFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // Con horarios configurados se elige un slot; sin ellos (agenda abierta), se indica la hora manual.
+    // Slot sugerido, o una hora ESPECÍFICA (sin horarios, o si el usuario eligió "otra hora").
+    const useManual = noAvail || timeMode === 'manual'
     let startAt: string
-    if (noAvail) {
+    if (useManual) {
       if (!manualTime)      { setSubmitError('Indica la hora de la cita'); return }
       const dt = new Date(`${date}T${manualTime}`)
       if (isNaN(dt.getTime())) { setSubmitError('Hora inválida'); return }
@@ -112,6 +118,7 @@ export function AppointmentFormModal({
         clientName:    clientName.trim(),
         status:        'confirmed',
         channel:       'internal',
+        manualTime:    useManual, // hora específica → omite validación de horarios (no el solapamiento)
       }
       if (clientPhone.trim()) body.clientPhone    = clientPhone.trim()
       if (clientEmail.trim()) body.clientEmail    = clientEmail.trim()
@@ -200,55 +207,85 @@ export function AppointmentFormModal({
                 />
               </div>
 
-              {/* Available slots / hora manual */}
-              {serviceId && branchId && date && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    {noAvail ? 'Hora de la cita' : 'Horario disponible'}
-                  </label>
-                  {slotsLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-                      Cargando horarios…
-                    </div>
-                  ) : slotsError ? (
-                    <p className="text-xs text-red-500">{slotsError}</p>
-                  ) : noAvail ? (
-                    <>
-                      <input
-                        type="time"
-                        value={manualTime}
-                        onChange={(e) => setManualTime(e.target.value)}
-                        className={inputCls}
-                      />
-                      <p className="mt-1 text-xs text-slate-400">
-                        Esta sucursal no tiene horarios configurados: indica la hora directamente. Puedes definir
-                        horarios de atención en Agenda → Disponibilidad para ver horarios sugeridos y evitar cruces.
-                      </p>
-                    </>
-                  ) : slots !== null && slots.length === 0 ? (
-                    <p className="text-xs text-slate-400">No hay horarios disponibles para esta fecha.</p>
-                  ) : slots ? (
-                    <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-slate-100 p-2 dark:border-slate-700">
-                      {slots.map((s) => (
-                        <button
-                          key={s.startAt}
-                          type="button"
-                          onClick={() => { setSelectedSlot(s); setProfId('') }}
-                          className={[
-                            'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                            selectedSlot?.startAt === s.startAt
-                              ? 'bg-blue-600 text-white'
-                              : 'border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-600 dark:border-slate-600 dark:text-slate-300',
-                          ].join(' ')}
-                        >
-                          {s.startTime}
+              {/* Horario: slots sugeridos y/o hora específica (como Google Calendar) */}
+              {serviceId && branchId && date && (() => {
+                const useManual = noAvail || timeMode === 'manual'
+                const [mH, mM] = manualTime.split(':')
+                const timePicker = (
+                  <div className="flex items-center gap-2">
+                    <select value={mH} onChange={(e) => setManualTime(`${e.target.value}:${mM ?? '00'}`)}
+                      className={inputCls + ' w-20'} aria-label="Hora">
+                      {HOURS_OPT.map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="text-slate-400">:</span>
+                    <select value={MINS_OPT.includes(mM ?? '') ? mM : '00'} onChange={(e) => setManualTime(`${mH ?? '09'}:${e.target.value}`)}
+                      className={inputCls + ' w-20'} aria-label="Minuto">
+                      {MINS_OPT.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <span className="text-xs text-slate-400">h</span>
+                  </div>
+                )
+                return (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                        {useManual ? 'Hora de la cita' : 'Horario disponible'}
+                      </label>
+                      {/* Alternar entre slots sugeridos y hora específica (si hay horarios configurados) */}
+                      {!noAvail && (
+                        <button type="button"
+                          onClick={() => { setTimeMode(useManual ? 'slots' : 'manual'); setSelectedSlot(null) }}
+                          className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">
+                          {useManual ? 'Ver horarios sugeridos' : 'Elegir otra hora'}
                         </button>
-                      ))}
+                      )}
                     </div>
-                  ) : null}
-                </div>
-              )}
+
+                    {slotsLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                        Cargando horarios…
+                      </div>
+                    ) : slotsError ? (
+                      <p className="text-xs text-red-500">{slotsError}</p>
+                    ) : useManual ? (
+                      <>
+                        {timePicker}
+                        <p className="mt-1 text-xs text-slate-400">
+                          {noAvail
+                            ? 'Esta sucursal no tiene horarios configurados: indica la hora directamente. Configúralos en Agenda → Disponibilidad para sugerir horarios.'
+                            : 'Cita a hora específica. Se agenda a la hora indicada (se valida que no se cruce con otra cita).'}
+                        </p>
+                      </>
+                    ) : slots !== null && slots.length === 0 ? (
+                      <div className="text-xs text-slate-400">
+                        No hay horarios disponibles para esta fecha.{' '}
+                        <button type="button" onClick={() => setTimeMode('manual')} className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+                          Agendar a una hora específica
+                        </button>
+                      </div>
+                    ) : slots ? (
+                      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-slate-100 p-2 dark:border-slate-700">
+                        {slots.map((s) => (
+                          <button
+                            key={s.startAt}
+                            type="button"
+                            onClick={() => { setSelectedSlot(s); setProfId('') }}
+                            className={[
+                              'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                              selectedSlot?.startAt === s.startAt
+                                ? 'bg-blue-600 text-white'
+                                : 'border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-600 dark:border-slate-600 dark:text-slate-300',
+                            ].join(' ')}
+                          >
+                            {s.startTime}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })()}
 
               {/* Professional (shown once a slot is selected and has professionals) */}
               {selectedSlot && professionals.length > 0 && (

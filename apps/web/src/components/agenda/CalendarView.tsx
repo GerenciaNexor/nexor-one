@@ -28,6 +28,15 @@ export interface Appointment {
   professional:   { id: string; name: string } | null
 }
 
+// Recordatorio (se muestra también en el calendario — el usuario los revisa aquí).
+export interface Reminder {
+  id:         string
+  title:      string
+  remindAt:   string
+  alertLevel: 'normal' | 'urgent' | 'critical'
+  status:     'pending' | 'done'
+}
+
 type ViewMode  = 'week' | 'day' | 'month'
 interface Branch     { id: string; name: string }
 interface CreateSlot { date: string; time: string; branchId: string }
@@ -139,17 +148,43 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
   )
 }
 
+// ─── ReminderBlock (recordatorio en la rejilla) ───────────────────────────────
+
+const REMINDER_STYLE: Record<string, string> = {
+  normal:   'border-l-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200',
+  urgent:   'border-l-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
+  critical: 'border-l-red-500 bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+}
+
+function ReminderBlock({ rem }: { rem: Reminder }) {
+  const top = apptTopPx(rem.remindAt)
+  const style = REMINDER_STYLE[rem.alertLevel] ?? REMINDER_STYLE.normal
+  return (
+    <div
+      data-appointment="true"
+      title={`Recordatorio: ${rem.title}`}
+      className={`absolute right-0.5 z-[5] flex w-1/2 items-center gap-1 overflow-hidden rounded border-l-2 border-dashed px-1 py-0.5 text-[10px] shadow-sm ${style} ${rem.status === 'done' ? 'opacity-50 line-through' : ''}`}
+      style={{ top: `${top}px`, minHeight: '20px' }}
+    >
+      <span aria-hidden>🔔</span>
+      <span className="truncate font-medium leading-tight">{rem.title}</span>
+    </div>
+  )
+}
+
 // ─── DayColumn ────────────────────────────────────────────────────────────────
 
 function DayColumn({
   day,
   appointments,
+  reminders,
   isToday,
   onApptClick,
   onSlotClick,
 }: {
   day:          Date
   appointments: Appointment[]
+  reminders:    Reminder[]
   isToday:      boolean
   onApptClick:  (a: Appointment) => void
   onSlotClick:  (date: string, time: string) => void
@@ -201,6 +236,9 @@ function DayColumn({
       {appointments.map((a) => (
         <AppointmentBlock key={a.id} appt={a} onClick={() => onApptClick(a)} />
       ))}
+      {reminders.map((r) => (
+        <ReminderBlock key={r.id} rem={r} />
+      ))}
     </div>
   )
 }
@@ -210,11 +248,13 @@ function DayColumn({
 function WeekView({
   weekStart,
   appointments,
+  reminders,
   onApptClick,
   onSlotClick,
 }: {
   weekStart:    Date
   appointments: Appointment[]
+  reminders:    Reminder[]
   onApptClick:  (a: Appointment) => void
   onSlotClick:  (date: string, time: string) => void
 }) {
@@ -260,6 +300,7 @@ function WeekView({
             key={i}
             day={day}
             appointments={appointments.filter((a) => isSameDay(new Date(a.startAt), day))}
+            reminders={reminders.filter((r) => isSameDay(new Date(r.remindAt), day))}
             isToday={isSameDay(day, today)}
             onApptClick={onApptClick}
             onSlotClick={onSlotClick}
@@ -275,11 +316,13 @@ function WeekView({
 function DayView({
   day,
   appointments,
+  reminders,
   onApptClick,
   onSlotClick,
 }: {
   day:          Date
   appointments: Appointment[]
+  reminders:    Reminder[]
   onApptClick:  (a: Appointment) => void
   onSlotClick:  (date: string, time: string) => void
 }) {
@@ -308,6 +351,7 @@ function DayView({
         <DayColumn
           day={day}
           appointments={appointments.filter((a) => isSameDay(new Date(a.startAt), day))}
+          reminders={reminders.filter((r) => isSameDay(new Date(r.remindAt), day))}
           isToday={isSameDay(day, today)}
           onApptClick={onApptClick}
           onSlotClick={onSlotClick}
@@ -322,11 +366,13 @@ function DayView({
 function MonthView({
   date,
   appointments,
+  reminders,
   onApptClick,
   onDayClick,
 }: {
   date:         Date
   appointments: Appointment[]
+  reminders:    Reminder[]
   onApptClick:  (a: Appointment) => void
   onDayClick:   (day: Date) => void
 }) {
@@ -356,6 +402,7 @@ function MonthView({
               const isCurMonth = day.getMonth() === date.getMonth()
               const isToday    = isSameDay(day, today)
               const dayAppts   = appointments.filter((a) => isSameDay(new Date(a.startAt), day))
+              const dayRems    = reminders.filter((r) => isSameDay(new Date(r.remindAt), day))
               const shown      = dayAppts.slice(0, 3)
               const extra      = dayAppts.length - shown.length
 
@@ -387,6 +434,13 @@ function MonthView({
                   {extra > 0 && (
                     <div className="text-[9px] text-slate-400">+{extra} más</div>
                   )}
+                  {dayRems.slice(0, 2).map((r) => (
+                    <div key={r.id} title={`Recordatorio: ${r.title}`}
+                      className={`mb-0.5 truncate rounded border-l-2 border-dashed px-1 text-[9px] font-medium leading-4 ${REMINDER_STYLE[r.alertLevel] ?? REMINDER_STYLE.normal} ${r.status === 'done' ? 'opacity-50 line-through' : ''}`}>
+                      🔔 {r.title}
+                    </div>
+                  ))}
+                  {dayRems.length > 2 && <div className="text-[9px] text-slate-400">+{dayRems.length - 2} recordatorios</div>}
                 </div>
               )
             })}
@@ -406,6 +460,7 @@ export function CalendarView() {
   const [view,        setView]        = useState<ViewMode>('week')
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [reminders,   setReminders]   = useState<Reminder[]>([])
   const [branches,    setBranches]    = useState<Branch[]>([])
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
@@ -427,6 +482,13 @@ export function CalendarView() {
   useEffect(() => {
     apiClient.get<{ data: Branch[] }>('/v1/branches')
       .then((res) => setBranches(res.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  // Load reminders (del usuario) para mostrarlos también en el calendario.
+  useEffect(() => {
+    apiClient.get<{ data: Reminder[] }>('/v1/reminders')
+      .then((res) => setReminders(res.data ?? []))
       .catch(() => {})
   }, [])
 
@@ -589,6 +651,7 @@ export function CalendarView() {
           <WeekView
             weekStart={weekStart}
             appointments={appointments}
+            reminders={reminders}
             onApptClick={setDetailAppt}
             onSlotClick={(date, time) => openCreate(date, time)}
           />
@@ -596,6 +659,7 @@ export function CalendarView() {
           <DayView
             day={currentDate}
             appointments={appointments}
+            reminders={reminders}
             onApptClick={setDetailAppt}
             onSlotClick={(date, time) => openCreate(date, time)}
           />
@@ -603,6 +667,7 @@ export function CalendarView() {
           <MonthView
             date={currentDate}
             appointments={appointments}
+            reminders={reminders}
             onApptClick={setDetailAppt}
             onDayClick={(day) => { setCurrentDate(day); setView('day') }}
           />

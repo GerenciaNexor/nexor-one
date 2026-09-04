@@ -132,49 +132,50 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
   })
   if (blocked) throw { statusCode: 409, message: 'La fecha está bloqueada', code: 'DATE_BLOCKED' }
 
-  // ── 3. Verificar que el slot cae dentro de un bloque de disponibilidad ─────
-  const dayOfWeek        = new Date(Date.UTC(y, mo - 1, d)).getUTCDay()
-  const localMidnightUTC = localMinutesToUTC(localDateStr, 0, timezone)
-  const startMinutes     = Math.round((startAt.getTime() - localMidnightUTC.getTime()) / 60000)
-  const endMinutes       = startMinutes + service.durationMinutes
+  // ── 3. Disponibilidad — se OMITE si la cita es a hora específica/manual (los horarios son sugerencia,
+  //       como Google Calendar). El control de solapamiento (paso 6) SIEMPRE se aplica.
+  if (!data.manualTime) {
+    const dayOfWeek        = new Date(Date.UTC(y, mo - 1, d)).getUTCDay()
+    const localMidnightUTC = localMinutesToUTC(localDateStr, 0, timezone)
+    const startMinutes     = Math.round((startAt.getTime() - localMidnightUTC.getTime()) / 60000)
+    const endMinutes       = startMinutes + service.durationMinutes
 
-  const availBlocks = await prisma.availability.findMany({
-    where: data.professionalId
-      ? {
-          tenantId,
-          dayOfWeek,
-          isActive: true,
-          OR: [
-            { branchId: data.branchId, userId: null },
-            { branchId: data.branchId, userId: data.professionalId },
-            { branchId: null,          userId: data.professionalId },
-          ],
-        }
-      : { tenantId, branchId: data.branchId, userId: null, dayOfWeek, isActive: true },
-    select: { startTime: true, endTime: true },
-  })
-
-  if (availBlocks.length === 0) {
-    // ¿La sucursal tiene ALGUNA disponibilidad configurada (cualquier día)? Si NUNCA se configuró,
-    // la agenda queda "siempre abierta": se permite la hora manual (el solapamiento se valida abajo).
-    // Si sí hay horarios pero no para este día, es que ese día está cerrado → se rechaza.
-    const anyAvail = await prisma.availability.count({
+    const availBlocks = await prisma.availability.findMany({
       where: data.professionalId
-        ? { tenantId, isActive: true, OR: [{ branchId: data.branchId }, { userId: data.professionalId }] }
-        : { tenantId, branchId: data.branchId, userId: null, isActive: true },
+        ? {
+            tenantId,
+            dayOfWeek,
+            isActive: true,
+            OR: [
+              { branchId: data.branchId, userId: null },
+              { branchId: data.branchId, userId: data.professionalId },
+              { branchId: null,          userId: data.professionalId },
+            ],
+          }
+        : { tenantId, branchId: data.branchId, userId: null, dayOfWeek, isActive: true },
+      select: { startTime: true, endTime: true },
     })
-    if (anyAvail > 0) {
-      throw { statusCode: 409, message: 'No hay disponibilidad configurada para este día', code: 'SLOT_UNAVAILABLE' }
-    }
-    // Sin horarios configurados → se acepta la hora indicada (agenda abierta).
-  } else {
-    const slotFitsBlock = availBlocks.some((b) => {
-      const bStart = b.startTime.getUTCHours() * 60 + b.startTime.getUTCMinutes()
-      const bEnd   = b.endTime.getUTCHours()   * 60 + b.endTime.getUTCMinutes()
-      return startMinutes >= bStart && endMinutes <= bEnd
-    })
-    if (!slotFitsBlock) {
-      throw { statusCode: 409, message: 'El horario solicitado está fuera del rango de disponibilidad', code: 'SLOT_UNAVAILABLE' }
+
+    if (availBlocks.length === 0) {
+      // ¿La sucursal tiene ALGUNA disponibilidad configurada (cualquier día)? Si NUNCA se configuró,
+      // la agenda queda "siempre abierta". Si sí hay horarios pero no para este día → cerrado.
+      const anyAvail = await prisma.availability.count({
+        where: data.professionalId
+          ? { tenantId, isActive: true, OR: [{ branchId: data.branchId }, { userId: data.professionalId }] }
+          : { tenantId, branchId: data.branchId, userId: null, isActive: true },
+      })
+      if (anyAvail > 0) {
+        throw { statusCode: 409, message: 'No hay disponibilidad configurada para este día', code: 'SLOT_UNAVAILABLE' }
+      }
+    } else {
+      const slotFitsBlock = availBlocks.some((b) => {
+        const bStart = b.startTime.getUTCHours() * 60 + b.startTime.getUTCMinutes()
+        const bEnd   = b.endTime.getUTCHours()   * 60 + b.endTime.getUTCMinutes()
+        return startMinutes >= bStart && endMinutes <= bEnd
+      })
+      if (!slotFitsBlock) {
+        throw { statusCode: 409, message: 'El horario solicitado está fuera del rango de disponibilidad', code: 'SLOT_UNAVAILABLE' }
+      }
     }
   }
 
