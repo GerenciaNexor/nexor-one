@@ -8,7 +8,11 @@ import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 type Kind = 'purchase' | 'sale'
-interface Opt  { id: string; name: string; isGeneric?: boolean }
+interface Opt  { id: string; name: string; isGeneric?: boolean; taxId?: string | null }
+
+// Normaliza NIT/documento para comparar (solo dígitos): "900.276.9662-1" ≈ "9002769662-1".
+const normId = (s?: string | null) => (s ?? '').replace(/\D/g, '')
+const normName = (s?: string | null) => (s ?? '').trim().toLowerCase()
 interface Prod { id: string; sku: string; name: string; unit: string; salePrice: number | null; costPrice: number | null }
 
 interface ExtractedItem {
@@ -101,6 +105,9 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
   const [nit, setNit]       = useState('')
   const [date, setDate]     = useState('')
   const [total, setTotal]   = useState('')
+  // Valores emisor/NIT tal como los LEYÓ la factura (para restaurarlos si se vuelve al genérico).
+  const readIssuer = useRef('')
+  const readNit    = useRef('')
 
   const [cpId, setCpId]         = useState('')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
@@ -141,7 +148,20 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
 
       setFull(data.fullExtraction ?? null)
       setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
-      setIssuer(data.issuer ?? ''); setNit(data.nit ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
+      const readI = data.issuer ?? '', readN = data.nit ?? ''
+      readIssuer.current = readI; readNit.current = readN
+      setIssuer(readI); setNit(readN); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
+
+      // ── Auto-selección de proveedor si el emisor/NIT leído coincide con uno existente (compra). ──
+      // No tiene sentido volver a elegirlo a mano si la factura ya trae esos datos.
+      if (!isSale) {
+        const nId = normId(readN), nName = normName(readI)
+        const match = counterparties.find((o) => !o.isGeneric && (
+          (nId && normId(o.taxId) === nId) ||
+          (nName && (normName(o.name) === nName || (nName.length > 3 && normName(o.name).includes(nName))))
+        ))
+        if (match) setCpId(match.id)  // ya existe → se selecciona solo
+      }
       setItems((data.items ?? []).map((it) => ({
         description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',
         unitValue: it.unitValue != null ? String(it.unitValue) : '', productId: it.productId, productName: it.productName,
@@ -153,6 +173,21 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
     } catch (e: unknown) {
       setErr((e as { message?: string }).message ?? 'No se pudo procesar la imagen. Intenta con una foto más nítida.')
     } finally { setLoading(false) }
+  }
+
+  // Al elegir un proveedor existente, el emisor y el NIT se toman de SUS datos (no hay que teclearlos);
+  // al volver al genérico, se restauran los valores leídos de la factura.
+  function selectCounterparty(id: string) {
+    setCpId(id)
+    if (isSale) return
+    const opt = counterparties.find((o) => o.id === id)
+    if (opt && !opt.isGeneric) {
+      setIssuer(opt.name)
+      setNit(opt.taxId ?? '')
+    } else {
+      setIssuer(readIssuer.current)
+      setNit(readNit.current)
+    }
   }
 
   function patch(i: number, p: Partial<ItemState>) { setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, ...p } : it)) }
@@ -244,7 +279,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
               {/* Encabezado + contraparte */}
               <div className="grid grid-cols-2 gap-3">
                 <div><label className={lbl}>{isSale ? 'Cliente' : 'Proveedor / Emisor'}</label>
-                  <select value={cpId} onChange={(e) => setCpId(e.target.value)} className={inp}>
+                  <select value={cpId} onChange={(e) => selectCounterparty(e.target.value)} className={inp}>
                     {counterparties.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isGeneric ? ' (genérico)' : ''}</option>)}
                   </select></div>
                 {!isOperative && (

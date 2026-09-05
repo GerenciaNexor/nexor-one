@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma'
 import { assertBulkUploadWithinDemoLimits } from '../../lib/demo-limits'
 import {
   REQUIRED_COLUMNS,
+  HEADER_ALIASES,
   UserRowSchema,
   ProductRowSchema,
   StockRowSchema,
@@ -40,8 +41,8 @@ export async function parseExcel(
   const headers: string[] = []
 
   headerRow.eachCell((cell) => {
-    const val = String(cell.value ?? '').trim().toLowerCase().replace(/\s+/g, '_')
-    headers.push(val)
+    const norm = String(cell.value ?? '').trim().toLowerCase().replace(/\s+/g, '_')
+    headers.push(HEADER_ALIASES[norm] ?? norm) // sinónimos → clave canónica (p. ej. "nit o documento" → "nit")
   })
 
   if (headers.length === 0 || headers.every((h) => h === '')) {

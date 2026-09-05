@@ -12,6 +12,7 @@ interface ColumnDef {
   example:     string
   validValues?: string[]
   width?:      number
+  header?:     string   // texto visible de la cabecera si difiere de `key` (se reconoce por alias)
 }
 
 // ─── Definiciones de columnas por tipo ───────────────────────────────────────
@@ -142,8 +143,8 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: 'Distribuciones Médicas del Caribe S.A.S.',
     },
     {
-      key: 'nit', label: 'nit', required: true, type: 'texto', width: 20,
-      description: 'NIT o identificación tributaria. Debe ser único en tu catálogo de proveedores.',
+      key: 'nit', header: 'nit o documento', label: 'nit', required: true, type: 'texto', width: 26,
+      description: 'NIT (si el proveedor es empresa) o número de documento/cédula (si es persona natural). Debe ser único en tu catálogo de proveedores.',
       example: '900.123.456-7',
     },
     {
@@ -399,8 +400,9 @@ function buildDataSheet(
   }))
 
   // ── Fila 1: Encabezados — sin asterisco para que el archivo sea reutilizable ──
+  // Se usa `header` (texto amigable) si existe; el parser lo reconoce por alias (HEADER_ALIASES).
   const headerRow = sheet.addRow(
-    cols.map((col) => col.key),
+    cols.map((col) => col.header ?? col.key),
   )
 
   headerRow.eachCell((cell, colIndex) => {
@@ -510,8 +512,9 @@ function buildInstructionsSheet(
 
   // ── Filas por columna ────────────────────────────────────────────────────────
   for (const col of cols) {
+    const colName = col.header ?? col.key
     const row = sheet.addRow([
-      col.required ? `${col.key}*` : col.key,
+      col.required ? `${colName}*` : colName,
       col.required ? 'Sí' : 'No',
       col.type,
       col.description,
