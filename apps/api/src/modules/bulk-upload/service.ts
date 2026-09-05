@@ -402,6 +402,16 @@ async function validateTransactions(tenantId: string, rows: Record<string, unkno
       }
     }
 
+    if (data.centro_costo_id) {
+      const cc = await prisma.costCenter.findFirst({
+        where: { id: data.centro_costo_id, tenantId, isActive: true },
+        select: { id: true },
+      })
+      if (!cc) {
+        errors.push({ row: rowNum, column: 'centro_costo_id', message: `El centro de costo "${data.centro_costo_id}" no existe` })
+      }
+    }
+
     if (data.sucursal_id) {
       const branch = await prisma.branch.findFirst({ where: { id: data.sucursal_id, tenantId }, select: { id: true } })
       if (!branch) {
@@ -568,6 +578,9 @@ async function _processProducts(tx: TxClient, tenantId: string, rows: Record<str
       costPrice:   data.precio_costo ?? null,
       minStock:    data.stock_minimo,
       maxStock:    data.stock_maximo ?? null,
+      rentalPrice: data.precio_alquiler ?? null,
+      isSellable:  data.es_vendible,
+      isRentable:  data.es_alquilable,
     })),
   })
 
@@ -628,7 +641,8 @@ async function _processSuppliers(tx: TxClient, tenantId: string, rows: Record<st
       email:        data.email || null,
       phone:        data.telefono || null,
       taxId:        data.nit,
-      paymentTerms: data.dias_credito,
+      paymentTerms: data.dias_credito ?? null,
+      address:      data.direccion || null,
       city:         data.ciudad || null,
       notes:        data.notas || null,
     })),
@@ -649,8 +663,10 @@ async function _processClients(tx: TxClient, tenantId: string, rows: Record<stri
       whatsappId: data.whatsapp || null,
       company:    data.empresa || null,
       taxId:      data.nit || null,
+      address:    data.direccion || null,
       city:       data.ciudad || null,
       source:     data.origen || null,
+      notes:      data.notas || null,
     })),
   })
 
@@ -678,6 +694,7 @@ async function _processAppointments(tx: TxClient, tenantId: string, rows: Record
         serviceTypeId: data.servicio_id,
         clientName:    data.nombre_cliente,
         clientPhone:   data.telefono_cliente || null,
+        clientEmail:   data.email_cliente || null,
         startAt,
         endAt,
         status:  'scheduled',
@@ -698,14 +715,16 @@ async function _processTransactions(tx: TxClient, tenantId: string, rows: Record
   await tx.transaction.createMany({
     data: parsed.map((data) => ({
       tenantId,
-      branchId:    data.sucursal_id || null,
-      categoryId:  data.categoria_id || null,
-      isManual:    true,
-      type:        data.tipo === 'ingreso' ? 'income' : 'expense',
-      amount:      data.monto,
-      currency:    'COP',
-      description: data.descripcion,
-      date:        new Date(data.fecha),
+      branchId:     data.sucursal_id || null,
+      categoryId:   data.categoria_id || null,
+      costCenterId: data.centro_costo_id || null,
+      isManual:     true,
+      type:         data.tipo === 'ingreso' ? 'income' : 'expense',
+      amount:       data.monto,
+      currency:     'COP',
+      description:  data.descripcion,
+      externalReference: data.referencia || null,
+      date:         new Date(data.fecha),
     })),
   })
 

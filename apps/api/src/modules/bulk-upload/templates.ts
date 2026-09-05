@@ -98,6 +98,23 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       description: 'Cantidad máxima a mantener en inventario. Debe ser mayor al stock mínimo.',
       example: '50',
     },
+    {
+      key: 'precio_alquiler', label: 'precio_alquiler', required: false, type: 'número', width: 18,
+      description: 'Precio de alquiler en pesos (si el producto se alquila). Solo números.',
+      example: '15000',
+    },
+    {
+      key: 'es_vendible', label: 'es_vendible', required: false, type: 'lista', width: 14,
+      description: '¿Se puede vender? sí/no. Por defecto sí.',
+      example: 'sí',
+      validValues: ['sí', 'no'],
+    },
+    {
+      key: 'es_alquilable', label: 'es_alquilable', required: false, type: 'lista', width: 14,
+      description: '¿Se puede alquilar? sí/no. Por defecto no. Si es "sí", conviene definir precio_alquiler.',
+      example: 'no',
+      validValues: ['sí', 'no'],
+    },
   ],
 
   stock: [
@@ -130,8 +147,8 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: '900.123.456-7',
     },
     {
-      key: 'dias_credito', label: 'dias_credito', required: true, type: 'número', width: 18,
-      description: 'Días de plazo para pago. Debe ser un número positivo.',
+      key: 'dias_credito', label: 'dias_credito', required: false, type: 'número', width: 18,
+      description: 'Días de plazo para pago (opcional — déjalo vacío si el proveedor no maneja crédito). Número entero ≥ 0.',
       example: '30',
     },
     {
@@ -148,6 +165,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'telefono', label: 'telefono', required: false, type: 'texto', width: 18,
       description: 'Teléfono de contacto. Incluye indicativo si es internacional.',
       example: '+57 5 3201234',
+    },
+    {
+      key: 'direccion', label: 'direccion', required: false, type: 'texto', width: 40,
+      description: 'Dirección física del proveedor.',
+      example: 'Cra 45 # 12-34, Bodega 3',
     },
     {
       key: 'ciudad', label: 'ciudad', required: false, type: 'texto', width: 20,
@@ -193,6 +215,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: '800.456.123-5',
     },
     {
+      key: 'direccion', label: 'direccion', required: false, type: 'texto', width: 40,
+      description: 'Dirección física del cliente.',
+      example: 'Calle 10 # 43-21, Apto 502',
+    },
+    {
       key: 'ciudad', label: 'ciudad', required: false, type: 'texto', width: 20,
       description: 'Ciudad de residencia o sede del cliente.',
       example: 'Medellín',
@@ -202,6 +229,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       description: 'Canal por el que llegó el cliente.',
       example: 'referido',
       validValues: ['whatsapp', 'email', 'manual', 'referido'],
+    },
+    {
+      key: 'notas', label: 'notas', required: false, type: 'texto', width: 45,
+      description: 'Observaciones adicionales sobre el cliente.',
+      example: 'Cliente frecuente. Prefiere contacto por WhatsApp.',
     },
   ],
 
@@ -230,6 +262,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'telefono_cliente', label: 'telefono_cliente', required: false, type: 'texto', width: 22,
       description: 'Teléfono de contacto del cliente para recordatorios.',
       example: '+57 321 1234567',
+    },
+    {
+      key: 'email_cliente', label: 'email_cliente', required: false, type: 'texto', width: 30,
+      description: 'Correo del cliente (se le envía la confirmación de la cita).',
+      example: 'cliente@correo.com',
     },
     {
       key: 'notas', label: 'notas', required: false, type: 'texto', width: 45,
@@ -264,6 +301,16 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'categoria_id', label: 'categoria_id', required: false, type: 'texto', width: 32,
       description: 'ID de la categoría VERA. Consúltala en VERA → Categorías.',
       example: 'cm1cat2eg3ory456',
+    },
+    {
+      key: 'centro_costo_id', label: 'centro_costo_id', required: false, type: 'texto', width: 32,
+      description: 'ID del centro de costo VERA (opcional). Consúltalo en VERA → Centros de costo.',
+      example: 'cm1cc2center3456',
+    },
+    {
+      key: 'referencia', label: 'referencia', required: false, type: 'texto', width: 25,
+      description: 'Referencia externa: número de factura, comprobante o soporte.',
+      example: 'FAC-00123',
     },
     {
       key: 'sucursal_id', label: 'sucursal_id', required: false, type: 'texto', width: 32,

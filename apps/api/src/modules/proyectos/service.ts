@@ -173,7 +173,9 @@ export async function updateProject(tenantId: string, id: string, input: UpdateP
   const existing = await prisma.proyecto.findFirst({ where: { id, tenantId }, select: { id: true, type: true } })
   if (!existing) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
 
-  const effectiveType = input.type ?? existing.type
+  // El TIPO es inmutable tras crear (objetivo=ventas / límite=costos son incompatibles): se ignora
+  // cualquier `type` que venga en la edición y se conserva el original.
+  const effectiveType = existing.type
   const alert = normalizeAlert(effectiveType, input.alertAmount, input.alertPct)
 
   const p = await prisma.proyecto.update({
@@ -181,7 +183,6 @@ export async function updateProject(tenantId: string, id: string, input: UpdateP
     data: {
       ...(input.name        !== undefined && { name:         input.name }),
       ...(input.description !== undefined && { description:  input.description }),
-      ...(input.type        !== undefined && { type:         input.type }),
       // Cambiar la meta/tope re-arma el aviso (objetivo logrado / umbral) — HU-200/HU-201.
       ...(input.targetAmount !== undefined && { targetAmount: input.targetAmount, alertNotifiedAt: null }),
       ...(alert.alertAmount !== undefined && { alertAmount:  alert.alertAmount }),
