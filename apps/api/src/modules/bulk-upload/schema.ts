@@ -23,6 +23,16 @@ export interface RowError {
 const num = (msg?: string) =>
   z.coerce.number({ invalid_type_error: msg ?? 'Debe ser un número válido' })
 
+// Booleano desde texto de Excel: sí/si/true/1/x → true; no/false/0 → false. Vacío → default.
+const boolText = (def: boolean) =>
+  z.preprocess((v) => {
+    if (v === undefined || v === null || v === '') return def
+    const s = String(v).trim().toLowerCase()
+    if (['sí', 'si', 'true', '1', 'x', 'y', 'yes', 'verdadero'].includes(s)) return true
+    if (['no', 'false', '0', 'n', 'falso'].includes(s)) return false
+    return v // valor inválido → lo marca zod
+  }, z.boolean({ invalid_type_error: 'Usa "sí" o "no"' }))
+
 // ─── Schemas de fila por tipo ─────────────────────────────────────────────────
 
 export const UserRowSchema = z.object({
@@ -61,6 +71,9 @@ export const ProductRowSchema = z.object({
   precio_costo: num('El precio de costo debe ser un número').positive('El precio de costo debe ser positivo').optional(),
   stock_minimo: num('El stock mínimo debe ser un número').int('El stock mínimo debe ser un número entero').min(0, 'El stock mínimo no puede ser negativo').default(0),
   stock_maximo: num('El stock máximo debe ser un número').int('El stock máximo debe ser un número entero').positive('El stock máximo debe ser positivo').optional(),
+  precio_alquiler: num('El precio de alquiler debe ser un número').positive('El precio de alquiler debe ser positivo').optional(),
+  es_vendible:  boolText(true),
+  es_alquilable: boolText(false),
 })
 
 export const StockRowSchema = z.object({
@@ -110,6 +123,7 @@ export const AppointmentRowSchema = z.object({
                      .min(1, 'El nombre del cliente es requerido')
                      .max(255),
   telefono_cliente: z.string().max(20).optional(),
+  email_cliente:    z.string().email('El email no es válido').optional().or(z.literal('')),
   servicio_id:      z.string({ invalid_type_error: 'El ID del servicio debe ser texto' })
                      .min(1, 'El ID del servicio es requerido'),
   sucursal_id:      z.string({ invalid_type_error: 'La sucursal debe ser texto' })
@@ -129,8 +143,10 @@ export const TransactionRowSchema = z.object({
                  .max(500),
   fecha:        z.string({ invalid_type_error: 'La fecha debe ser texto' })
                  .min(1, 'La fecha es requerida'),
-  categoria_id: z.string().optional(),
-  sucursal_id:  z.string().optional(),
+  categoria_id:    z.string().optional(),
+  centro_costo_id: z.string().optional(),
+  referencia:      z.string().max(255).optional(),
+  sucursal_id:     z.string().optional(),
 })
 
 export type UserRow         = z.infer<typeof UserRowSchema>

@@ -98,6 +98,23 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       description: 'Cantidad máxima a mantener en inventario. Debe ser mayor al stock mínimo.',
       example: '50',
     },
+    {
+      key: 'precio_alquiler', label: 'precio_alquiler', required: false, type: 'número', width: 18,
+      description: 'Precio de alquiler en pesos (si el producto se alquila). Solo números.',
+      example: '15000',
+    },
+    {
+      key: 'es_vendible', label: 'es_vendible', required: false, type: 'lista', width: 14,
+      description: '¿Se puede vender? sí/no. Por defecto sí.',
+      example: 'sí',
+      validValues: ['sí', 'no'],
+    },
+    {
+      key: 'es_alquilable', label: 'es_alquilable', required: false, type: 'lista', width: 14,
+      description: '¿Se puede alquilar? sí/no. Por defecto no. Si es "sí", conviene definir precio_alquiler.',
+      example: 'no',
+      validValues: ['sí', 'no'],
+    },
   ],
 
   stock: [
@@ -247,6 +264,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: '+57 321 1234567',
     },
     {
+      key: 'email_cliente', label: 'email_cliente', required: false, type: 'texto', width: 30,
+      description: 'Correo del cliente (se le envía la confirmación de la cita).',
+      example: 'cliente@correo.com',
+    },
+    {
       key: 'notas', label: 'notas', required: false, type: 'texto', width: 45,
       description: 'Observaciones o instrucciones especiales para la cita.',
       example: 'Paciente alérgico a la penicilina',
@@ -279,6 +301,16 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'categoria_id', label: 'categoria_id', required: false, type: 'texto', width: 32,
       description: 'ID de la categoría VERA. Consúltala en VERA → Categorías.',
       example: 'cm1cat2eg3ory456',
+    },
+    {
+      key: 'centro_costo_id', label: 'centro_costo_id', required: false, type: 'texto', width: 32,
+      description: 'ID del centro de costo VERA (opcional). Consúltalo en VERA → Centros de costo.',
+      example: 'cm1cc2center3456',
+    },
+    {
+      key: 'referencia', label: 'referencia', required: false, type: 'texto', width: 25,
+      description: 'Referencia externa: número de factura, comprobante o soporte.',
+      example: 'FAC-00123',
     },
     {
       key: 'sucursal_id', label: 'sucursal_id', required: false, type: 'texto', width: 32,

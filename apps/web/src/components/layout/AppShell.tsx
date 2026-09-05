@@ -532,9 +532,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </button>
 
-            {/* Panel de notificaciones */}
+            {/* Panel de notificaciones — en móvil fijo al viewport (no se sale por la izquierda);
+                en desktop, dropdown anclado a la campana. */}
             {notifOpen && (
-              <div className="absolute right-0 top-11 z-50 w-[90vw] rounded-xl border border-slate-200 bg-white shadow-xl sm:w-80 dark:border-slate-700 dark:bg-slate-800">
+              <div className="fixed right-2 top-14 z-50 w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white shadow-xl sm:absolute sm:right-0 sm:top-11 sm:w-80 dark:border-slate-700 dark:bg-slate-800">
 
                 {/* Cabecera */}
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">
