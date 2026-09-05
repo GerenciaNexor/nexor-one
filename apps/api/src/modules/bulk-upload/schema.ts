@@ -82,7 +82,8 @@ export const SupplierRowSchema = z.object({
   nit:          z.string({ invalid_type_error: 'El NIT debe ser texto' })
                  .min(1, 'El NIT es requerido')
                  .max(50),
-  dias_credito: num('Los días de crédito deben ser un número').int('Los días de crédito deben ser un número entero').positive('Los días de crédito deben ser positivos'),
+  dias_credito: num('Los días de crédito deben ser un número').int('Los días de crédito deben ser un número entero').min(0, 'Los días de crédito no pueden ser negativos').optional(),
+  direccion:    z.string().max(500).optional(),
   ciudad:       z.string().max(100).optional(),
   notas:        z.string().optional(),
 })
@@ -96,10 +97,12 @@ export const ClientRowSchema = z.object({
   whatsapp: z.string().max(50).optional(),
   empresa:  z.string().max(255).optional(),
   nit:      z.string().max(50).optional(),
+  direccion: z.string().max(500).optional(),
   ciudad:   z.string().max(100).optional(),
   origen:   z.enum(['whatsapp', 'email', 'manual', 'referido'], {
     errorMap: () => ({ message: 'El origen debe ser whatsapp, email, manual o referido' }),
   }).optional().or(z.literal('')),
+  notas:    z.string().optional(),
 })
 
 export const AppointmentRowSchema = z.object({
@@ -143,7 +146,7 @@ export const REQUIRED_COLUMNS: Record<BulkUploadType, string[]> = {
   users:        ['nombre', 'email', 'rol'],
   products:     ['sku', 'nombre', 'unidad'],
   stock:        ['sku', 'sucursal_id', 'cantidad'],
-  suppliers:    ['nombre', 'nit', 'dias_credito'],
+  suppliers:    ['nombre', 'nit'],
   clients:      ['nombre'],
   appointments: ['nombre_cliente', 'servicio_id', 'sucursal_id', 'fecha_hora'],
   transactions: ['tipo', 'monto', 'descripcion', 'fecha'],

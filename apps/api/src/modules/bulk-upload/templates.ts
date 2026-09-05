@@ -130,8 +130,8 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: '900.123.456-7',
     },
     {
-      key: 'dias_credito', label: 'dias_credito', required: true, type: 'número', width: 18,
-      description: 'Días de plazo para pago. Debe ser un número positivo.',
+      key: 'dias_credito', label: 'dias_credito', required: false, type: 'número', width: 18,
+      description: 'Días de plazo para pago (opcional — déjalo vacío si el proveedor no maneja crédito). Número entero ≥ 0.',
       example: '30',
     },
     {
@@ -148,6 +148,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'telefono', label: 'telefono', required: false, type: 'texto', width: 18,
       description: 'Teléfono de contacto. Incluye indicativo si es internacional.',
       example: '+57 5 3201234',
+    },
+    {
+      key: 'direccion', label: 'direccion', required: false, type: 'texto', width: 40,
+      description: 'Dirección física del proveedor.',
+      example: 'Cra 45 # 12-34, Bodega 3',
     },
     {
       key: 'ciudad', label: 'ciudad', required: false, type: 'texto', width: 20,
@@ -193,6 +198,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: '800.456.123-5',
     },
     {
+      key: 'direccion', label: 'direccion', required: false, type: 'texto', width: 40,
+      description: 'Dirección física del cliente.',
+      example: 'Calle 10 # 43-21, Apto 502',
+    },
+    {
       key: 'ciudad', label: 'ciudad', required: false, type: 'texto', width: 20,
       description: 'Ciudad de residencia o sede del cliente.',
       example: 'Medellín',
@@ -202,6 +212,11 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       description: 'Canal por el que llegó el cliente.',
       example: 'referido',
       validValues: ['whatsapp', 'email', 'manual', 'referido'],
+    },
+    {
+      key: 'notas', label: 'notas', required: false, type: 'texto', width: 45,
+      description: 'Observaciones adicionales sobre el cliente.',
+      example: 'Cliente frecuente. Prefiere contacto por WhatsApp.',
     },
   ],
 

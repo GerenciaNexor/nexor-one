@@ -628,7 +628,8 @@ async function _processSuppliers(tx: TxClient, tenantId: string, rows: Record<st
       email:        data.email || null,
       phone:        data.telefono || null,
       taxId:        data.nit,
-      paymentTerms: data.dias_credito,
+      paymentTerms: data.dias_credito ?? null,
+      address:      data.direccion || null,
       city:         data.ciudad || null,
       notes:        data.notas || null,
     })),
@@ -649,8 +650,10 @@ async function _processClients(tx: TxClient, tenantId: string, rows: Record<stri
       whatsappId: data.whatsapp || null,
       company:    data.empresa || null,
       taxId:      data.nit || null,
+      address:    data.direccion || null,
       city:       data.ciudad || null,
       source:     data.origen || null,
+      notes:      data.notas || null,
     })),
   })
 

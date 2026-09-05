@@ -11,7 +11,7 @@ export const CreateAppointmentSchema = z
     clientPhone:    z.string().optional(),
     professionalId: z.string().optional(),
     notes:          z.string().optional(),
-    channel:        z.enum(['manual', 'whatsapp', 'email']).default('manual'),
+    channel:        z.enum(['manual', 'whatsapp', 'email', 'internal']).default('manual'),
     status:         z.enum(['scheduled', 'confirmed']).default('scheduled'),
     createdByAgent: z.boolean().default(false),
     // HU — cita a hora ESPECÍFICA (como Google Calendar): omite la validación de disponibilidad
