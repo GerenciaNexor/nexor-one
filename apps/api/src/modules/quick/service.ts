@@ -40,7 +40,7 @@ export async function listQuickProducts(tenantId: string) {
 
 export async function listQuickSuppliers(tenantId: string) {
   await ensureGenericSupplier(prisma, tenantId)
-  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
+  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true, taxId: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
   return { data, total: data.length }
 }
 
