@@ -142,8 +142,8 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       example: 'Distribuciones Médicas del Caribe S.A.S.',
     },
     {
-      key: 'nit', label: 'nit', required: true, type: 'texto', width: 20,
-      description: 'NIT o identificación tributaria. Debe ser único en tu catálogo de proveedores.',
+      key: 'nit', label: 'nit', required: true, type: 'texto', width: 24,
+      description: 'NIT (si el proveedor es empresa) o número de documento/cédula (si es persona natural). Debe ser único en tu catálogo de proveedores. No cambies el nombre de la columna ("nit").',
       example: '900.123.456-7',
     },
     {

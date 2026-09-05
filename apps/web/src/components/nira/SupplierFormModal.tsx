@@ -173,14 +173,15 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-slate-600">NIT / ID Fiscal</label>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">NIT o documento</label>
                     <input
                       type="text"
                       value={form.taxId}
                       onChange={field('taxId')}
                       className={inp}
-                      placeholder="900.123.456-7"
+                      placeholder="NIT (empresa) o cédula (persona)"
                     />
+                    <p className="mt-1 text-[11px] text-slate-400">NIT si es empresa, o documento/cédula si es persona natural.</p>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-slate-600">Días de crédito</label>
