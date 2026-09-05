@@ -18,6 +18,16 @@ export interface RowError {
   message: string
 }
 
+// Sinónimos de cabecera (ya normalizada: minúsculas, espacios→"_") → clave canónica.
+// Permite que las plantillas muestren cabeceras más claras sin romper la importación.
+// Ej.: "NIT o documento" → "nit_o_documento" → 'nit'.
+export const HEADER_ALIASES: Record<string, string> = {
+  nit_o_documento:  'nit',
+  'nit/documento':  'nit',
+  nit_documento:    'nit',
+  documento:        'nit',
+}
+
 // ─── Helper: número coercible desde string (compatible con Excel) ─────────────
 
 const num = (msg?: string) =>
