@@ -122,21 +122,23 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
               <input value={name} onChange={(e) => setName(e.target.value)} className={inp} placeholder="Ej: Ventas de ferretería, Costos de la empresa…" />
             </div>
 
-            {/* Tipo */}
+            {/* Tipo — al EDITAR queda bloqueado: cambiar de objetivo (ventas) a límite (costos) no tiene
+                sentido y rompería el proyecto. Solo se elige al crear. */}
             <div>
               <label className={lbl}>Tipo *</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setType('objetivo')}
-                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${type === 'objetivo' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>
+                <button type="button" disabled={isEdit} onClick={() => !isEdit && setType('objetivo')}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${type === 'objetivo' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'} ${isEdit && type !== 'objetivo' ? 'cursor-not-allowed opacity-40' : ''} ${isEdit ? 'cursor-default' : ''}`}>
                   <span className="block font-semibold">Objetivo</span>
                   <span className="block text-[11px] opacity-80">Meta mínima a alcanzar/superar</span>
                 </button>
-                <button type="button" onClick={() => setType('limite')}
-                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${type === 'limite' ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}>
+                <button type="button" disabled={isEdit} onClick={() => !isEdit && setType('limite')}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${type === 'limite' ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'} ${isEdit && type !== 'limite' ? 'cursor-not-allowed opacity-40' : ''} ${isEdit ? 'cursor-default' : ''}`}>
                   <span className="block font-semibold">Límite</span>
                   <span className="block text-[11px] opacity-80">Techo a no exceder (con aviso)</span>
                 </button>
               </div>
+              {isEdit && <p className="mt-1 text-[11px] text-slate-400">El tipo no se puede cambiar después de crear el proyecto.</p>}
             </div>
 
             <div>
