@@ -38,8 +38,8 @@ export const UserRowSchema = z.object({
   rol:         z.enum(['OPERATIVE', 'AREA_MANAGER', 'BRANCH_ADMIN', 'TENANT_ADMIN'], {
     errorMap: () => ({ message: 'El rol debe ser OPERATIVE, AREA_MANAGER, BRANCH_ADMIN o TENANT_ADMIN' }),
   }),
-  modulo:      z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'], {
-    errorMap: () => ({ message: 'El módulo debe ser ARI, NIRA, KIRA, AGENDA o VERA' }),
+  modulo:      z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA', 'PROYECTOS'], {
+    errorMap: () => ({ message: 'El módulo debe ser ARI, NIRA, KIRA, AGENDA, VERA o PROYECTOS' }),
   }).optional(),
   sucursal_id: z.string().optional(),
 })

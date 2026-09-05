@@ -41,9 +41,9 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
     },
     {
       key: 'modulo', label: 'modulo', required: false, type: 'lista', width: 15,
-      description: 'Módulo asignado. Obligatorio si el rol es OPERATIVE o AREA_MANAGER.',
+      description: 'Módulo asignado (área de trabajo). Obligatorio si el rol es OPERATIVE o AREA_MANAGER. Ventas=ARI, Compras=NIRA, Inventario=KIRA, Agenda=AGENDA, Finanzas=VERA, Proyectos=PROYECTOS.',
       example: 'KIRA',
-      validValues: ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA'],
+      validValues: ['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA', 'PROYECTOS'],
     },
     {
       key: 'sucursal_id', label: 'sucursal_id', required: false, type: 'texto', width: 32,
@@ -300,8 +300,21 @@ const COLORS = {
 
 // ─── Generador principal ──────────────────────────────────────────────────────
 
+// Ejemplos de fecha calculados al generar, para que la plantilla nunca quede desactualizada:
+// las citas exigen fecha futura → se usa hoy + 30 días; las transacciones usan la fecha de hoy.
+function dynamicExamples(cols: ColumnDef[]): ColumnDef[] {
+  const now = new Date()
+  const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  const ymd = (d: Date) => d.toISOString().slice(0, 10)
+  return cols.map((c) => {
+    if (c.key === 'fecha_hora') return { ...c, example: `${ymd(future)}T10:00:00` }
+    if (c.key === 'fecha')      return { ...c, example: ymd(now) }
+    return c
+  })
+}
+
 export async function generateTemplate(type: BulkUploadType): Promise<Buffer> {
-  const cols = COLUMNS[type]
+  const cols = dynamicExamples(COLUMNS[type])
   const name = TEMPLATE_NAMES[type]
 
   const workbook = new ExcelJS.Workbook()
