@@ -278,11 +278,18 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
             <div className="mt-6 flex flex-col items-center gap-3 py-8">
               <input ref={inputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" onChange={onFile} className="hidden" />
               <button onClick={() => inputRef.current?.click()} disabled={loading}
-                className="rounded-xl border-2 border-dashed border-slate-300 px-8 py-6 text-sm font-medium text-slate-600 hover:border-blue-400 hover:text-blue-600 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300">
-                {loading ? 'Leyendo la factura…' : '📷 Selecciona una foto de la factura'}
+                className={`rounded-xl border-2 border-dashed px-8 py-6 text-sm font-medium disabled:cursor-wait disabled:opacity-100 ${loading ? 'border-blue-400 text-blue-600 dark:border-blue-500 dark:text-blue-400' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 dark:border-slate-600 dark:text-slate-300'}`}>
+                {loading ? (
+                  <span className="flex items-center gap-2.5">
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 dark:border-blue-900 dark:border-t-blue-400" />
+                    Leyendo la factura…
+                  </span>
+                ) : '📷 Selecciona una foto de la factura'}
               </button>
-              <p className="text-xs text-slate-400">JPG, PNG, WEBP o PDF · se comprime automáticamente</p>
-              <button onClick={goManual} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">o ingresar los datos manualmente</button>
+              <p className="text-xs text-slate-400">
+                {loading ? 'Esto puede tardar unos segundos. No cierres esta ventana.' : 'JPG, PNG, WEBP o PDF · se comprime automáticamente'}
+              </p>
+              {!loading && <button onClick={goManual} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">o ingresar los datos manualmente</button>}
               {unreadable && (
                 <div className="mt-2 w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
                   {unreadable}
