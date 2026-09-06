@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
+import { DOCUMENT_TYPES } from '@nexor/shared'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ export interface Supplier {
   email: string | null
   phone: string | null
   taxId: string | null
+  documentType: string | null
   address: string | null
   city: string | null
   paymentTerms: number | null
@@ -30,6 +32,7 @@ interface FormFields {
   email: string
   phone: string
   taxId: string
+  documentType: string
   address: string
   city: string
   paymentTerms: string
@@ -45,7 +48,7 @@ interface Props {
 
 const EMPTY: FormFields = {
   name: '', contactName: '', email: '', phone: '',
-  taxId: '', address: '', city: '', paymentTerms: '', notes: '',
+  taxId: '', documentType: 'NIT', address: '', city: '', paymentTerms: '', notes: '',
 }
 
 function toFormFields(s: Supplier): FormFields {
@@ -55,6 +58,7 @@ function toFormFields(s: Supplier): FormFields {
     email:        s.email        ?? '',
     phone:        s.phone        ?? '',
     taxId:        s.taxId        ?? '',
+    documentType: s.documentType ?? 'NIT',
     address:      s.address      ?? '',
     city:         s.city         ?? '',
     paymentTerms: s.paymentTerms != null ? String(s.paymentTerms) : '',
@@ -73,7 +77,7 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
   const [apiError, setApiError]     = useState<string | null>(null)
 
   function field(key: keyof FormFields) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setForm((prev) => ({ ...prev, [key]: e.target.value }))
   }
 
@@ -102,6 +106,7 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
       email:        form.email.trim()        || undefined,
       phone:        form.phone.trim()        || undefined,
       taxId:        form.taxId.trim()        || undefined,
+      documentType: form.documentType        || undefined,
       address:      form.address.trim()      || undefined,
       city:         form.city.trim()         || undefined,
       paymentTerms: form.paymentTerms !== '' ? parseInt(form.paymentTerms, 10) : undefined,
@@ -171,7 +176,19 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
                   />
                   {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600">Tipo de documento</label>
+                    <select
+                      value={form.documentType}
+                      onChange={field('documentType')}
+                      className={inp}
+                    >
+                      {DOCUMENT_TYPES.map((d) => (
+                        <option key={d.code} value={d.code}>{d.code}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-slate-600">NIT o documento</label>
                     <input
@@ -181,7 +198,6 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
                       className={inp}
                       placeholder="NIT (empresa) o cédula (persona)"
                     />
-                    <p className="mt-1 text-[11px] text-slate-400">NIT si es empresa, o documento/cédula si es persona natural.</p>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-slate-600">Días de crédito</label>
@@ -197,6 +213,7 @@ export function SupplierFormModal({ mode, supplier, onClose, onSuccess }: Props)
                     {errors.paymentTerms && <p className="mt-1 text-xs text-red-500">{errors.paymentTerms}</p>}
                   </div>
                 </div>
+                <p className="text-[11px] text-slate-400">NIT si es empresa, o documento/cédula (CC, CE, …) si es persona natural.</p>
               </div>
             </div>
 

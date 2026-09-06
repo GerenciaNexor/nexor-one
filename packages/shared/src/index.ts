@@ -8,3 +8,4 @@
 export * from './types/auth'
 export * from './types/tenant'
 export * from './types/common'
+export * from './types/document'

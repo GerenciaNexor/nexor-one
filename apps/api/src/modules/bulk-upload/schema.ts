@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DOCUMENT_TYPE_CODES } from '@nexor/shared'
 
 export const BULK_UPLOAD_TYPES = [
   'users',
@@ -105,6 +106,12 @@ export const SupplierRowSchema = z.object({
   nit:          z.string({ invalid_type_error: 'El NIT debe ser texto' })
                  .min(1, 'El NIT es requerido')
                  .max(50),
+  tipo_documento: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : undefined),
+    z.enum(DOCUMENT_TYPE_CODES as [string, ...string[]], {
+      errorMap: () => ({ message: `El tipo de documento debe ser uno de: ${DOCUMENT_TYPE_CODES.join(', ')}` }),
+    }).optional(),
+  ),
   dias_credito: num('Los días de crédito deben ser un número').int('Los días de crédito deben ser un número entero').min(0, 'Los días de crédito no pueden ser negativos').optional(),
   direccion:    z.string().max(500).optional(),
   ciudad:       z.string().max(100).optional(),

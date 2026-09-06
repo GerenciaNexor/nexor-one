@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, extractInvoice, registerInvoice, listInvoices, getInvoice, getInvoiceImage } from './service'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage } from './service'
+import { registersToXlsx, invoicesToXlsx } from './export'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -27,17 +28,52 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   app.get('/branches',  { schema: { tags: ['Quick'], summary: 'Sucursales', security: bearerAuth, response: { 200: listRes, ...stdErrors } }, preHandler: [requireRole('OPERATIVE')] },
     async (req, reply) => reply.code(200).send(await listQuickBranches(req.user.tenantId)))
 
-  /** GET /v1/quick/registers — historial de registros rápidos (compras y ventas). */
+  // HU-196 — filtros comunes del historial de registros rápidos.
+  const registerFilters = (q: Record<string, string | undefined>) => ({
+    kind:      (q.kind === 'sale' ? 'sale' : q.kind === 'purchase' ? 'purchase' : undefined) as 'purchase' | 'sale' | undefined,
+    q:         q.q,
+    from:      q.from,
+    to:        q.to,
+    inventory: (q.inventory === 'yes' ? 'yes' : q.inventory === 'service' ? 'service' : undefined) as 'yes' | 'service' | undefined,
+    origin:    (q.origin === 'invoice' ? 'invoice' : q.origin === 'manual' ? 'manual' : undefined) as 'invoice' | 'manual' | undefined,
+  })
+
+  /** GET /v1/quick/registers — historial de registros rápidos (compras y ventas), con filtros. */
   app.get('/registers', {
     schema: { tags: ['Quick'], summary: 'Historial de registros rápidos', security: bearerAuth,
-      querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['purchase', 'sale'] }, page: { type: 'string' }, limit: { type: 'string' } } },
+      querystring: { type: 'object', properties: {
+        kind: { type: 'string', enum: ['purchase', 'sale'] }, q: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' },
+        inventory: { type: 'string', enum: ['yes', 'service'] }, origin: { type: 'string', enum: ['invoice', 'manual'] },
+        page: { type: 'string' }, limit: { type: 'string' },
+      } },
       response: { 200: listRes, ...stdErrors } },
     preHandler: [requireRole('OPERATIVE')],
   }, async (req, reply) => {
-    const q = req.query as { kind?: 'purchase' | 'sale'; page?: string; limit?: string }
+    const q = req.query as Record<string, string | undefined>
     const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '50', 10) || 50))
-    return reply.code(200).send(await listQuickRegisters(req.user.tenantId, { kind: q.kind, page, limit }))
+    return reply.code(200).send(await listQuickRegisters(req.user.tenantId, { ...registerFilters(q), page, limit }))
+  })
+
+  /** GET /v1/quick/registers/export — Excel de los registros rápidos que trae el filtro (todo si no hay). */
+  app.get('/registers/export', {
+    schema: { tags: ['Quick'], summary: 'Exportar registros rápidos a Excel', security: bearerAuth,
+      querystring: { type: 'object', properties: {
+        kind: { type: 'string', enum: ['purchase', 'sale'] }, q: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' },
+        inventory: { type: 'string', enum: ['yes', 'service'] }, origin: { type: 'string', enum: ['invoice', 'manual'] },
+      } } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (req, reply) => {
+    const q = req.query as Record<string, string | undefined>
+    const filters = registerFilters(q)
+    const kind = filters.kind ?? 'purchase'
+    try {
+      const rows = await exportQuickRegisters(req.user.tenantId, filters)
+      const buffer = await registersToXlsx(rows, kind)
+      const fname = `${kind === 'sale' ? 'ventas' : 'compras'}-rapidas-${new Date().toISOString().slice(0, 10)}.xlsx`
+      return reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', `attachment; filename="${fname}"`).send(buffer)
+    } catch (err) { return errReply(reply, err) }
   })
 
   /** POST /v1/quick/purchases — compra rápida (ya completada). */
@@ -142,6 +178,27 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
       return reply.code(200).send(await listInvoices(request.user.tenantId, {
         kind, q: q.q, from: q.from, to: q.to, minTotal: num(q.minTotal), maxTotal: num(q.maxTotal), page, limit,
       }))
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices/export — Excel de las facturas cargadas que trae el filtro (todo si no hay). */
+  app.get('/invoices/export', {
+    schema: { tags: ['Quick'], summary: 'Exportar facturas cargadas a Excel', security: bearerAuth,
+      querystring: { type: 'object', properties: {
+        kind: { type: 'string', enum: ['purchase', 'sale'] }, q: { type: 'string' },
+        from: { type: 'string' }, to: { type: 'string' }, minTotal: { type: 'string' }, maxTotal: { type: 'string' },
+      } } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    const q = request.query as { kind?: string; q?: string; from?: string; to?: string; minTotal?: string; maxTotal?: string }
+    const kind = q.kind === 'sale' ? 'sale' : 'purchase'
+    const num = (v?: string) => { const n = v != null && v !== '' ? Number(v) : NaN; return Number.isFinite(n) ? n : undefined }
+    try {
+      const rows = await exportInvoices(request.user.tenantId, { kind, q: q.q, from: q.from, to: q.to, minTotal: num(q.minTotal), maxTotal: num(q.maxTotal) })
+      const buffer = await invoicesToXlsx(rows, kind)
+      const fname = `facturas-${kind === 'sale' ? 'venta' : 'compra'}-${new Date().toISOString().slice(0, 10)}.xlsx`
+      return reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', `attachment; filename="${fname}"`).send(buffer)
     } catch (err) { return errReply(reply, err) }
   })
 

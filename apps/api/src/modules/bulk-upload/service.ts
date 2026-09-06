@@ -642,6 +642,7 @@ async function _processSuppliers(tx: TxClient, tenantId: string, rows: Record<st
       email:        data.email || null,
       phone:        data.telefono || null,
       taxId:        data.nit,
+      documentType: data.tipo_documento ?? null,
       paymentTerms: data.dias_credito ?? null,
       address:      data.direccion || null,
       city:         data.ciudad || null,

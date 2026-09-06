@@ -1,4 +1,8 @@
 import { z } from 'zod'
+import { DOCUMENT_TYPE_CODES } from '@nexor/shared'
+
+/** Tipo de documento (NIT, CC, CE, …) — HU-196. Se admite vacío/omitido. */
+const documentType = z.enum(DOCUMENT_TYPE_CODES as [string, ...string[]]).optional()
 
 export const CreateSupplierSchema = z.object({
   name:         z.string().min(1, 'El nombre es requerido').max(255),
@@ -7,6 +11,8 @@ export const CreateSupplierSchema = z.object({
   phone:        z.string().max(20).optional(),
   /** NIT o identificación fiscal — único por tenant */
   taxId:        z.string().max(50).optional(),
+  /** Tipo del documento en taxId (NIT/CC/CE/…) */
+  documentType,
   address:      z.string().max(500).optional(),
   city:         z.string().max(100).optional(),
   /** Días de crédito (condiciones comerciales) */
@@ -20,6 +26,7 @@ export const UpdateSupplierSchema = z.object({
   email:        z.string().email('Email inválido').max(255).optional(),
   phone:        z.string().max(20).optional(),
   taxId:        z.string().max(50).optional(),
+  documentType,
   address:      z.string().max(500).optional(),
   city:         z.string().max(100).optional(),
   paymentTerms: z.number().int().min(0).optional(),
