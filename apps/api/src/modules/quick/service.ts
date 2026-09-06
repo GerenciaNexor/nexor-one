@@ -55,22 +55,42 @@ export async function listQuickBranches(tenantId: string) {
   return { data, total: data.length }
 }
 
+/** HU-196 — filtros del historial de registros rápidos (búsqueda, rango de fecha, inventario, origen). */
+export interface QuickRegisterFilters {
+  kind?:      'purchase' | 'sale'
+  q?:         string
+  from?:      string
+  to?:        string
+  inventory?: 'yes' | 'service'   // afecta stock vs. servicio (solo VERA)
+  origin?:    'invoice' | 'manual'
+}
+
+export type QuickRegisterRow = Awaited<ReturnType<typeof queryQuickRegisters>>[number]
+
 /**
- * HU-169/170 — Historial de registros rápidos (panel propio). Deriva de las transacciones VERA
- * `quick_purchase`/`quick_sale`; enriquece con el movimiento de stock vinculado (si afecta inventario).
+ * HU-169/170 — Registros rápidos (compras/ventas) ya filtrados y mapeados. Deriva de las transacciones
+ * VERA `quick_purchase`/`quick_sale` y enriquece con el movimiento de stock (si afecta inventario),
+ * autor y número de factura de origen. El filtro de inventario se aplica en memoria (el volumen de
+ * registros rápidos es bajo por diseño); los demás filtros van a la BD.
  */
-export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purchase' | 'sale'; page: number; limit: number }) {
-  const refTypes = opts.kind === 'purchase' ? ['quick_purchase'] : opts.kind === 'sale' ? ['quick_sale'] : ['quick_purchase', 'quick_sale']
-  const where = { tenantId, referenceType: { in: refTypes } }
-  const [rows, total] = await Promise.all([
-    prisma.transaction.findMany({
-      where,
-      select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, createdAt: true, createdBy: true, quickInvoiceId: true, branch: { select: { name: true } } },
-      orderBy: { date: 'desc' },
-      skip: (opts.page - 1) * opts.limit, take: opts.limit,
-    }),
-    prisma.transaction.count({ where }),
-  ])
+async function queryQuickRegisters(tenantId: string, f: QuickRegisterFilters) {
+  const refTypes = f.kind === 'purchase' ? ['quick_purchase'] : f.kind === 'sale' ? ['quick_sale'] : ['quick_purchase', 'quick_sale']
+  const gte = f.from ? new Date(f.from) : undefined
+  const lte = f.to   ? new Date(new Date(f.to).setHours(23, 59, 59, 999)) : undefined
+  const where: Prisma.TransactionWhereInput = {
+    tenantId,
+    referenceType: { in: refTypes },
+    ...(f.origin === 'invoice' ? { quickInvoiceId: { not: null } } : {}),
+    ...(f.origin === 'manual'  ? { quickInvoiceId: null } : {}),
+    ...(f.q?.trim() ? { description: { contains: f.q.trim(), mode: 'insensitive' } } : {}),
+    ...((gte || lte) ? { date: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {}),
+  }
+  const rows = await prisma.transaction.findMany({
+    where,
+    select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, createdAt: true, createdBy: true, quickInvoiceId: true, branch: { select: { name: true } } },
+    orderBy: { date: 'desc' },
+    take: 5000, // cota de seguridad; los registros rápidos son de bajo volumen por diseño
+  })
   const ids = rows.map((r) => r.id)
   const movs = ids.length
     ? await prisma.stockMovement.findMany({ where: { tenantId, referenceType: { in: refTypes }, referenceId: { in: ids } }, select: { referenceId: true, quantity: true, salePriceFrozen: true, costPriceFrozen: true, product: { select: { sku: true, name: true, unit: true } } } })
@@ -94,35 +114,51 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
     const detail = desc.replace(/^(Compra|Venta) rápida —\s*/, '').replace(/\s*\([^()]*\)\s*$/, '').trim()
     return { counterparty: cp, detail }
   }
+  const data = rows.map((r) => {
+    const mov = byTxn.get(r.id)
+    const { counterparty, detail } = parse(r.description)
+    const qty = mov ? num(mov.quantity) : null
+    const isSale = r.referenceType === 'quick_sale'
+    const unitValue = mov ? num(isSale ? mov.salePriceFrozen : mov.costPriceFrozen) : num(r.amount)
+    return {
+      id:               r.id,
+      kind:             isSale ? 'sale' as const : 'purchase' as const,
+      amount:           num(r.amount),
+      description:      r.description,
+      detail,           // producto o descripción, sin prefijo ni contraparte
+      counterparty,     // proveedor (compra) / cliente (venta)
+      date:             r.date,
+      branchName:       r.branch?.name ?? null,
+      affectsInventory: !!mov,
+      product:          mov ? { sku: mov.product.sku, name: mov.product.name, unit: mov.product.unit, quantity: qty } : null,
+      unitValue,        // HU-194-C — precio/costo unitario (para el detalle manual)
+      // HU-194-C — origen + autor + cuándo (para el detalle del historial).
+      origin:           r.quickInvoiceId ? 'invoice' as const : 'manual' as const,
+      invoiceId:        r.quickInvoiceId ?? null,
+      invoiceNumber:    r.quickInvoiceId ? (invoiceNumberById.get(r.quickInvoiceId) ?? null) : null,
+      createdByName:    r.createdBy ? (authorName.get(r.createdBy) ?? null) : null,
+      createdAt:        r.createdAt,
+    }
+  })
+  if (f.inventory === 'yes')     return data.filter((r) => r.affectsInventory)
+  if (f.inventory === 'service') return data.filter((r) => !r.affectsInventory)
+  return data
+}
+
+/** Historial de registros rápidos paginado (aplica filtros HU-196). */
+export async function listQuickRegisters(tenantId: string, opts: QuickRegisterFilters & { page: number; limit: number }) {
+  const all   = await queryQuickRegisters(tenantId, opts)
+  const total = all.length
+  const start = (opts.page - 1) * opts.limit
   return {
-    data: rows.map((r) => {
-      const mov = byTxn.get(r.id)
-      const { counterparty, detail } = parse(r.description)
-      const qty = mov ? num(mov.quantity) : null
-      const isSale = r.referenceType === 'quick_sale'
-      const unitValue = mov ? num(isSale ? mov.salePriceFrozen : mov.costPriceFrozen) : num(r.amount)
-      return {
-        id:               r.id,
-        kind:             isSale ? 'sale' : 'purchase',
-        amount:           num(r.amount),
-        description:      r.description,
-        detail,           // producto o descripción, sin prefijo ni contraparte
-        counterparty,     // proveedor (compra) / cliente (venta)
-        date:             r.date,
-        branchName:       r.branch?.name ?? null,
-        affectsInventory: !!mov,
-        product:          mov ? { sku: mov.product.sku, name: mov.product.name, unit: mov.product.unit, quantity: qty } : null,
-        unitValue,        // HU-194-C — precio/costo unitario (para el detalle manual)
-        // HU-194-C — origen + autor + cuándo (para el detalle del historial).
-        origin:           r.quickInvoiceId ? 'invoice' : 'manual',
-        invoiceId:        r.quickInvoiceId ?? null,
-        invoiceNumber:    r.quickInvoiceId ? (invoiceNumberById.get(r.quickInvoiceId) ?? null) : null,
-        createdByName:    r.createdBy ? (authorName.get(r.createdBy) ?? null) : null,
-        createdAt:        r.createdAt,
-      }
-    }),
-    total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
+    data:  all.slice(start, start + opts.limit),
+    total, page: opts.page, limit: opts.limit, totalPages: Math.max(1, Math.ceil(total / opts.limit)),
   }
+}
+
+/** Todos los registros rápidos que cumplen el filtro (sin paginar) — para exportar a Excel. */
+export async function exportQuickRegisters(tenantId: string, f: QuickRegisterFilters): Promise<QuickRegisterRow[]> {
+  return queryQuickRegisters(tenantId, f)
 }
 
 // ─── Núcleo por-ítem (reutilizado por el registro rápido y por la factura OCR — HU-191) ────────────
@@ -541,4 +577,12 @@ export async function listInvoices(tenantId: string, opts: {
     })),
     total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
   }
+}
+
+/** HU-196 — Todas las facturas que cumplen el filtro (sin paginar) — para exportar a Excel. */
+export async function exportInvoices(tenantId: string, opts: {
+  kind: 'purchase' | 'sale'; q?: string; from?: string; to?: string; minTotal?: number; maxTotal?: number
+}) {
+  const { data } = await listInvoices(tenantId, { ...opts, page: 1, limit: 100000 })
+  return data
 }

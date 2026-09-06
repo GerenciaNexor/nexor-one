@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { DOCUMENT_TYPE_CODES } from '@nexor/shared'
 import type { BulkUploadType } from './schema'
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
@@ -146,6 +147,12 @@ const COLUMNS: Record<BulkUploadType, ColumnDef[]> = {
       key: 'nit', header: 'nit o documento', label: 'nit', required: true, type: 'texto', width: 26,
       description: 'NIT (si el proveedor es empresa) o número de documento/cédula (si es persona natural). Debe ser único en tu catálogo de proveedores.',
       example: '900.123.456-7',
+    },
+    {
+      key: 'tipo_documento', label: 'tipo_documento', required: false, type: 'lista', width: 18,
+      description: 'Tipo del documento anterior. Uno de: ' + DOCUMENT_TYPE_CODES.join(', ') + '. Si se deja vacío se asume NIT.',
+      validValues: [...DOCUMENT_TYPE_CODES],
+      example: 'NIT',
     },
     {
       key: 'dias_credito', label: 'dias_credito', required: false, type: 'número', width: 18,

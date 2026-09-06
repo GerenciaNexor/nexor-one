@@ -1010,6 +1010,7 @@ model Supplier {
   email        String? @db.VarChar(255)
   phone        String? @db.VarChar(20)
   taxId        String? @map("tax_id") @db.VarChar(50)
+  documentType String? @map("document_type") @db.VarChar(10)   // HU-196 — tipo de documento (NIT, CC, CE, …)
   address      String? @db.VarChar(500)
   city         String? @db.VarChar(100)
   paymentTerms Int?    @map("payment_terms")

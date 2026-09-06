@@ -1,27 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { apiClient } from '@/lib/api-client'
-import { fmtDateTime } from '@/lib/format-date'
+import { useState } from 'react'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
-import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
-import { EmptyState } from '@/components/ui/EmptyState'
-
-const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
+import { QuickRegistersPanel } from '@/components/quick/QuickRegistersPanel'
 
 export default function QuickPurchasesPage() {
-  const [rows, setRows]   = useState<QuickRegister[] | null>(null)
   const [modal, setModal] = useState(false)
   const [invoice, setInvoice] = useState(false)
-  const [detail, setDetail] = useState<QuickRegister | null>(null)
   const [tab, setTab] = useState<'registers' | 'invoices'>('registers')
+  const [reload, setReload] = useState(0)
 
-  function load() {
-    apiClient.get<{ data: QuickRegister[] }>('/v1/quick/registers?kind=purchase')
-      .then((r) => setRows(r.data)).catch(() => setRows([]))
-  }
-  useEffect(() => { load() }, [])
+  const refresh = () => setReload((n) => n + 1)
 
   return (
     <div className="p-6">
@@ -55,65 +45,12 @@ export default function QuickPurchasesPage() {
         ))}
       </div>
 
-      {tab === 'invoices' ? (
-        <InvoicesPanel kind="purchase" hideHeader />
-      ) : (
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="overflow-x-auto">
-          {rows === null ? (
-            <div className="space-y-2 p-4">{[0, 1, 2].map((i) => <div key={i} className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-700" />)}</div>
-          ) : rows.length === 0 ? (
-            <EmptyState bordered={false}
-              title="Sin compras rápidas"
-              description="Registra una compra pequeña que ya ocurrió (café, insumos urgentes…). Quedará aquí y en tus finanzas, sin pasar por el flujo de OC."
-              action={{ label: 'Nueva compra rápida', onClick: () => setModal(true) }} />
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Proveedor</th>
-                  <th className="px-4 py-3">Detalle</th>
-                  <th className="px-4 py-3">Inventario</th>
-                  <th className="px-4 py-3">Origen</th>
-                  <th className="px-4 py-3">Sucursal</th>
-                  <th className="px-4 py-3 text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {rows.map((r) => (
-                  <tr key={r.id} onClick={() => setDetail(r)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.counterparty ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {r.product
-                        ? <><span className="font-medium text-slate-800 dark:text-slate-100">{r.product.name}</span> <span className="text-slate-400">{r.product.quantity} {r.product.unit}</span></>
-                        : <span className="text-slate-600 dark:text-slate-300">{r.detail}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.affectsInventory
-                        ? <span className="text-xs font-medium text-violet-600 dark:text-violet-400">Sí</span>
-                        : <span className="text-xs text-slate-400">Servicio</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.origin === 'invoice'
-                        ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">📄 Factura</span>
-                        : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">✍️ Manual</span>}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{r.branchName ?? '—'}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-100">−{money(r.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-      )}
+      {tab === 'invoices'
+        ? <InvoicesPanel kind="purchase" hideHeader />
+        : <QuickRegistersPanel kind="purchase" reloadSignal={reload} onNew={() => setModal(true)} />}
 
-      {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
-      {modal && <InvoiceUploadModal kind="purchase" startManual onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
-      {invoice && <InvoiceUploadModal kind="purchase" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); load() }} />}
+      {modal && <InvoiceUploadModal kind="purchase" startManual onClose={() => setModal(false)} onSuccess={() => { setModal(false); refresh() }} />}
+      {invoice && <InvoiceUploadModal kind="purchase" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); refresh() }} />}
     </div>
   )
 }

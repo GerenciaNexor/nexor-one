@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate, fmtDateTime } from '@/lib/format-date'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
+import { downloadFile, toQuery } from '@/lib/download'
 
 type Kind = 'purchase' | 'sale'
 const money = (n: number | null) => (n == null ? '—' : `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`)
@@ -25,6 +26,15 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
   const [minTotal, setMin] = useState('')
   const [maxTotal, setMax] = useState('')
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  async function exportExcel() {
+    setExporting(true)
+    try {
+      const qs = toQuery({ kind, q: q.trim(), from, to, minTotal, maxTotal })
+      await downloadFile(`/v1/quick/invoices/export${qs}`, `facturas-${isSale ? 'venta' : 'compra'}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch { /* noop */ } finally { setExporting(false) }
+  }
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ kind })
@@ -57,6 +67,10 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
         {(q || from || to || minTotal || maxTotal) && (
           <button onClick={() => { setQ(''); setFrom(''); setTo(''); setMin(''); setMax(''); setTimeout(load, 0) }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
         )}
+        <button onClick={exportExcel} disabled={exporting || rows === null || (rows?.length ?? 0) === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
+          {exporting ? 'Generando…' : '⬇ Descargar Excel'}
+        </button>
       </div>
 
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">

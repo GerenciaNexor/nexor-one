@@ -320,7 +320,7 @@ export default function SuppliersPage() {
                     className={['cursor-pointer transition-colors hover:bg-slate-50', !s.isActive ? 'opacity-50' : ''].join(' ')}
                   >
                     <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{s.taxId ?? <span className="text-slate-300">—</span>}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{s.taxId ? <>{s.documentType ? <span className="mr-1 font-sans not-italic text-slate-400">{s.documentType}</span> : null}{s.taxId}</> : <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-3 text-slate-500">{s.contactName ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-3 text-slate-500">{s.city ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-3 text-right text-slate-700">
