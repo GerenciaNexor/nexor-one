@@ -62,6 +62,82 @@ const consultarStock: AgentTool = {
   },
 }
 
+// ─── consultar_productos (catálogo: buscar/listar por nombre O categoría) ──────
+
+const consultarProductos: AgentTool = {
+  definition: {
+    name:        'consultar_productos',
+    description:
+      'Searches or lists the product CATALOG. The search term matches the product NAME **or its CATEGORY** (partial, case-insensitive). ' +
+      'Use this for questions like "what audio products do we have", "products in category X", or to reason about the catalog. ' +
+      'IMPORTANT: the term does NOT need to appear literally in the product name — a word like "audio" may be a CATEGORY. ' +
+      'If nothing matches the term, this returns the list of EXISTING CATEGORIES so you can guide the user instead of giving up. ' +
+      'Returns each product with SKU, category, unit, sale price and total available stock across branches.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        termino:   { type: 'string', description: 'Word/phrase to search in product name OR category (optional; omit to list all).' },
+        categoria: { type: 'string', description: 'Filter strictly by category (optional).' },
+        limit:     { type: 'number', description: 'Max products to return (default 30).' },
+      },
+    },
+  },
+
+  async execute({ termino, categoria, limit }, tenantId) {
+    const term = typeof termino === 'string' ? termino.trim() : ''
+    const cat  = typeof categoria === 'string' ? categoria.trim() : ''
+    const take = Math.min(Math.max(Number(limit) || 30, 1), 100)
+
+    const where = {
+      tenantId,
+      isActive: true,
+      ...(cat ? { category: { contains: cat, mode: 'insensitive' as const } } : {}),
+      ...(term ? { OR: [
+        { name:     { contains: term, mode: 'insensitive' as const } },
+        { category: { contains: term, mode: 'insensitive' as const } },
+      ] } : {}),
+    }
+
+    const products = await prisma.product.findMany({
+      where,
+      select: { id: true, name: true, sku: true, category: true, unit: true, salePrice: true,
+        stocks: { select: { quantity: true, rentedQuantity: true } } },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      take,
+    })
+
+    // Sin resultados con un término: devolver las categorías existentes para poder orientar (no rendirse).
+    if (products.length === 0 && (term || cat)) {
+      const cats = await prisma.product.findMany({
+        where:  { tenantId, isActive: true, category: { not: null } },
+        select: { category: true }, distinct: ['category'], orderBy: { category: 'asc' },
+      })
+      return {
+        productos: [],
+        categoriasDisponibles: cats.map((c) => c.category).filter(Boolean),
+        hint: `Ningún producto tiene "${term || cat}" en su nombre ni categoría. Ofrece al usuario las categorías disponibles o pídele otro término; no digas solo que "no existe".`,
+      }
+    }
+
+    return {
+      total: products.length,
+      productos: products.map((p) => {
+        const total     = p.stocks.reduce((s, x) => s + Number(x.quantity), 0)
+        const rented    = p.stocks.reduce((s, x) => s + Number(x.rentedQuantity), 0)
+        return {
+          producto:    p.name,
+          sku:         p.sku,
+          categoria:   p.category ?? null,
+          unidad:      p.unit,
+          precioVenta: p.salePrice != null ? Number(p.salePrice) : null,
+          stockTotal:  total,
+          disponible:  Math.max(0, total - rented), // HU-158 — descuenta lo alquilado
+        }
+      }),
+    }
+  },
+}
+
 // ─── listar_alertas_activas ───────────────────────────────────────────────────
 
 const listarAlertasActivas: AgentTool = {
@@ -662,6 +738,7 @@ const consultarAlquileres: AgentTool = {
 
 export const KIRA_TOOLS: AgentTool[] = [
   consultarStock,
+  consultarProductos,
   listarAlertasActivas,
   registrarMovimiento,
   alertarEquipo,
