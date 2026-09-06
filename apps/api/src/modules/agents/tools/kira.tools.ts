@@ -442,7 +442,7 @@ const consultarMovimientos: AgentTool = {
         ...(dateFilter        ? { createdAt: dateFilter }                  : {}),
       },
       include: {
-        product: { select: { name: true, sku: true, unit: true } },
+        product: { select: { name: true, sku: true, unit: true, category: true } },
         branch:  { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -456,6 +456,7 @@ const consultarMovimientos: AgentTool = {
       movimientos: movements.map((m) => ({
         id:          m.id,
         producto:    m.product.name,
+        categoria:   m.product.category ?? null,
         sku:         m.product.sku,
         tipo:        m.type,
         cantidad:    Number(m.quantity),
