@@ -114,6 +114,27 @@ describe('HU-192 — selección de modelo híbrida (env)', () => {
     process.env['CLAUDE_MODEL_AGENT'] = 'modelo-x'
     expect(pickAgentModel('hola')).toBe('modelo-x')
   })
+
+  it('HU-193 — el asistente INTERNO usa Sonnet por defecto (razona bien), aun con consulta simple; nunca Opus', () => {
+    delete process.env['CLAUDE_MODEL_AGENT']; delete process.env['CLAUDE_MODEL_AGENT_COMPLEX']
+    delete process.env['AGENT_ESCALATE']; delete process.env['CLAUDE_MODEL_AGENT_INTERNAL']
+    const m = pickAgentModel('hola', 'INTERNO')
+    expect(m).toContain('sonnet')
+    expect(m).not.toContain('opus')
+    // La misma consulta simple sin módulo INTERNO sigue en Haiku (canal cliente/otros).
+    expect(pickAgentModel('hola')).toContain('haiku')
+  })
+
+  it('HU-193 — AGENT_ESCALATE=never fuerza el base también para INTERNO (candado de costo)', () => {
+    process.env['AGENT_ESCALATE'] = 'never'
+    expect(pickAgentModel('hola', 'INTERNO')).toContain('haiku')
+  })
+
+  it('HU-193 — CLAUDE_MODEL_AGENT_INTERNAL permite override en caliente del modelo interno', () => {
+    delete process.env['AGENT_ESCALATE']
+    process.env['CLAUDE_MODEL_AGENT_INTERNAL'] = 'modelo-interno-x'
+    expect(pickAgentModel('hola', 'INTERNO')).toBe('modelo-interno-x')
+  })
 })
 
 describe('HU-190 — cobertura completa del agente interno', () => {
@@ -166,5 +187,13 @@ describe('HU-190 — cobertura completa del agente interno', () => {
     expect(p).toMatch(/no existe en el sistema/i)     // aparece en la PROHIBICIÓN de decirlo
     expect(p).toMatch(/secretos de seguridad/i)
     expect(p).toMatch(/contraseñas, tokens/i)
+  })
+
+  it('HU-193 — el prompt exige razonar con conocimiento del mundo (categoriza "aseo" sin columna) y aconsejar/redactar', () => {
+    const p = getSystemPrompt('INTERNO', ctx, 'internal', ['Compras', 'Agenda'], 'TENANT_ADMIN')
+    expect(p).toMatch(/conocimiento del mundo/i)
+    expect(p).toMatch(/aseo/i)                       // ejemplo de categoría inferida sin columna
+    expect(p).toMatch(/aconseja y redacta/i)         // asistente, no solo buscador
+    expect(p).toMatch(/cobertura total/i)            // el admin puede preguntar cualquier cosa de su empresa
   })
 })

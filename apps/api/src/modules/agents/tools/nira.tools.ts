@@ -435,7 +435,7 @@ const consultarOrdenesCompra: AgentTool = {
       include: {
         supplier: { select: { name: true } },
         branch:   { select: { name: true } },
-        items:    { select: { quantityOrdered: true, unitCost: true } },
+        items:    { select: { quantityOrdered: true, unitCost: true, product: { select: { name: true, category: true } } } },
       },
       orderBy: { createdAt: 'desc' },
       take,
@@ -452,6 +452,7 @@ const consultarOrdenesCompra: AgentTool = {
         proveedor:   o.supplier?.name ?? null,
         sucursal:    o.branch?.name   ?? null,
         items:       o.items.length,
+        productos:   o.items.map((it) => ({ nombre: it.product?.name ?? null, categoria: it.product?.category ?? null, cantidad: Number(it.quantityOrdered) })),
         subtotal:    Number(o.subtotal).toFixed(2),
         total:       Number(o.total).toFixed(2),
         fecha:       o.createdAt.toISOString().split('T')[0],

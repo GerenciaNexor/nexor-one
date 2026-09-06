@@ -58,12 +58,17 @@ function isComplexQuery(message: string): boolean {
   return (message.match(/\?/g) ?? []).length >= 3
 }
 
-export function agentModel(message: string): string {
+export function agentModel(message: string, module?: AgentModule): string {
   const base    = process.env['CLAUDE_MODEL_AGENT']         ?? DEFAULT_AGENT_MODEL
   const complex = process.env['CLAUDE_MODEL_AGENT_COMPLEX'] ?? DEFAULT_AGENT_MODEL_COMPLEX
   const mode    = (process.env['AGENT_ESCALATE'] ?? 'auto').toLowerCase()
   if (mode === 'never')  return base
   if (mode === 'always') return complex
+  // HU-193 — El asistente INTERNO del dashboard debe SENTIRSE como un asistente, no como un bot:
+  // razona con conocimiento general (categoriza "aseo" sin columna), cruza datos y redacta consejos.
+  // Es uso interno y de bajo volumen → por defecto va al modelo con mejor razonamiento (Sonnet, NUNCA
+  // Opus). Se puede forzar el base con AGENT_ESCALATE=never o CLAUDE_MODEL_AGENT_INTERNAL.
+  if (module === 'INTERNO') return process.env['CLAUDE_MODEL_AGENT_INTERNAL'] ?? complex
   return isComplexQuery(message) ? complex : base
 }
 
@@ -334,7 +339,7 @@ export async function runAgent(input: AgentRunnerInput): Promise<AgentRunnerResu
   const isDemo = !!tenantDemo?.isDemo
   // En demo se fuerza el modelo Claude más barato (configurable por CLAUDE_MODEL_DEMO);
   // fuera de demo, la estrategia híbrida (Haiku por default, Sonnet solo si la consulta lo amerita).
-  const model = isDemo ? demoModel() : agentModel(input.message)
+  const model = isDemo ? demoModel() : agentModel(input.message, input.module)
 
   // HU-144/148 — Cupo TOTAL de mensajes de agente en la demo (candado de costo). El contador es
   // PERSISTENTE y a prueba de reseteo: se cuenta desde agent_logs (append-only) para ESTE tenant,
