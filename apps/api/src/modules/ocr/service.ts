@@ -6,9 +6,11 @@ const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
 // Usar Sonnet para OCR: más rápido y con excelente visión, reservamos Opus para el agente
 const OCR_MODEL = process.env['OCR_MODEL'] ?? 'claude-sonnet-4-6'
 
-// HU-191/192 — Modelo del OCR de FACTURAS del registro rápido: Haiku por defecto (céntimos por
-// factura, nunca Opus), configurable por env para subir a Sonnet si alguna factura lee mal.
-export const INVOICE_OCR_MODEL = process.env['OCR_INVOICE_MODEL'] ?? 'claude-haiku-4-5-20251001'
+// HU-195 — Modelo del OCR de FACTURAS del registro rápido: Sonnet por defecto. Haiku (HU-191/192)
+// leía mal facturas POS reales (mezclaba el NIT con el nombre del emisor, perdía el prefijo
+// alfanumérico del número de factura, confundía dígitos). El OCR es de baja frecuencia y la exactitud
+// importa más que el céntimo; nunca Opus. Configurable por env (OCR_INVOICE_MODEL) para bajar el costo.
+export const INVOICE_OCR_MODEL = process.env['OCR_INVOICE_MODEL'] ?? 'claude-sonnet-4-6'
 
 // ─── Tipos de respuesta ───────────────────────────────────────────────────────
 
@@ -138,7 +140,8 @@ Reglas estrictas:
 - quantity, unitPrice, total y discount son SIEMPRE números JavaScript, nunca strings
 - Los precios NO incluyen el símbolo de moneda en el JSON
 - Separadores numéricos: en Colombia el punto es separador de miles y la coma es decimal. Ejemplo: "1.234,56" → 1234.56; "45.000" → 45000
-- **NÚMERO DE FACTURA (invoiceNumber)**: extrae el número o código que identifica la factura. En facturas electrónicas colombianas (DIAN) suele ser el consecutivo con prefijo que acompaña a "Factura Electrónica de Venta", "Factura Nro.", "No.", "Nro", "Factura #", "Documento", "FE", "POS" o similar (ej: "GOZ5292464", "FE-1234", "FVE 001"). Toma el código de la factura en sí, NO el CUFE/CUDE, NI la resolución DIAN, NI el NIT. Si no aparece, usa null.
+- **NÚMERO DE FACTURA (invoiceNumber)**: extrae el número o código que identifica la factura. En facturas electrónicas colombianas (DIAN) suele ser el consecutivo con prefijo que acompaña a "Factura Electrónica de Venta", "Factura Nro.", "No.", "Nro", "Factura #", "Documento", "FE", "POS" o similar (ej: "GOZ5292464", "FE-1234", "FVE 001"). Cópialo EXACTAMENTE como aparece, respetando letras, dígitos y prefijos alfanuméricos: "GOZ5292464" se transcribe tal cual, NUNCA lo conviertas a solo dígitos ni le quites las letras. El prefijo (p. ej. "GOZ5") aparece cerca de la resolución DIAN ("Prefijo GOZ5") — únelo al consecutivo si van juntos en "Factura Electrónica de Venta". NO tomes el CUFE/CUDE, NI la resolución DIAN, NI el NIT. Si no aparece, usa null.
+- **EMISOR/PROVEEDOR y NIT (campos separados)**: en "supplier"/"client" pon SOLO la razón social o nombre del negocio (ej: "D1 SAS"). NO incluyas ahí el NIT, ni el régimen o textos fiscales ("Gran contribuyente", "Agente retenedor de IVA", "Res.", teléfono, dirección). El NIT/identificación va SOLO en su campo dedicado ("supplierNit"/"clientNit"), como dígitos con su verificador (ej: "900276962-1"), sin el prefijo "NIT". Lee los dígitos con cuidado, sin agregar ni quitar ninguno.
 - Fechas en formato YYYY-MM-DD; si solo hay mes/año usa YYYY-MM-01
 - Si un campo opcional no aparece en el documento usa null directamente (no el objeto)
 - Si no hay descuento usa null, no 0
@@ -215,8 +218,8 @@ export async function extractDocument(params: {
   fileName:   string
   docType:    DocumentType | null
   tenantId:   string
-  /** HU-191 — modelo por-llamada. El flujo de facturas del registro rápido pasa Haiku (disciplina de
-   *  costos HU-192); OC/Cotización omiten → usan OCR_MODEL (Sonnet) y conservan su precisión. */
+  /** Modelo por-llamada. El flujo de facturas pasa INVOICE_OCR_MODEL (Sonnet — HU-195, exactitud en
+   *  facturas POS reales); OC/Cotización omiten → usan OCR_MODEL (Sonnet). Configurable por env. */
   model?:     string
 }): Promise<ExtractionResult> {
   const { fileBuffer, fileName, docType } = params
