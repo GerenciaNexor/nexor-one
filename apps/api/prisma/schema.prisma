@@ -923,6 +923,7 @@ model QuickInvoice {
   kind           String    @db.VarChar(20)                     // purchase | sale
   issuer         String?   @db.VarChar(255)                    // emisor de la factura
   nit            String?   @db.VarChar(50)
+  invoiceNumber  String?   @map("invoice_number") @db.VarChar(100) // HU-195 — número/código de la factura
   invoiceDate    DateTime? @map("invoice_date") @db.Date
   total          Decimal?  @db.Decimal(15, 2)
   fullExtraction Json      @map("full_extraction")             // factura COMPLETA (ningún dato leído se pierde)

@@ -121,6 +121,7 @@ export const RegisterInvoiceSchema = z.object({
   // Encabezado leído (columnas propias de la factura).
   issuer:         z.string().max(255).nullish(),
   nit:            z.string().max(50).nullish(),
+  invoiceNumber:  z.string().max(100).nullish(),  // HU-195 — número/código de la factura
   total:          z.number().nonnegative().nullish(),
   // Imagen comprimida (miniatura) + factura COMPLETA leída (nada se pierde).
   imageBase64:    z.string().optional(),

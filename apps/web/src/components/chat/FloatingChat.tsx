@@ -18,6 +18,7 @@ import { useChatStore, type ChatMessage, type ChatSession } from '@/store/chat'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { MarkdownMessage } from '@/components/chat/MarkdownMessage'
+import { useVisualViewportHeight } from '@/lib/use-viewport-height'
 
 // ─── Tipos de la API ──────────────────────────────────────────────────────────
 
@@ -127,6 +128,9 @@ export function FloatingChat() {
   const inputRef        = useRef<HTMLTextAreaElement>(null)
   const chatWindowRef   = useRef<HTMLDivElement>(null)
   const isSendingRef    = useRef(false)
+
+  // Móvil (pantalla completa): ajustar la altura al área visible para que el teclado no tape el input.
+  useVisualViewportHeight(chatWindowRef)
 
   // ── Scroll al último mensaje ─────────────────────────────────────────────────
   useEffect(() => {
@@ -288,10 +292,10 @@ export function FloatingChat() {
             // Base: posición fija, z-index alto, fondo blanco, borde y sombra
             'fixed z-50 flex flex-col overflow-hidden',
             'bg-white shadow-2xl',
-            // Mobile: pantalla completa
-            'inset-0 rounded-none',
+            // Mobile: pantalla completa (altura = área visible real; el hook la fija sobre el teclado)
+            'inset-x-0 top-0 h-[100dvh] rounded-none',
             // Desktop: ventana compacta flotante
-            'lg:inset-auto lg:bottom-24 lg:right-6',
+            'lg:inset-auto lg:bottom-24 lg:right-6 lg:top-auto',
             'lg:w-[380px] lg:h-[520px]',
             'lg:rounded-2xl lg:border lg:border-slate-200',
             // Animación de entrada

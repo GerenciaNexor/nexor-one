@@ -38,6 +38,8 @@ interface BaseExtraction {
   canRead:            boolean
   readabilityIssues:  string | null
   confidence:         Confidence
+  // HU-195 — número/código de la factura (compras y ventas). Campo dedicado, editable y visible.
+  invoiceNumber:      FieldValue | null
   date:               FieldValue | null
   items:              LineItem[]
   total:              FieldValue<number> | null
@@ -91,6 +93,7 @@ Para tipo "quote":
   "confidence": "high|medium|low",
   "client":    { "value": "nombre del cliente o empresa", "confidence": "high|medium|low" },
   "clientNit": { "value": "NIT o CC/identificación del cliente", "confidence": "high|medium|low" },
+  "invoiceNumber": { "value": "número o código de la factura", "confidence": "high|medium|low" },
   "date": { "value": "YYYY-MM-DD", "confidence": "high|medium|low" },
   "items": [
     {
@@ -112,6 +115,7 @@ Para tipo "order":
   "confidence": "high|medium|low",
   "supplier":     { "value": "nombre del proveedor", "confidence": "high|medium|low" },
   "supplierNit":  { "value": "NIT o identificación tributaria", "confidence": "high|medium|low" },
+  "invoiceNumber": { "value": "número o código de la factura", "confidence": "high|medium|low" },
   "date":         { "value": "YYYY-MM-DD", "confidence": "high|medium|low" },
   "items": [
     {
@@ -134,6 +138,7 @@ Reglas estrictas:
 - quantity, unitPrice, total y discount son SIEMPRE números JavaScript, nunca strings
 - Los precios NO incluyen el símbolo de moneda en el JSON
 - Separadores numéricos: en Colombia el punto es separador de miles y la coma es decimal. Ejemplo: "1.234,56" → 1234.56; "45.000" → 45000
+- **NÚMERO DE FACTURA (invoiceNumber)**: extrae el número o código que identifica la factura. En facturas electrónicas colombianas (DIAN) suele ser el consecutivo con prefijo que acompaña a "Factura Electrónica de Venta", "Factura Nro.", "No.", "Nro", "Factura #", "Documento", "FE", "POS" o similar (ej: "GOZ5292464", "FE-1234", "FVE 001"). Toma el código de la factura en sí, NO el CUFE/CUDE, NI la resolución DIAN, NI el NIT. Si no aparece, usa null.
 - Fechas en formato YYYY-MM-DD; si solo hay mes/año usa YYYY-MM-01
 - Si un campo opcional no aparece en el documento usa null directamente (no el objeto)
 - Si no hay descuento usa null, no 0
@@ -142,12 +147,12 @@ Reglas estrictas:
 
 CAPTURA TOTAL (regla dura — nada se pierde): además de los campos de arriba, extrae TODA otra
 información que aparezca en la factura y NO tenga un campo propio, en el arreglo "additionalFields"
-como pares { "label": "...", "value": "..." }. Incluye (solo si aparecen, nunca inventes): número de
-factura/documento, cliente y su NIT/CC/identificación, vendedor/cajero, forma de pago, subtotal,
-IVA/impuestos y su base, descuentos, retenciones, puntos/fidelización, resolución DIAN y su rango,
-dirección, teléfono/contacto, correo, moneda, términos, observaciones, código QR/CUFE, etc. Usa el
-mismo nombre/etiqueta que muestra la factura ("Vendedor", "Factura Nro.", "CC", "Puntos"…). Si un dato
-YA está en un campo propio (emisor, NIT del emisor, fecha, total, ítems) NO lo repitas aquí. Si la
+como pares { "label": "...", "value": "..." }. Incluye (solo si aparecen, nunca inventes): cliente y
+su NIT/CC/identificación, vendedor/cajero, forma de pago, subtotal, IVA/impuestos y su base,
+descuentos, retenciones, puntos/fidelización, resolución DIAN y su rango, dirección,
+teléfono/contacto, correo, moneda, términos, observaciones, código QR/CUFE, etc. Usa el mismo
+nombre/etiqueta que muestra la factura ("Vendedor", "CC", "Puntos"…). Si un dato YA está en un campo
+propio (emisor, NIT del emisor, número de factura, fecha, total, ítems) NO lo repitas aquí. Si la
 factura no trae datos adicionales, devuelve "additionalFields": [].`
 }
 
