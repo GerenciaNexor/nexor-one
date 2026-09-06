@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api-client'
 import { getCache, setCache } from '@/lib/page-cache'
 import { RemindersPanel } from '@/components/reminders/RemindersPanel'
-import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
+import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -541,7 +541,7 @@ export default function InicioPage() {
         </div>
       </div>
 
-      {quick && <QuickRegisterModal initialMode={quick} onClose={() => setQuick(null)} onSuccess={() => setQuick(null)} />}
+      {quick && <InvoiceUploadModal kind={quick} startManual onClose={() => setQuick(null)} onSuccess={() => setQuick(null)} />}
     </div>
   )
 }

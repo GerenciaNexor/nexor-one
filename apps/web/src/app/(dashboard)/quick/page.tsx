@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate } from '@/lib/format-date'
-import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -106,7 +105,7 @@ export default function QuickRegistersPage() {
       </div>
 
       {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
-      {modal && <QuickRegisterModal initialMode={modal} onClose={() => setModal(null)} onSuccess={() => { setModal(null); load() }} />}
+      {modal && <InvoiceUploadModal kind={modal} startManual onClose={() => setModal(null)} onSuccess={() => { setModal(null); load() }} />}
       {invoice && <InvoiceUploadModal kind={invoice} onClose={() => setInvoice(null)} onSuccess={() => { setInvoice(null); load() }} />}
     </div>
   )

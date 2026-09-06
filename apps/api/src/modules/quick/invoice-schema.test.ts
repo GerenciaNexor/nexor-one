@@ -29,10 +29,10 @@ describe('HU-191 — RegisterInvoiceSchema', () => {
     expect(r.success).toBe(true)
   })
 
-  it('venta: ítem sin productId → inválido (agregar es obligatorio)', () => {
-    const r = RegisterInvoiceSchema.safeParse({ ...base, kind: 'sale', items: [{ description: 'X', quantity: 1, unitValue: 10 }] })
-    expect(r.success).toBe(false)
-    if (!r.success) expect(r.error.issues[0]!.path).toContain('productId')
+  it('venta: ítem sin productId → válido (servicio / venta sin inventario, solo ingreso)', () => {
+    // Unificación con el registro manual: una venta puede ser un servicio sin producto (solo ingreso).
+    const r = RegisterInvoiceSchema.safeParse({ kind: 'sale', fullExtraction: {}, items: [{ description: 'Mano de obra', quantity: 1, unitValue: 10 }] })
+    expect(r.success).toBe(true) // sin producto → no afecta stock → no exige sucursal
   })
 
   it('venta: ítem con productId → válido', () => {

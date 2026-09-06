@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
-import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 
 type Kind = 'purchase' | 'sale'
@@ -81,8 +80,10 @@ async function processFile(file: File): Promise<{ blob: Blob; base64: string; mi
   return { blob, base64: await blobToBase64(blob), mime: 'image/jpeg' }
 }
 
-export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
+export function InvoiceUploadModal({ kind, startManual = false, onClose, onSuccess }: {
   kind: Kind
+  /** Arranca en registro MANUAL (sin foto): misma interfaz de revisión, en blanco. */
+  startManual?: boolean
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -91,7 +92,15 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
   const isSale      = kind === 'sale'
   const inputRef    = useRef<HTMLInputElement>(null)
 
-  const [phase, setPhase]   = useState<'upload' | 'review' | 'manual'>('upload')
+  // Un ítem vacío para el registro manual (misma forma que los ítems leídos por foto).
+  const emptyItem = (): ItemState => ({
+    description: '', quantity: '1', unitValue: '', productId: null, productName: null,
+    inInventory: false, confidence: '', addToInventory: isSale, newSku: '', newUnit: 'unidad',
+    newSalePrice: '', mapQuery: '',
+  })
+
+  const [phase, setPhase]   = useState<'upload' | 'review'>(startManual ? 'review' : 'upload')
+  const [manual, setManual] = useState(startManual) // registro manual (sin foto) vs. lectura por imagen
   const [loading, setLoading] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
   const [unreadable, setUnreadable] = useState<string | null>(null)
@@ -112,7 +121,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
   const [cpId, setCpId]         = useState('')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
   const [projectId, setProjectId] = useState('')
-  const [items, setItems]       = useState<ItemState[]>([])
+  const [items, setItems]       = useState<ItemState[]>(startManual ? [emptyItem()] : [])
 
   const [additional, setAdditional] = useState<{ label: string; value: string }[]>([])
   const [counterparties, setCP] = useState<Opt[]>([])
@@ -130,7 +139,7 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
     const file = e.target.files?.[0]
     if (inputRef.current) inputRef.current.value = ''
     if (!file) return
-    setErr(null); setUnreadable(null); setLoading(true)
+    setErr(null); setUnreadable(null); setLoading(true); setManual(false)
     try {
       const proc = await processFile(file)
       setImage({ base64: proc.base64, mime: proc.mime })
@@ -191,6 +200,10 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
   }
 
   function patch(i: number, p: Partial<ItemState>) { setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, ...p } : it)) }
+  function addItem() { setItems((prev) => [...prev, emptyItem()]) }
+  function removeItem(i: number) { setItems((prev) => prev.filter((_, idx) => idx !== i)) }
+  // Registro manual (sin foto): misma interfaz de revisión, arrancando en blanco.
+  function goManual() { setUnreadable(null); setErr(null); setImage(null); setFull(null); setManual(true); setItems([emptyItem()]); setPhase('review') }
   function mapToProduct(i: number, prod: Prod) {
     patch(i, { productId: prod.id, productName: prod.name, inInventory: true, mapQuery: '',
       unitValue: items[i]!.unitValue || String((isSale ? prod.salePrice : prod.costPrice) ?? '') })
@@ -200,15 +213,15 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
 
   async function confirm() {
     setErr(null)
+    if (items.length === 0) { setErr('Agrega al menos un ítem.'); return }
     for (const it of items) {
+      if (!it.description.trim()) { setErr('Describe cada ítem.'); return }
       if (!(Number(it.quantity) > 0)) { setErr(`Indica la cantidad de "${it.description}".`); return }
       if (it.unitValue === '' || Number(it.unitValue) < 0) { setErr(`Indica el ${isSale ? 'precio' : 'costo'} de "${it.description}".`); return }
-      if (!it.productId) {
-        if (isSale) { setErr(`"${it.description}" no está en inventario: mapéalo a un producto existente antes de vender.`); return }
-        if (it.addToInventory) {
-          if (!it.newSku.trim()) { setErr(`Indica el SKU para agregar "${it.description}".`); return }
-          if (it.newSalePrice === '' || Number(it.newSalePrice) <= 0) { setErr(`Indica el precio de venta para "${it.description}".`); return }
-        }
+      // Compra: si se marca crear producto nuevo, pide SKU y precio de venta. Venta sin producto = servicio (ok).
+      if (!it.productId && !isSale && it.addToInventory) {
+        if (!it.newSku.trim()) { setErr(`Indica el SKU para agregar "${it.description}".`); return }
+        if (it.newSalePrice === '' || Number(it.newSalePrice) <= 0) { setErr(`Indica el precio de venta para "${it.description}".`); return }
       }
     }
     if (!isOperative && items.some((it) => it.productId || (!isSale && it.addToInventory)) && !branchId) { setErr('Selecciona la sucursal.'); return }
@@ -239,8 +252,6 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
     } finally { setSaving(false) }
   }
 
-  if (phase === 'manual') return <QuickRegisterModal initialMode={kind} lockMode onClose={onClose} onSuccess={onSuccess} />
-
   const inp = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
   const lbl = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400'
 
@@ -249,10 +260,16 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
         <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Cargar factura por foto — {isSale ? 'Venta' : 'Compra'} rápida</h3>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              {manual ? `Registro rápido — ${isSale ? 'Venta' : 'Compra'}` : `Cargar factura por foto — ${isSale ? 'Venta' : 'Compra'} rápida`}
+            </h3>
             <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">La lectura te propone los datos; tú los revisas y corriges antes de guardar. Una imagen a la vez.</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {manual
+              ? `Una ${isSale ? 'venta' : 'compra'} que ya ocurrió. Agrega uno o varios ítems; se registra completada, sin aprobación.`
+              : 'La lectura te propone los datos; tú los revisas y corriges antes de guardar. Una imagen a la vez.'}
+          </p>
 
           {/* ── Fase subir ── */}
           {phase === 'upload' && (
@@ -263,10 +280,11 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                 {loading ? 'Leyendo la factura…' : '📷 Selecciona una foto de la factura'}
               </button>
               <p className="text-xs text-slate-400">JPG, PNG, WEBP o PDF · se comprime automáticamente</p>
+              <button onClick={goManual} className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">o ingresar los datos manualmente</button>
               {unreadable && (
                 <div className="mt-2 w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
                   {unreadable}
-                  <button onClick={() => setPhase('manual')} className="ml-2 font-semibold underline">Ingresar manualmente</button>
+                  <button onClick={goManual} className="ml-2 font-semibold underline">Ingresar manualmente</button>
                 </div>
               )}
               {err && <p className="text-sm text-red-600 dark:text-red-400">{err}</p>}
@@ -289,21 +307,28 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                       {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select></div>
                 )}
-                <div><label className={lbl}>Emisor (leído)</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inp} placeholder="Nombre en la factura" /></div>
-                <div><label className={lbl}>NIT</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
+                <div><label className={lbl}>{manual ? 'Emisor' : 'Emisor (leído)'}</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inp} placeholder={manual ? 'Nombre del proveedor/emisor' : 'Nombre en la factura'} /></div>
+                <div><label className={lbl}>NIT o documento</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>Fecha</label><input type="date" value={date?.slice(0, 10) ?? ''} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
-                <div><label className={lbl}>Total (leído)</label><input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className={inp} /></div>
+                <div><label className={lbl}>{manual ? 'Total' : 'Total (leído)'}</label><input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className={inp} /></div>
                 {/* Proyecto (HU-199) — asigna toda la factura a un proyecto (opcional) */}
                 <div className="col-span-2"><ProjectSelect value={projectId} onChange={setProjectId} className={inp} /></div>
               </div>
 
               {/* Ítems */}
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Ítems leídos ({items.length})</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{manual ? 'Ítems' : 'Ítems leídos'} ({items.length})</p>
+                  <button type="button" onClick={addItem} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">+ Añadir ítem</button>
+                </div>
                 <div className="space-y-2">
                   {items.map((it, i) => (
-                    <div key={i} className={`rounded-xl border p-3 ${it.inInventory ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-900/10' : 'border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-900/10'}`}>
-                      <div className="grid grid-cols-12 gap-2">
+                    <div key={i} className={`relative rounded-xl border p-3 ${it.inInventory ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-900/10' : 'border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-900/10'}`}>
+                      {items.length > 1 && (
+                        <button type="button" onClick={() => removeItem(i)} aria-label="Quitar ítem"
+                          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30">✕</button>
+                      )}
+                      <div className="grid grid-cols-12 gap-2 pr-5">
                         <input value={it.description} onChange={(e) => patch(i, { description: e.target.value })} className={`${inp} col-span-6`} placeholder="Descripción" />
                         <input type="number" min="0" value={it.quantity} onChange={(e) => patch(i, { quantity: e.target.value })} className={`${inp} col-span-2`} placeholder="Cant." />
                         <input type="number" min="0" value={it.unitValue} onChange={(e) => patch(i, { unitValue: e.target.value })} className={`${inp} col-span-4`} placeholder={isSale ? 'Precio unit.' : 'Costo unit.'} />
@@ -319,9 +344,9 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                         ) : (
                           <div className="space-y-2">
                             <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                              No está en inventario — {isSale ? 'debes agregarlo (mapear a un producto)' : '¿lo agregas?'}
+                              No está en inventario — {isSale ? 'se registra como servicio (opcional: mapéalo a un producto)' : '¿lo agregas?'}
                             </span>
-                            {/* Mapear a existente (corrige el match; obligatorio en venta) */}
+                            {/* Mapear a un producto existente (opcional): afecta stock si se mapea. */}
                             <div className="relative">
                               <input value={it.mapQuery} onChange={(e) => patch(i, { mapQuery: e.target.value })} className={inp} placeholder="Buscar producto existente para mapear…" />
                               {it.mapQuery.trim() && (
@@ -348,7 +373,8 @@ export function InvoiceUploadModal({ kind, onClose, onSuccess }: {
                                 <input type="number" value={it.newSalePrice} onChange={(e) => patch(i, { newSalePrice: e.target.value })} className={inp} placeholder="Precio venta *" />
                               </div>
                             )}
-                            {!isSale && !it.addToInventory && <p className="text-slate-500">Quedará solo en el registro de la factura (sin tocar stock).</p>}
+                            {!isSale && !it.addToInventory && <p className="text-slate-500">Quedará solo en el registro (sin tocar stock).</p>}
+                            {isSale && <p className="text-slate-500">Se registra como ingreso (servicio), sin afectar inventario.</p>}
                           </div>
                         )}
                       </div>
