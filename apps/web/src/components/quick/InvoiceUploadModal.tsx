@@ -30,6 +30,7 @@ interface ExtractResult {
   kind?: Kind
   issuer?: string | null
   nit?: string | null
+  invoiceNumber?: string | null
   date?: string | null
   total?: number | null
   items?: ExtractedItem[]
@@ -112,6 +113,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
   // Encabezado (editable).
   const [issuer, setIssuer] = useState('')
   const [nit, setNit]       = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState('')
   const [date, setDate]     = useState('')
   const [total, setTotal]   = useState('')
   // Valores emisor/NIT tal como los LEYÓ la factura (para restaurarlos si se vuelve al genérico).
@@ -159,7 +161,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
       setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
       const readI = data.issuer ?? '', readN = data.nit ?? ''
       readIssuer.current = readI; readNit.current = readN
-      setIssuer(readI); setNit(readN); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
+      setIssuer(readI); setNit(readN); setInvoiceNumber(data.invoiceNumber ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
 
       // ── Auto-selección de proveedor si el emisor/NIT leído coincide con uno existente (compra). ──
       // No tiene sentido volver a elegirlo a mano si la factura ya trae esos datos.
@@ -242,7 +244,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
         kind, ...(isSale ? { clientId: cpId || null } : { supplierId: cpId || null }),
         branchId: branchId || undefined, date: date || undefined,
         ...(projectId ? { projectId } : {}), // HU-199 — asignación opcional a un proyecto
-        issuer: issuer || null, nit: nit || null, total: total ? Number(total) : null,
+        issuer: issuer || null, nit: nit || null, invoiceNumber: invoiceNumber || null, total: total ? Number(total) : null,
         imageBase64: image?.base64, imageMime: image?.mime, fullExtraction: fullExtraction ?? {},
         items: payloadItems,
       })
@@ -309,6 +311,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
                 )}
                 <div><label className={lbl}>{manual ? 'Emisor' : 'Emisor (leído)'}</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inp} placeholder={manual ? 'Nombre del proveedor/emisor' : 'Nombre en la factura'} /></div>
                 <div><label className={lbl}>NIT o documento</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
+                <div><label className={lbl}>{manual ? 'N.º de factura' : 'N.º de factura (leído)'}</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={inp} placeholder="Ej: GOZ5292464" /></div>
                 <div><label className={lbl}>Fecha</label><input type="date" value={date?.slice(0, 10) ?? ''} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>{manual ? 'Total' : 'Total (leído)'}</label><input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className={inp} /></div>
                 {/* Proyecto (HU-199) — asigna toda la factura a un proyecto (opcional) */}

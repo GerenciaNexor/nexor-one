@@ -82,6 +82,12 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
     ? await prisma.user.findMany({ where: { tenantId, id: { in: authorIds } }, select: { id: true, name: true } })
     : []
   const authorName = new Map(authors.map((u) => [u.id, u.name]))
+  // HU-195 — número/código de la factura de origen (si el registro vino de una factura OCR/foto).
+  const invoiceIds = [...new Set(rows.map((r) => r.quickInvoiceId).filter((x): x is string => !!x))]
+  const invoices = invoiceIds.length
+    ? await prisma.quickInvoice.findMany({ where: { tenantId, id: { in: invoiceIds } }, select: { id: true, invoiceNumber: true } })
+    : []
+  const invoiceNumberById = new Map(invoices.map((i) => [i.id, i.invoiceNumber]))
   // La descripción tiene el formato "Compra/Venta rápida — <detalle> (<contraparte>)".
   const parse = (desc: string) => {
     const cp = desc.match(/\(([^()]+)\)\s*$/)?.[1] ?? null
@@ -110,6 +116,7 @@ export async function listQuickRegisters(tenantId: string, opts: { kind?: 'purch
         // HU-194-C — origen + autor + cuándo (para el detalle del historial).
         origin:           r.quickInvoiceId ? 'invoice' : 'manual',
         invoiceId:        r.quickInvoiceId ?? null,
+        invoiceNumber:    r.quickInvoiceId ? (invoiceNumberById.get(r.quickInvoiceId) ?? null) : null,
         createdByName:    r.createdBy ? (authorName.get(r.createdBy) ?? null) : null,
         createdAt:        r.createdAt,
       }
@@ -368,6 +375,7 @@ export async function extractInvoice(params: {
   return {
     canRead: true, kind,
     issuer: header.issuer, nit: header.nit,
+    invoiceNumber: result.invoiceNumber?.value ?? null,  // HU-195 — número/código de la factura
     date:   result.date?.value ?? null,
     total:  result.total?.value ?? null,
     items,
@@ -409,7 +417,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
-        issuer: input.issuer ?? null, nit: input.nit ?? null,
+        issuer: input.issuer ?? null, nit: input.nit ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
         imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
@@ -462,7 +470,7 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
+    select: { id: true, kind: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
   // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
@@ -480,6 +488,8 @@ export async function getInvoice(tenantId: string, id: string) {
   const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
     id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
+    // HU-195 — número/código de factura: columna dedicada, con fallback a facturas viejas (JSON).
+    invoiceNumber: inv.invoiceNumber ?? invoiceNumberOf(inv.fullExtraction),
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
     hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction,
     createdAt: inv.createdAt, createdByName: author?.name ?? null,
@@ -508,17 +518,17 @@ export async function listInvoices(tenantId: string, opts: {
   if (opts.maxTotal != null) conds.push(Prisma.sql`total <= ${opts.maxTotal}`)
   if (opts.q?.trim()) {
     const like = `%${opts.q.trim()}%`
-    // El número de factura vive en full_extraction (info adicional): se busca sobre el texto del JSON.
-    conds.push(Prisma.sql`(issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like})`)
+    // Número de factura: columna dedicada (HU-195) + full_extraction (facturas viejas/otros datos).
+    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like})`)
   }
   const where  = Prisma.join(conds, ' AND ')
   const offset = (opts.page - 1) * opts.limit
 
   const rows = await prisma.$queryRaw<Array<{
-    id: string; kind: string; issuer: string | null; nit: string | null; invoice_date: Date | null
+    id: string; kind: string; issuer: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
     total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
   }>>(Prisma.sql`
-    SELECT id, kind, issuer, nit, invoice_date, total, image_mime, full_extraction, created_at
+    SELECT id, kind, issuer, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
     FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
   const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
   const total = Number(countRes[0]?.n ?? 0)
@@ -527,7 +537,7 @@ export async function listInvoices(tenantId: string, opts: {
     data: rows.map((r) => ({
       id: r.id, kind: r.kind, issuer: r.issuer, nit: r.nit,
       date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
-      invoiceNumber: invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
+      invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
     })),
     total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
   }

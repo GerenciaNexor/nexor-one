@@ -40,6 +40,12 @@ describe('HU-191 — RegisterInvoiceSchema', () => {
     expect(r.success).toBe(true)
   })
 
+  it('HU-195 — acepta el número/código de factura en el encabezado', () => {
+    const r = RegisterInvoiceSchema.safeParse({ ...base, kind: 'purchase', invoiceNumber: 'GOZ5292464', items: [{ description: 'X', quantity: 1, unitValue: 10, productId: 'p1' }] })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.invoiceNumber).toBe('GOZ5292464')
+  })
+
   it('sucursal obligatoria si un ítem afecta stock', () => {
     const r = RegisterInvoiceSchema.safeParse({ kind: 'purchase', fullExtraction: {}, items: [{ description: 'X', quantity: 1, unitValue: 10, productId: 'p1' }] })
     expect(r.success).toBe(false)

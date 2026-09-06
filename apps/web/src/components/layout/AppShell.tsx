@@ -12,6 +12,7 @@ import { useChatStore } from '@/store/chat'
 import { useTheme } from '@/hooks/useTheme'
 import { getCache, setCache } from '@/lib/page-cache'
 import { AccountModal } from '@/components/ui/AccountModal'
+import { useVisualViewportHeight } from '@/lib/use-viewport-height'
 
 // ─── Normalización de links de notificaciones (compatibilidad con links legacy) ─
 
@@ -129,6 +130,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const chatUnread = useChatStore((s) => s.unreadCount)
   const { theme, toggle: toggleTheme } = useTheme()
+
+  // Móvil: ajustar la altura de la app al área visible real para que el teclado virtual no tape los
+  // inputs (chat y formularios). Ver useVisualViewportHeight.
+  const shellRef = useRef<HTMLDivElement>(null)
+  useVisualViewportHeight(shellRef)
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>(() => getCache<Record<string, boolean>>('feature-flags') ?? {})
@@ -280,7 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   })()
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div ref={shellRef} className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
       <SentryUserContext />
 
       {/* Overlay movil */}
