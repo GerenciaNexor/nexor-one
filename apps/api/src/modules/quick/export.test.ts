@@ -17,7 +17,9 @@ const reg = (over: Partial<QuickRegisterRow> = {}): QuickRegisterRow => ({
 
 async function readSheet(buf: Buffer) {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(buf)
+  // Cast al tipo exacto del parámetro: los @types/node recientes hacen Buffer genérico y choca con
+  // la firma de ExcelJS.load (Buffer<ArrayBufferLike> vs Buffer).
+  await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0])
   return wb.worksheets[0]!
 }
 
