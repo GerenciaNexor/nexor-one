@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { fmtDateTime } from '@/lib/format-date'
-import { QuickRegisterModal } from '@/components/quick/QuickRegisterModal'
 import { InvoiceUploadModal } from '@/components/quick/InvoiceUploadModal'
 import { InvoicesPanel } from '@/components/quick/InvoicesPanel'
 import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
@@ -113,7 +112,7 @@ export default function QuickPurchasesPage() {
       )}
 
       {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
-      {modal && <QuickRegisterModal initialMode="purchase" lockMode onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
+      {modal && <InvoiceUploadModal kind="purchase" startManual onClose={() => setModal(false)} onSuccess={() => { setModal(false); load() }} />}
       {invoice && <InvoiceUploadModal kind="purchase" onClose={() => setInvoice(false)} onSuccess={() => { setInvoice(false); load() }} />}
     </div>
   )

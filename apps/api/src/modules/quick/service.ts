@@ -429,10 +429,12 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
         const r = await applyPurchaseItem(tx, tenantId, userId, { supplierName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id, projectId }, line)
         resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, addedToInventory: adds && !!item.newProduct, affectsStock: adds, ...r })
       } else {
-        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id, projectId }, {
-          affectsInventory: true, branchId: effectiveBranch, productId: item.productId!, quantity: item.quantity, unitPrice: item.unitValue,
-        })
-        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: true, ...r })
+        // Venta: con producto → afecta stock; sin producto → servicio/venta sin inventario (solo ingreso).
+        const line = item.productId
+          ? { affectsInventory: true,  branchId: effectiveBranch, productId: item.productId, quantity: item.quantity, unitPrice: item.unitValue }
+          : { affectsInventory: false, branchId: effectiveBranch, description: item.description, amount: item.quantity * item.unitValue }
+        const r = await applySaleItem(tx, tenantId, userId, { clientName: counterpartyName, categoryId, now, quickInvoiceId: invoice.id, projectId }, line)
+        resolution.push({ description: item.description, quantity: item.quantity, unitValue: item.unitValue, affectsStock: !!item.productId, ...r })
       }
     }
 

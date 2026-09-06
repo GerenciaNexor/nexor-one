@@ -129,20 +129,17 @@ export const RegisterInvoiceSchema = z.object({
   items:          z.array(InvoiceItemSchema).min(1, 'La factura debe tener al menos un ítem'),
 }).superRefine((d, ctx) => {
   d.items.forEach((it, i) => {
-    if (d.kind === 'sale') {
-      // Venta: agregar es OBLIGATORIO — cada ítem debe quedar mapeado a un producto existente
-      // (el usuario lo crea antes vía el alta de producto, y llega con productId).
-      if (!it.productId) ctx.addIssue({ code: 'custom', path: ['items', i, 'productId'], message: `El ítem "${it.description}" no existe en inventario: agrégalo antes de vender.` })
-    } else {
-      // Compra: si se agrega (addToInventory !== false) debe haber producto existente o nuevo.
+    // Venta: un ítem con productId afecta stock; sin productId es una venta de servicio (solo ingreso) — permitido.
+    // Compra: si se agrega al inventario (addToInventory !== false) debe haber producto existente o nuevo.
+    if (d.kind === 'purchase') {
       const adds = it.addToInventory !== false
       if (adds && !it.productId && !it.newProduct) {
         ctx.addIssue({ code: 'custom', path: ['items', i, 'productId'], message: `Selecciona un producto existente o crea uno nuevo para "${it.description}", o marca no agregarlo al inventario.` })
       }
     }
   })
-  // Si algún ítem afecta stock, la sucursal es obligatoria.
-  const anyStock = d.kind === 'sale' || d.items.some((it) => it.addToInventory !== false && (it.productId || it.newProduct))
+  // La sucursal es obligatoria solo si algún ítem afecta stock (producto existente, o alta en compra).
+  const anyStock = d.items.some((it) => !!it.productId) || (d.kind === 'purchase' && d.items.some((it) => it.addToInventory !== false && !!it.newProduct))
   if (anyStock && !d.branchId) ctx.addIssue({ code: 'custom', path: ['branchId'], message: 'Selecciona la sucursal' })
 })
 
