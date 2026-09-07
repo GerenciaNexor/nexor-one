@@ -40,7 +40,7 @@ export async function listQuickProducts(tenantId: string) {
 
 export async function listQuickSuppliers(tenantId: string) {
   await ensureGenericSupplier(prisma, tenantId)
-  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true, taxId: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
+  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true, taxId: true, documentType: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
   return { data, total: data.length }
 }
 
@@ -453,7 +453,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
-        issuer: input.issuer ?? null, nit: input.nit ?? null, invoiceNumber: input.invoiceNumber ?? null,
+        issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
         imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
@@ -506,7 +506,7 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
+    select: { id: true, kind: true, issuer: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
   // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
@@ -523,7 +523,7 @@ export async function getInvoice(tenantId: string, id: string) {
   // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
   const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
-    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit, documentType: inv.documentType,
     // HU-195 — número/código de factura: columna dedicada, con fallback a facturas viejas (JSON).
     invoiceNumber: inv.invoiceNumber ?? invoiceNumberOf(inv.fullExtraction),
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
