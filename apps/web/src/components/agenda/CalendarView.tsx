@@ -38,7 +38,7 @@ export interface Reminder {
 }
 
 type ViewMode  = 'week' | 'day' | 'month'
-interface Branch     { id: string; name: string }
+interface Branch     { id: string; name: string; isActive?: boolean }
 interface CreateSlot { date: string; time: string; branchId: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────

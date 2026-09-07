@@ -105,7 +105,7 @@ export function DealFormModal({ mode, deal, stages, initialStageId, onClose, onS
     apiClient.get<{ data: User[] }>('/v1/users')
       .then((res) => setUsers(res.data))
       .catch(() => {})
-    apiClient.get<{ data: Branch[] }>('/v1/branches')
+    apiClient.get<{ data: Branch[] }>('/v1/branches?active=true')
       .then((res) => setBranches(res.data))
       .catch(() => {})
   }, [])

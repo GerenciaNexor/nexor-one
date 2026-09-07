@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import type { Appointment } from './CalendarView'
 
-interface Branch  { id: string; name: string }
+interface Branch  { id: string; name: string; isActive?: boolean }
 interface Service { id: string; name: string; durationMinutes: number; price: number | null }
 interface Slot    {
   startTime: string
@@ -172,7 +172,8 @@ export function AppointmentFormModal({
                   className={inputCls + ' disabled:opacity-60'}
                 >
                   <option value="">Seleccionar sucursal</option>
-                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {/* HU-197 — solo sucursales activas para agendar (una desactivada conserva su histórico). */}
+                  {branches.filter((b) => b.isActive !== false).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
 

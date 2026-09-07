@@ -88,8 +88,10 @@ async function resolveSucursalIds(
   const hasSucursal = rows.some((r) => r['sucursal_id'] != null && r['sucursal_id'] !== '')
   if (!hasSucursal) return rows
 
+  // HU-197 — solo sedes ACTIVAS: la carga masiva crea registros nuevos; una sede desactivada
+  // conserva su histórico pero no admite operaciones nuevas.
   const branches = await prisma.branch.findMany({
-    where:  { tenantId },
+    where:  { tenantId, isActive: true },
     select: { id: true, name: true },
   })
 

@@ -26,7 +26,7 @@ const STATUS_BADGE: Record<string, string> = {
   no_show:   'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
 }
 
-interface Branch { id: string; name: string }
+interface Branch { id: string; name: string; isActive?: boolean }
 
 export function AppointmentsView() {
   const user      = useAuthStore((s) => s.user)

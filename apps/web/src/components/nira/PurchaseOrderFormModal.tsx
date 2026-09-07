@@ -176,7 +176,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   // ── Cargar datos de referencia ─────────────────────────────────────────────
   useEffect(() => {
     apiClient.get<{ data: Supplier[] }>('/v1/nira/suppliers').then((r) => setSuppliers(r.data)).catch(() => null)
-    apiClient.get<{ data: Branch[] }>('/v1/branches').then((r) => {
+    apiClient.get<{ data: Branch[] }>('/v1/branches?active=true').then((r) => {
       setBranches(r.data)
       // HU-165 — si solo hay una sucursal, preseleccionarla (la sucursal es obligatoria).
       if (r.data.length === 1) setBranchId(r.data[0]!.id)

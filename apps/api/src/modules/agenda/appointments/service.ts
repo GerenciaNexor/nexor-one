@@ -102,12 +102,14 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     }),
     prisma.branch.findFirst({
       where:  { id: data.branchId, tenantId },
-      select: { name: true },
+      select: { name: true, isActive: true },
     }),
   ])
 
   if (!service) throw { statusCode: 404, message: 'Servicio no encontrado o inactivo', code: 'NOT_FOUND' }
   if (!branch)  throw { statusCode: 404, message: 'Sucursal no encontrada',            code: 'NOT_FOUND' }
+  // HU-197 — no se pueden agendar citas nuevas en una sucursal desactivada (su histórico sí se conserva).
+  if (!branch.isActive) throw { statusCode: 422, message: 'La sucursal está desactivada; no se pueden agendar citas nuevas en ella.', code: 'BRANCH_INACTIVE' }
 
   const timezone   = tenant?.timezone ?? 'America/Bogota'
   const tenantName = tenant?.name ?? 'NEXOR'

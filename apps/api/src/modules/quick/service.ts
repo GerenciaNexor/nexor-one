@@ -2,6 +2,7 @@ import { prisma, directPrisma } from '../../lib/prisma'
 import { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
+import { assertBranchActive } from '../branches/service'
 import { businessToday } from '../../lib/dates'
 import { validateProjectId } from '../proyectos/service'
 import { applyAssignment } from '../proyectos/budget'
@@ -321,6 +322,7 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
     const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true, name: true } })
     if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+    await assertBranchActive(tenantId, input.branchId, tx) // HU-197 — no registrar en sede desactivada
     const categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
     return applyPurchaseItem(tx, tenantId, userId, { supplierName: supplier.name, categoryId, now, projectId }, {
@@ -340,6 +342,7 @@ export async function quickSale(tenantId: string, userId: string, input: QuickSa
     const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
     const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true, name: true } })
     if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+    await assertBranchActive(tenantId, input.branchId, tx) // HU-197 — no registrar en sede desactivada
     const categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
     return applySaleItem(tx, tenantId, userId, { clientName: client.name, categoryId, now, projectId }, {
@@ -429,6 +432,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
   return prisma.$transaction(async (tx) => {
     const now = input.date ? new Date(input.date) : businessToday()
     const effectiveBranch = branchId ?? input.branchId ?? null
+    await assertBranchActive(tenantId, effectiveBranch, tx) // HU-197 — no registrar en sede desactivada
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
 
     let counterpartyName: string

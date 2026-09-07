@@ -44,7 +44,7 @@ export function RentalFormModal({ onClose, onSuccess }: { onClose: () => void; o
     apiClient.get<{ data: ClientOpt[] }>('/v1/kira/rentals/clients').then((r) => setClients(r.data)).catch(() => setClients([]))
     apiClient.get<{ data: ProductOpt[] }>('/v1/kira/products?active=true').then((r) => setProducts(r.data.filter((p) => p.isRentable))).catch(() => setProducts([]))
     apiClient.get<{ data: StockRow[] }>('/v1/kira/stock').then((r) => setStocks(r.data)).catch(() => setStocks([]))
-    if (!isOperative) apiClient.get<{ data: BranchOpt[] }>('/v1/branches').then((r) => setBranches(r.data)).catch(() => setBranches([]))
+    if (!isOperative) apiClient.get<{ data: BranchOpt[] }>('/v1/branches?active=true').then((r) => setBranches(r.data)).catch(() => setBranches([]))
   }, [isOperative])
 
   const selectedProduct = products.find((p) => p.id === productId)
