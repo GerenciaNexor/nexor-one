@@ -32,6 +32,9 @@ export const UpdateStatusSchema = z.object({
 export const ListAppointmentsQuerySchema = z.object({
   branchId:       z.string().optional(),
   date:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  // HU-203 — rango de fechas (para "próximas citas"). Se ignora si se pasa `date` exacto.
+  from:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  to:             z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
   status:         z.enum(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show']).optional(),
   professionalId: z.string().optional(),
 })

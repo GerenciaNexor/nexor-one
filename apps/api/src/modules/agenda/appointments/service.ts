@@ -73,6 +73,14 @@ export async function listAppointments(
     const dayStart = localMinutesToUTC(query.date, 0,             tz)
     const dayEnd   = localMinutesToUTC(query.date, 23 * 60 + 59,  tz)
     where.startAt  = { gte: dayStart, lte: new Date(dayEnd.getTime() + 60_000) }
+  } else if (query.from || query.to) {
+    // HU-203 — rango de fechas (p. ej. próximas citas). Se resuelve en la zona del tenant.
+    const tenant = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } })
+    const tz     = tenant?.timezone ?? 'America/Bogota'
+    where.startAt = {
+      ...(query.from ? { gte: localMinutesToUTC(query.from, 0, tz) } : {}),
+      ...(query.to   ? { lte: new Date(localMinutesToUTC(query.to, 23 * 60 + 59, tz).getTime() + 60_000) } : {}),
+    }
   }
 
   const data = await prisma.appointment.findMany({

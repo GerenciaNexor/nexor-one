@@ -46,6 +46,18 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
 }
 
+// HU-203 — fecha corta para las próximas citas ("mar 9 sept").
+function fmtShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+/** ISO local de hoy + N días (para el rango de próximas citas). */
+function isoPlusDays(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN:  'Super Admin',
   TENANT_ADMIN: 'Administrador',
@@ -258,6 +270,7 @@ export default function InicioPage() {
   const [draftPOs,      setDraftPOs]      = useState<POItem[] | null>(null)
   const [stockAlerts,   setStockAlerts]   = useState<StockAlert[] | null>(null)
   const [appointments,  setAppointments]  = useState<Appointment[] | null>(null)
+  const [upcoming,      setUpcoming]      = useState<Appointment[] | null>(null)  // HU-203 — próximas citas
   const [notifications, setNotifications] = useState<NotificationItem[] | null>(null)
   // HU-169 — registro rápido (compra/venta ya ocurrida)
   const [quick, setQuick] = useState<'purchase' | 'sale' | null>(null)
@@ -308,12 +321,25 @@ export default function InicioPage() {
     if (!seeAGENDA) { setAppointments([]); return }
     apiClient.get<{ data: Appointment[] }>(`/v1/agenda/appointments?date=${todayISO()}`)
       .then((r) => {
-        const upcoming = r.data
+        const list = r.data
           .filter((a) => a.status === 'scheduled' || a.status === 'confirmed')
           .sort((a, b) => a.startAt.localeCompare(b.startAt))
-        setAppointments(upcoming.slice(0, 6))
+        setAppointments(list.slice(0, 6))
       })
       .catch(() => setAppointments([]))
+  }, [seeAGENDA])
+
+  // AGENDA — próximas citas (desde mañana, siguientes ~14 días) — HU-203
+  useEffect(() => {
+    if (!seeAGENDA) { setUpcoming([]); return }
+    apiClient.get<{ data: Appointment[] }>(`/v1/agenda/appointments?from=${isoPlusDays(1)}&to=${isoPlusDays(14)}`)
+      .then((r) => {
+        const list = r.data
+          .filter((a) => a.status === 'scheduled' || a.status === 'confirmed')
+          .sort((a, b) => a.startAt.localeCompare(b.startAt))
+        setUpcoming(list.slice(0, 6))
+      })
+      .catch(() => setUpcoming([]))
   }, [seeAGENDA])
 
   // Accesos rápidos — solo a los módulos que el usuario puede ver
@@ -354,6 +380,62 @@ export default function InicioPage() {
 
         {/* ─ Columna izquierda: requiere acción ──────────────────────────── */}
         <div className="space-y-6 lg:col-span-2">
+
+          {/* Citas de hoy (AGENDA) — HU-203: arriba, por ser lo más sensible al tiempo del día */}
+          {seeAGENDA && (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+              <SectionHeader title="Citas de hoy" count={appointments?.length} href="/agenda/appointments" linkLabel="Ver agenda" />
+              {appointments === null ? <BlockSkeleton />
+                : appointments.length === 0 ? <EmptyState text="No hay citas agendadas para hoy" />
+                : (
+                  <div className="divide-y divide-slate-50 dark:divide-slate-700/60">
+                    {appointments.map((a) => {
+                      const st = APPT_STATUS[a.status] ?? { label: a.status, cls: 'bg-slate-50 text-slate-500' }
+                      return (
+                        <Link key={a.id} href="/agenda/appointments" className="flex items-center justify-between gap-4 py-2.5 transition-opacity hover:opacity-75">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.clientName ?? a.client?.name ?? 'Cliente'}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.serviceType?.name ?? 'Servicio'}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmtTime(a.startAt)}</p>
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+            </div>
+          )}
+
+          {/* Próximas citas (AGENDA) — HU-203: siguientes días */}
+          {seeAGENDA && (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+              <SectionHeader title="Próximas citas" count={upcoming?.length} href="/agenda/appointments" linkLabel="Ver agenda" />
+              {upcoming === null ? <BlockSkeleton />
+                : upcoming.length === 0 ? <EmptyState text="No hay citas próximas en los siguientes días" />
+                : (
+                  <div className="divide-y divide-slate-50 dark:divide-slate-700/60">
+                    {upcoming.map((a) => {
+                      const st = APPT_STATUS[a.status] ?? { label: a.status, cls: 'bg-slate-50 text-slate-500' }
+                      return (
+                        <Link key={a.id} href="/agenda/appointments" className="flex items-center justify-between gap-4 py-2.5 transition-opacity hover:opacity-75">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.clientName ?? a.client?.name ?? 'Cliente'}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.serviceType?.name ?? 'Servicio'}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100"><span className="capitalize">{fmtShortDate(a.startAt)}</span> · {fmtTime(a.startAt)}</p>
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+            </div>
+          )}
 
           {/* Stock crítico (KIRA) */}
           {seeKIRA && (
@@ -432,33 +514,6 @@ export default function InicioPage() {
             </div>
           )}
 
-          {/* Citas de hoy (AGENDA) */}
-          {seeAGENDA && (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-              <SectionHeader title="Citas de hoy" count={appointments?.length} href="/agenda/appointments" linkLabel="Ver agenda" />
-              {appointments === null ? <BlockSkeleton />
-                : appointments.length === 0 ? <EmptyState text="No hay citas agendadas para hoy" />
-                : (
-                  <div className="divide-y divide-slate-50 dark:divide-slate-700/60">
-                    {appointments.map((a) => {
-                      const st = APPT_STATUS[a.status] ?? { label: a.status, cls: 'bg-slate-50 text-slate-500' }
-                      return (
-                        <Link key={a.id} href="/agenda/appointments" className="flex items-center justify-between gap-4 py-2.5 transition-opacity hover:opacity-75">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.clientName ?? a.client?.name ?? 'Cliente'}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.serviceType?.name ?? 'Servicio'}</p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmtTime(a.startAt)}</p>
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.cls}`}>{st.label}</span>
-                          </div>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                )}
-            </div>
-          )}
         </div>
 
         {/* ─ Columna derecha ──────────────────────────────────────────────── */}
