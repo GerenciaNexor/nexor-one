@@ -134,8 +134,8 @@ export default function ComprasHistoryPage() {
       </div>
       {rangeError && <p className="mt-2 text-xs text-red-500">{rangeError}</p>}
 
-      {/* Tabla */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {/* Tabla (desktop / tablet) — en móvil se usa la vista de tarjetas de abajo */}
+      <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 bg-white sm:block dark:border-slate-700 dark:bg-slate-800">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -176,6 +176,46 @@ export default function ComprasHistoryPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Tarjetas (móvil) — evita el desbordamiento horizontal de la tabla en pantallas pequeñas (HU-198) */}
+      <div className="mt-4 space-y-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="mb-2 h-4 w-32 rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="h-3 w-24 rounded bg-slate-100 dark:bg-slate-700" />
+            </div>
+          ))
+        ) : fetchError ? (
+          <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-center text-sm text-red-500 dark:border-red-900/40 dark:bg-red-900/20">{fetchError}</div>
+        ) : orders.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">
+            {hasFilters ? 'No hay órdenes para el filtro aplicado' : 'Aún no hay órdenes de compra'}
+          </p>
+        ) : (
+          orders.map((po) => (
+            <div
+              key={po.id}
+              onClick={() => router.push(`/nira/purchase-orders/${po.id}`)}
+              className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700/40"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-mono text-xs font-semibold text-slate-500 dark:text-slate-300">{po.orderNumber}</p>
+                  <p className="mt-0.5 font-medium text-slate-900 dark:text-slate-100">
+                    {po.supplier?.name ?? <span className="italic text-slate-400">Sin proveedor</span>}
+                  </p>
+                </div>
+                <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[po.status]}`}>{STATUS_LABELS[po.status]}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>{fmtDate(po.createdAt)}</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{fmtCurrency(po.total)}</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )
