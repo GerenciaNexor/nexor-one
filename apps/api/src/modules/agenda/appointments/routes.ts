@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { getBranchFilter } from '../../../lib/guards'
-import { CreateAppointmentSchema, UpdateStatusSchema, UpdateEventSchema, ListAppointmentsQuerySchema } from './schema'
-import { listAppointments, createAppointment, updateAppointmentStatus, updateEvent, deleteAppointment } from './service'
+import { CreateAppointmentSchema, UpdateStatusSchema, UpdateEventSchema, ListAppointmentsQuerySchema, AvailabilityCheckSchema } from './schema'
+import { listAppointments, createAppointment, updateAppointmentStatus, updateEvent, deleteAppointment, checkAvailability } from './service'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function appointmentsRoutes(app: FastifyInstance): Promise<void> {
@@ -28,7 +28,7 @@ export async function appointmentsRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const branchFilter = getBranchFilter(request.user)
-      const result = await listAppointments(request.user.tenantId, parsed.data, branchFilter)
+      const result = await listAppointments(request.user.tenantId, parsed.data, branchFilter, request.user.userId)
       return reply.code(200).send(result)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
@@ -56,8 +56,30 @@ export async function appointmentsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const appointment = await createAppointment(request.user.tenantId, parsed.data)
+      const appointment = await createAppointment(request.user.tenantId, parsed.data, request.user.userId)
       return reply.code(201).send(appointment)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * POST /v1/agenda/appointments/availability — HU-205: indicador ocupado/libre de varios usuarios en
+   * un rango. Solo devuelve el estado (busy: boolean por usuario); nunca el detalle de sus reuniones.
+   */
+  app.post('/availability', {
+    schema: {
+      tags: ['AGENDA'], summary: 'Disponibilidad (ocupado/libre) de usuarios', security: bearerAuth,
+      body: z2j(AvailabilityCheckSchema), response: { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'AGENDA'),
+  }, async (request, reply) => {
+    const parsed = AvailabilityCheckSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const result = await checkAvailability(request.user.tenantId, parsed.data)
+      return reply.code(200).send({ success: true, data: result })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

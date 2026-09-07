@@ -25,6 +25,80 @@ export interface UploadMeta {
   fileBuffer: Buffer
 }
 
+// ─── HU-206 — Detección de duplicados ──────────────────────────────────────────
+
+/** Normaliza un identificador para comparar: ignora guiones, espacios y mayúsculas ("1234-5" = "12345"). */
+export function normId(v: unknown): string {
+  return String(v ?? '').toLowerCase().replace(/[\s-]/g, '')
+}
+
+/** Identificador de duplicado por sección (los 4 cargues en alcance de HU-206). */
+const DUP_CONFIG: Partial<Record<BulkUploadType, { column: string; label: string }>> = {
+  products:  { column: 'sku',   label: 'SKU' },
+  users:     { column: 'email', label: 'correo' },
+  suppliers: { column: 'nit',   label: 'NIT' },
+  clients:   { column: 'nit',   label: 'documento/NIT' },
+}
+export function dupIdentifierLabel(type: BulkUploadType): string | null { return DUP_CONFIG[type]?.label ?? null }
+
+/** Una coincidencia: una fila del archivo cuyo identificador ya existe en el sistema (mismo tenant). */
+export interface DuplicateMatch {
+  row:          number   // fila del archivo (encabezado = 1; datos desde 2)
+  identifier:   string   // valor tal como viene en el archivo
+  normalized:   string   // clave normalizada (la que decide la acción)
+  fileName:     string   // nombre en el archivo
+  existingName: string   // nombre del registro que ya existe (para que el usuario sepa qué actualizaría)
+}
+
+type DbLike = typeof prisma | TxClient
+
+async function fetchExistingIdentifiers(db: DbLike, tenantId: string, type: BulkUploadType): Promise<Array<{ id: string; ident: string | null; name: string }>> {
+  switch (type) {
+    case 'products':  return (await db.product.findMany({ where: { tenantId },  select: { id: true, sku: true,   name: true } })).map((p) => ({ id: p.id, ident: p.sku,   name: p.name }))
+    case 'users':     return (await db.user.findMany({ where: { tenantId },     select: { id: true, email: true, name: true } })).map((u) => ({ id: u.id, ident: u.email, name: u.name }))
+    case 'suppliers': return (await db.supplier.findMany({ where: { tenantId }, select: { id: true, taxId: true, name: true } })).map((s) => ({ id: s.id, ident: s.taxId, name: s.name }))
+    case 'clients':   return (await db.client.findMany({ where: { tenantId },   select: { id: true, taxId: true, name: true } })).map((c) => ({ id: c.id, ident: c.taxId, name: c.name }))
+    default:          return []
+  }
+}
+
+/** Mapa normalizado(identificador) → id del registro existente (mismo tenant). */
+async function existingIdentifierMap(db: DbLike, tenantId: string, type: BulkUploadType): Promise<Map<string, string>> {
+  const rows = await fetchExistingIdentifiers(db, tenantId, type)
+  const map = new Map<string, string>()
+  for (const e of rows) { const n = normId(e.ident); if (n) map.set(n, e.id) }
+  return map
+}
+
+/**
+ * HU-206 — Detecta, ANTES de cargar, las filas del archivo cuyo identificador ya existe en el sistema
+ * (comparación NORMALIZADA, dentro del mismo tenant). No modifica nada: solo reporta las coincidencias
+ * para que el usuario elija omitir o actualizar. El duplicado INTERNO del archivo lo maneja validateRows.
+ */
+export async function detectDuplicates(tenantId: string, type: BulkUploadType, rows: Record<string, unknown>[]): Promise<DuplicateMatch[]> {
+  const cfg = DUP_CONFIG[type]
+  if (!cfg) return []
+  const existing = await fetchExistingIdentifiers(prisma, tenantId, type)
+  const byNorm = new Map<string, string>()  // normalized → existingName
+  for (const e of existing) { const n = normId(e.ident); if (n) byNorm.set(n, e.name) }
+
+  const matches: DuplicateMatch[] = []
+  const seen = new Set<string>()
+  for (let i = 0; i < rows.length; i++) {
+    const nr    = normalizeRow(rows[i]!)
+    const value = nr[cfg.column] == null ? '' : String(nr[cfg.column])
+    if (!value) continue
+    const n = normId(value)
+    if (!n || seen.has(n)) continue
+    const existingName = byNorm.get(n)
+    if (existingName !== undefined) {
+      seen.add(n)
+      matches.push({ row: i + 2, identifier: value, normalized: n, fileName: String(nr['nombre'] ?? nr['nombre_cliente'] ?? ''), existingName })
+    }
+  }
+  return matches
+}
+
 // ─── Parse Excel ──────────────────────────────────────────────────────────────
 
 export async function parseExcel(
@@ -149,14 +223,17 @@ async function validateUsers(tenantId: string, rows: Record<string, unknown>[]):
       errors.push({ row: rowNum, column: 'modulo', message: `El módulo es requerido para el rol ${data.rol}` })
     }
 
-    const emailLower = data.email.toLowerCase()
+    const emailLower = normId(data.email)
     if (emailsInFile.has(emailLower)) {
       errors.push({ row: rowNum, column: 'email', message: 'El email está duplicado en el archivo' })
     } else {
       emailsInFile.add(emailLower)
-      const existingUser = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } })
-      if (existingUser) {
-        errors.push({ row: rowNum, column: 'email', message: 'El email ya está registrado en el sistema' })
+      // HU-206 — el correo YA existente en ESTE tenant no es un error: es una coincidencia (omitir/
+      // actualizar, ver detectDuplicates). Pero un correo usado en OTRA empresa sí bloquea (el correo
+      // es único global; no se puede crear ni "actualizar" un usuario de otro tenant).
+      const existingUser = await prisma.user.findUnique({ where: { email: data.email }, select: { tenantId: true } })
+      if (existingUser && existingUser.tenantId !== tenantId) {
+        errors.push({ row: rowNum, column: 'email', message: 'El email ya está registrado en otra empresa' })
       }
     }
 
@@ -194,15 +271,13 @@ async function validateProducts(tenantId: string, rows: Record<string, unknown>[
       errors.push({ row: rowNum, column: 'stock_maximo', message: 'El stock máximo debe ser mayor al stock mínimo' })
     }
 
-    const skuKey = data.sku.toLowerCase()
+    // HU-206 — el SKU ya existente NO es error: es coincidencia (omitir/actualizar). Solo se marca el
+    // duplicado INTERNO del archivo (dos filas con el mismo SKU).
+    const skuKey = normId(data.sku)
     if (skusInFile.has(skuKey)) {
       errors.push({ row: rowNum, column: 'sku', message: 'El SKU está duplicado en el archivo' })
     } else {
       skusInFile.add(skuKey)
-      const existing = await prisma.product.findFirst({ where: { tenantId, sku: data.sku }, select: { id: true } })
-      if (existing) {
-        errors.push({ row: rowNum, column: 'sku', message: `El SKU "${data.sku}" ya existe en el catálogo` })
-      }
     }
   }
 
@@ -260,14 +335,13 @@ async function validateSuppliers(tenantId: string, rows: Record<string, unknown>
 
     const data = parsed.data
 
-    if (nitsInFile.has(data.nit)) {
+    // HU-206 — el NIT ya existente NO es error: es coincidencia (omitir/actualizar). Solo el duplicado
+    // INTERNO del archivo se marca como error.
+    const nitKey = normId(data.nit)
+    if (nitsInFile.has(nitKey)) {
       errors.push({ row: rowNum, column: 'nit', message: 'El NIT está duplicado en el archivo' })
     } else {
-      nitsInFile.add(data.nit)
-      const existing = await prisma.supplier.findFirst({ where: { tenantId, taxId: data.nit }, select: { id: true } })
-      if (existing) {
-        errors.push({ row: rowNum, column: 'nit', message: `El NIT "${data.nit}" ya existe en proveedores` })
-      }
+      nitsInFile.add(nitKey)
     }
   }
 
@@ -276,9 +350,9 @@ async function validateSuppliers(tenantId: string, rows: Record<string, unknown>
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
-async function validateClients(tenantId: string, rows: Record<string, unknown>[]): Promise<RowError[]> {
+async function validateClients(_tenantId: string, rows: Record<string, unknown>[]): Promise<RowError[]> {
   const errors: RowError[] = []
-  const whatsappsInFile = new Set<string>()
+  const nitsInFile = new Set<string>()
 
   for (let i = 0; i < rows.length; i++) {
     const rowNum = i + 2
@@ -293,15 +367,14 @@ async function validateClients(tenantId: string, rows: Record<string, unknown>[]
 
     const data = parsed.data
 
-    if (data.whatsapp) {
-      if (whatsappsInFile.has(data.whatsapp)) {
-        errors.push({ row: rowNum, column: 'whatsapp', message: 'El número de WhatsApp está duplicado en el archivo' })
+    // HU-206 — identificador de cliente = documento/NIT. Un NIT ya existente NO es error: es coincidencia
+    // (omitir/actualizar, ver detectDuplicates). Solo se marca el duplicado INTERNO del archivo.
+    if (data.nit) {
+      const nitKey = normId(data.nit)
+      if (nitsInFile.has(nitKey)) {
+        errors.push({ row: rowNum, column: 'nit', message: 'El documento/NIT está duplicado en el archivo' })
       } else {
-        whatsappsInFile.add(data.whatsapp)
-        const existingClient = await prisma.client.findFirst({ where: { tenantId, whatsappId: data.whatsapp }, select: { id: true } })
-        if (existingClient) {
-          errors.push({ row: rowNum, column: 'whatsapp', message: `El WhatsApp "${data.whatsapp}" ya está registrado` })
-        }
+        nitsInFile.add(nitKey)
       }
     }
   }
@@ -494,27 +567,38 @@ export async function logFailedUpload(
 
 // ─── Procesamiento atómico ────────────────────────────────────────────────────
 
+// HU-206 — acción por coincidencia (clave = identificador normalizado): omitir o actualizar.
+export type DuplicateActions = Record<string, 'skip' | 'update'>
+/** Resumen del cargue: nuevos / actualizados / omitidos. */
+export interface ProcessSummary { created: number; updated: number; skipped: number }
+const emptySummary = (): ProcessSummary => ({ created: 0, updated: 0, skipped: 0 })
+
 export async function processRows(
   tenantId: string,
   userId: string,
   type: BulkUploadType,
   rows: Record<string, unknown>[],
   meta: UploadMeta,
-): Promise<{ processed: number; logId: string }> {
+  actions: DuplicateActions = {},
+): Promise<{ summary: ProcessSummary; processed: number; logId: string }> {
   await assertBulkUploadWithinDemoLimits(tenantId, type, rows.length) // Cierre S16 — respeta topes de demo
   const startedAt = new Date()
   const resolved  = await resolveSucursalIds(tenantId, rows)
 
-  const processed = await prisma.$transaction(async (tx) => {
-    if (type === 'users')        return _processUsers(tx, tenantId, resolved)
-    if (type === 'products')     return _processProducts(tx, tenantId, resolved)
-    if (type === 'stock')        return _processStock(tx, tenantId, userId, resolved)
-    if (type === 'suppliers')    return _processSuppliers(tx, tenantId, resolved)
-    if (type === 'clients')      return _processClients(tx, tenantId, resolved)
-    if (type === 'appointments') return _processAppointments(tx, tenantId, resolved)
-    if (type === 'transactions') return _processTransactions(tx, tenantId, resolved)
-    return 0
+  const summary = await prisma.$transaction(async (tx) => {
+    if (type === 'users')        return _processUsers(tx, tenantId, resolved, actions)
+    if (type === 'products')     return _processProducts(tx, tenantId, resolved, actions)
+    if (type === 'suppliers')    return _processSuppliers(tx, tenantId, resolved, actions)
+    if (type === 'clients')      return _processClients(tx, tenantId, resolved, actions)
+    // Tipos sin detección de duplicados (HU-206): stock, citas, transacciones → todo es "nuevo".
+    if (type === 'stock')        return { ...emptySummary(), created: await _processStock(tx, tenantId, userId, resolved) }
+    if (type === 'appointments') return { ...emptySummary(), created: await _processAppointments(tx, tenantId, resolved) }
+    if (type === 'transactions') return { ...emptySummary(), created: await _processTransactions(tx, tenantId, resolved) }
+    return emptySummary()
   })
+
+  // recordCount = registros que efectivamente entraron/cambiaron (nuevos + actualizados).
+  const processed = summary.created + summary.updated
 
   const log = await prisma.bulkUploadLog.create({
     data: {
@@ -534,45 +618,56 @@ export async function processRows(
 
   void notifySuccess(tenantId, log.id, type, meta.fileName, processed, startedAt)
 
-  return { processed, logId: log.id }
+  return { summary, processed, logId: log.id }
 }
 
 // ─── Procesadores internos (dentro de transacción) ────────────────────────────
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
-async function _processUsers(tx: TxClient, tenantId: string, rows: Record<string, unknown>[]): Promise<number> {
+async function _processUsers(tx: TxClient, tenantId: string, rows: Record<string, unknown>[], actions: DuplicateActions): Promise<ProcessSummary> {
   const parsed = rows.map((r) => UserRowSchema.parse(normalizeRow(r)))
+  const map = await existingIdentifierMap(tx, tenantId, 'users')
+  let created = 0, updated = 0, skipped = 0
 
-  await Promise.all(
-    parsed.map(async (data) => {
-      const password = data.contraseña ?? generatePassword()
-      const hash = await bcrypt.hash(password, 12)
-      return tx.user.create({
-        data: {
-          tenantId,
-          branchId:     data.sucursal_id || null,
-          email:        data.email,
-          name:         data.nombre,
-          passwordHash: hash,
-          role:         data.rol,
-          module:       data.modulo ?? null,
-        },
+  for (const data of parsed) {
+    const n = normId(data.email)
+    const existingId = map.get(n)
+    if (existingId) {
+      // HU-206 — coincidencia: se OMITE (default, nunca duplica) o se ACTUALIZA el existente.
+      if ((actions[n] ?? 'skip') === 'update') {
+        await tx.user.update({
+          where: { id: existingId },
+          data: {
+            name:     data.nombre,
+            role:     data.rol,
+            module:   data.modulo ?? null,
+            branchId: data.sucursal_id || null,
+            ...(data.contraseña ? { passwordHash: await bcrypt.hash(data.contraseña, 12) } : {}),
+          },
+        })
+        updated++
+      } else skipped++
+    } else {
+      const hash = await bcrypt.hash(data.contraseña ?? generatePassword(), 12)
+      await tx.user.create({
+        data: { tenantId, branchId: data.sucursal_id || null, email: data.email, name: data.nombre, passwordHash: hash, role: data.rol, module: data.modulo ?? null },
         select: { id: true },
       })
-    }),
-  )
+      created++
+    }
+  }
 
-  return parsed.length
+  return { created, updated, skipped }
 }
 
-async function _processProducts(tx: TxClient, tenantId: string, rows: Record<string, unknown>[]): Promise<number> {
+async function _processProducts(tx: TxClient, tenantId: string, rows: Record<string, unknown>[], actions: DuplicateActions): Promise<ProcessSummary> {
   const parsed = rows.map((r) => ProductRowSchema.parse(normalizeRow(r)))
+  const map = await existingIdentifierMap(tx, tenantId, 'products')
+  let created = 0, updated = 0, skipped = 0
 
-  await tx.product.createMany({
-    data: parsed.map((data) => ({
-      tenantId,
-      sku:         data.sku,
+  for (const data of parsed) {
+    const payload = {
       name:        data.nombre,
       description: data.descripcion ?? null,
       category:    data.categoria ?? null,
@@ -584,10 +679,19 @@ async function _processProducts(tx: TxClient, tenantId: string, rows: Record<str
       rentalPrice: data.precio_alquiler ?? null,
       isSellable:  data.es_vendible,
       isRentable:  data.es_alquilable,
-    })),
-  })
+    }
+    const n = normId(data.sku)
+    const existingId = map.get(n)
+    if (existingId) {
+      if ((actions[n] ?? 'skip') === 'update') { await tx.product.update({ where: { id: existingId }, data: payload }); updated++ }
+      else skipped++
+    } else {
+      await tx.product.create({ data: { tenantId, sku: data.sku, ...payload }, select: { id: true } })
+      created++
+    }
+  }
 
-  return parsed.length
+  return { created, updated, skipped }
 }
 
 async function _processStock(tx: TxClient, tenantId: string, userId: string, rows: Record<string, unknown>[]): Promise<number> {
@@ -633,48 +737,67 @@ async function _processStock(tx: TxClient, tenantId: string, userId: string, row
   return count
 }
 
-async function _processSuppliers(tx: TxClient, tenantId: string, rows: Record<string, unknown>[]): Promise<number> {
+async function _processSuppliers(tx: TxClient, tenantId: string, rows: Record<string, unknown>[], actions: DuplicateActions): Promise<ProcessSummary> {
   const parsed = rows.map((r) => SupplierRowSchema.parse(normalizeRow(r)))
+  const map = await existingIdentifierMap(tx, tenantId, 'suppliers')
+  let created = 0, updated = 0, skipped = 0
 
-  await tx.supplier.createMany({
-    data: parsed.map((data) => ({
-      tenantId,
+  for (const data of parsed) {
+    const payload = {
       name:         data.nombre,
       contactName:  data.contacto || null,
       email:        data.email || null,
       phone:        data.telefono || null,
-      taxId:        data.nit,
       documentType: data.tipo_documento ?? null,
       paymentTerms: data.dias_credito ?? null,
       address:      data.direccion || null,
       city:         data.ciudad || null,
       notes:        data.notas || null,
-    })),
-  })
+    }
+    const n = normId(data.nit)
+    const existingId = map.get(n)
+    if (existingId) {
+      if ((actions[n] ?? 'skip') === 'update') { await tx.supplier.update({ where: { id: existingId }, data: payload }); updated++ }
+      else skipped++
+    } else {
+      await tx.supplier.create({ data: { tenantId, taxId: data.nit, ...payload }, select: { id: true } })
+      created++
+    }
+  }
 
-  return parsed.length
+  return { created, updated, skipped }
 }
 
-async function _processClients(tx: TxClient, tenantId: string, rows: Record<string, unknown>[]): Promise<number> {
+async function _processClients(tx: TxClient, tenantId: string, rows: Record<string, unknown>[], actions: DuplicateActions): Promise<ProcessSummary> {
   const parsed = rows.map((r) => ClientRowSchema.parse(normalizeRow(r)))
+  const map = await existingIdentifierMap(tx, tenantId, 'clients')
+  let created = 0, updated = 0, skipped = 0
 
-  await tx.client.createMany({
-    data: parsed.map((data) => ({
-      tenantId,
+  for (const data of parsed) {
+    const payload = {
       name:       data.nombre,
       email:      data.email || null,
       phone:      data.telefono || null,
       whatsappId: data.whatsapp || null,
       company:    data.empresa || null,
-      taxId:      data.nit || null,
       address:    data.direccion || null,
       city:       data.ciudad || null,
       source:     data.origen || null,
       notes:      data.notas || null,
-    })),
-  })
+    }
+    // HU-206 — identificador = documento/NIT. Sin NIT no hay con qué deduplicar → siempre es nuevo.
+    const n = data.nit ? normId(data.nit) : ''
+    const existingId = n ? map.get(n) : undefined
+    if (existingId) {
+      if ((actions[n] ?? 'skip') === 'update') { await tx.client.update({ where: { id: existingId }, data: payload }); updated++ }
+      else skipped++
+    } else {
+      await tx.client.create({ data: { tenantId, taxId: data.nit || null, ...payload }, select: { id: true } })
+      created++
+    }
+  }
 
-  return parsed.length
+  return { created, updated, skipped }
 }
 
 async function _processAppointments(tx: TxClient, tenantId: string, rows: Record<string, unknown>[]): Promise<number> {

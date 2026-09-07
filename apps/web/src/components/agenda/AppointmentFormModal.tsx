@@ -65,6 +65,7 @@ export function AppointmentFormModal({
   const [externalEmails, setExternalEmails] = useState<string[]>(event?.attendees?.filter((a) => !a.userId && a.email).map((a) => a.email as string) ?? [])
   const [emailDraft, setEmailDraft] = useState('')
   const [users, setUsers] = useState<UserOpt[]>([])
+  const [busy, setBusy] = useState<Record<string, boolean>>({}) // HU-205 — asistentes ocupados
 
   const [branchId,     setBranchId]     = useState(defaultBranch)
   const [serviceId,    setServiceId]    = useState('')
@@ -124,6 +125,22 @@ export function AppointmentFormModal({
     if (mode !== 'event' || users.length) return
     apiClient.get<{ data: UserOpt[] }>('/v1/users?limit=100').then((r) => setUsers(r.data ?? [])).catch(() => {})
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // HU-205 — indicador ocupado/libre: al cambiar asistentes internos o el horario, consulta si alguno
+  // ya está ocupado en ese rango. Es solo informativo (no bloquea) y no revela de qué está ocupado.
+  useEffect(() => {
+    if (mode !== 'event' || internalIds.length === 0) { setBusy({}); return }
+    const start = new Date(`${evDate}T${evStart}`)
+    const end   = new Date(`${evDate}T${evEnd}`)
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) { setBusy({}); return }
+    let cancelled = false
+    const t = setTimeout(() => {
+      apiClient.post<{ data: { busy: Record<string, boolean> } }>('/v1/agenda/appointments/availability', {
+        userIds: internalIds, from: start.toISOString(), to: end.toISOString(), ...(event ? { excludeId: event.id } : {}),
+      }).then((r) => { if (!cancelled) setBusy(r.data.busy ?? {}) }).catch(() => { if (!cancelled) setBusy({}) })
+    }, 350) // pequeño debounce
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [mode, internalIds, evDate, evStart, evEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleInternal(id: string) {
     setInternalIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -497,7 +514,13 @@ export function AppointmentFormModal({
                     {users.length === 0 ? <p className="px-1 text-xs text-slate-400">Cargando usuarios…</p> : users.map((u) => (
                       <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">
                         <input type="checkbox" checked={internalIds.includes(u.id)} onChange={() => toggleInternal(u.id)} className="h-4 w-4" />
-                        {u.name}
+                        <span>{u.name}</span>
+                        {/* HU-205 — aviso ocupado (informativo, no bloquea; no revela de qué). */}
+                        {internalIds.includes(u.id) && busy[u.id] && (
+                          <span className="ml-auto shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            ocupado en ese horario
+                          </span>
+                        )}
                       </label>
                     ))}
                   </div>

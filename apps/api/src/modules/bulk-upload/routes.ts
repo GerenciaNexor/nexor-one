@@ -7,9 +7,12 @@ import {
   parseExcel,
   validateRows,
   processRows,
+  detectDuplicates,
+  dupIdentifierLabel,
   logFailedUpload,
   logValidationResult,
   type UploadMeta,
+  type DuplicateActions,
 } from './service'
 import { generateTemplate, getTemplateFileName } from './templates'
 
@@ -70,10 +73,17 @@ Genera un registro inmutable en bulk_upload_logs.`,
       return reply.code(200).send({ valid: false, errors, errorCount: errors.length, totalRows: rows.length, logId })
     }
 
+    // HU-206 — sin errores duros: detectar coincidencias (registros que YA existen) para que el usuario
+    // elija omitir o actualizar antes de cargar. No modifica nada.
+    const duplicates = await detectDuplicates(tenantId, uploadType, rows)
+
     return reply.code(200).send({
       valid:    true,
       preview:  buildPreview(uploadType, rows),
       count:    rows.length,
+      duplicates,
+      duplicateCount:  duplicates.length,
+      identifierLabel: dupIdentifierLabel(uploadType),
       logId,
       fileName,
       message:  `${rows.length} registros listos para importar. Llama a /process con el mismo archivo para confirmar.`,
@@ -94,7 +104,7 @@ Solo TENANT_ADMIN.`,
     },
     preHandler: [requireTenantAdmin()],
   }, async (request, reply) => {
-    const { type, fileBuffer, fileName, fileSize } = await readMultipart(request)
+    const { type, fileBuffer, fileName, fileSize, duplicateActions } = await readMultipart(request)
 
     if (!type || !BULK_UPLOAD_TYPES.includes(type as BulkUploadType)) {
       return reply.code(400).send({ error: 'El campo "type" debe ser un tipo válido', code: 'INVALID_TYPE' })
@@ -141,12 +151,14 @@ Solo TENANT_ADMIN.`,
     }
 
     try {
-      const result = await processRows(tenantId, userId, uploadType, rows, meta)
+      const result = await processRows(tenantId, userId, uploadType, rows, meta, duplicateActions)
+      const { created, updated, skipped } = result.summary
       return reply.code(200).send({
         success:   true,
         processed: result.processed,
+        summary:   result.summary,
         logId:     result.logId,
-        message:   `Se importaron ${result.processed} registros exitosamente.`,
+        message:   `Se importaron ${created} nuevos, ${updated} actualizados y ${skipped} omitidos.`,
       })
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string }
@@ -291,7 +303,7 @@ Tipos válidos: ${BULK_UPLOAD_TYPES.join(', ')}.`,
 
 async function readMultipart(
   request: FastifyRequest,
-): Promise<{ type: string | null; fileBuffer: Buffer | null; fileName: string; fileSize: number }> {
+): Promise<{ type: string | null; fileBuffer: Buffer | null; fileName: string; fileSize: number; duplicateActions: DuplicateActions }> {
   const req = request as unknown as { parts: () => AsyncIterable<{ type: 'field' | 'file'; fieldname: string; value?: unknown; filename?: string; file?: AsyncIterable<Buffer> }> }
   const parts = req.parts()
 
@@ -299,10 +311,17 @@ async function readMultipart(
   let fileBuffer: Buffer | null = null
   let fileName = 'archivo.xlsx'
   let fileSize = 0
+  const duplicateActions: DuplicateActions = {}
 
   for await (const part of parts) {
     if (part.type === 'field' && part.fieldname === 'type') {
       type = String(part.value)
+    } else if (part.type === 'field' && part.fieldname === 'duplicateActions') {
+      // HU-206 — mapa { identificadorNormalizado: 'skip' | 'update' } enviado como JSON.
+      try {
+        const parsed = JSON.parse(String(part.value)) as Record<string, unknown>
+        for (const [k, v] of Object.entries(parsed)) if (v === 'skip' || v === 'update') duplicateActions[k] = v
+      } catch { /* JSON inválido → sin acciones (todo se omite por defecto) */ }
     } else if (part.type === 'file' && part.file) {
       fileName = part.filename ?? 'archivo.xlsx'
       const chunks: Buffer[] = []
@@ -314,7 +333,7 @@ async function readMultipart(
     }
   }
 
-  return { type, fileBuffer, fileName, fileSize }
+  return { type, fileBuffer, fileName, fileSize, duplicateActions }
 }
 
 function buildPreview(type: BulkUploadType, rows: Record<string, unknown>[]): Record<string, unknown>[] {

@@ -88,6 +88,15 @@ interface RowError {
   message: string
 }
 
+// HU-206 — una coincidencia: fila del archivo cuyo identificador ya existe en el sistema.
+interface DuplicateMatch {
+  row:          number
+  identifier:   string
+  normalized:   string
+  fileName:     string
+  existingName: string
+}
+
 interface ValidateResponse {
   valid:       boolean
   errors?:     RowError[]
@@ -96,14 +105,20 @@ interface ValidateResponse {
   logId?:      string
   preview?:    Record<string, unknown>[]
   count?:      number
+  duplicates?:      DuplicateMatch[]
+  duplicateCount?:  number
+  identifierLabel?: string | null
   error?:      string
   message?:    string
   fileName?:   string
 }
 
+interface ProcessSummary { created: number; updated: number; skipped: number }
+
 interface ProcessResponse {
   success:   boolean
   processed: number
+  summary?:  ProcessSummary
   logId:     string
   message:   string
 }
@@ -160,16 +175,21 @@ function typeName(key: string): string {
 
 function ConfirmModal({
   selectedType,
-  count,
+  newCount,
+  updateCount,
+  skipCount,
   onConfirm,
   onCancel,
 }: {
   selectedType: UploadTypeKey
-  count: number
+  newCount: number
+  updateCount: number
+  skipCount: number
   onConfirm: () => void
   onCancel: () => void
 }) {
   const typeInfo = UPLOAD_TYPES.find((t) => t.key === selectedType)!
+  const willWrite = newCount + updateCount
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -183,14 +203,15 @@ function ConfirmModal({
           </div>
           <div className="px-6 py-5">
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Se van a crear{' '}
-              <strong className="text-slate-900 dark:text-white">
-                {count} {typeInfo.label.toLowerCase()}
-              </strong>{' '}
-              en tu cuenta. Esta acción no se puede deshacer.
+              En {typeInfo.label.toLowerCase()} se van a:
             </p>
+            <ul className="mt-2 space-y-1 text-sm">
+              <li className="text-emerald-700 dark:text-emerald-300">• Crear <strong>{newCount}</strong> nuevos</li>
+              {updateCount > 0 && <li className="text-blue-700 dark:text-blue-300">• Actualizar <strong>{updateCount}</strong> existentes</li>}
+              {skipCount > 0 && <li className="text-slate-500 dark:text-slate-400">• Omitir <strong>{skipCount}</strong> que ya existen</li>}
+            </ul>
             <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-              ¿Estás seguro de que los datos son correctos? Revisa el preview antes de confirmar.
+              ¿Estás seguro de que los datos son correctos? Esta acción no se puede deshacer.
             </div>
           </div>
           <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
@@ -204,7 +225,7 @@ function ConfirmModal({
               onClick={onConfirm}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
-              Sí, importar {count} registros
+              Sí, {willWrite === 1 ? 'importar 1 registro' : `importar ${willWrite} registros`}
             </button>
           </div>
         </div>
@@ -255,6 +276,10 @@ export default function BulkUploadPage() {
   const [errors, setErrors]             = useState<RowError[]>([])
   const [preview, setPreview]           = useState<Record<string, unknown>[]>([])
   const [previewCount, setPreviewCount] = useState(0)
+  // HU-206 — coincidencias detectadas + acción elegida por identificador normalizado ('skip'|'update').
+  const [duplicates, setDuplicates]     = useState<DuplicateMatch[]>([])
+  const [dupActions, setDupActions]     = useState<Record<string, 'skip' | 'update'>>({})
+  const [identifierLabel, setIdentifierLabel] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen]   = useState(false)
   const [result, setResult]             = useState<ProcessResponse | null>(null)
   const [history, setHistory]           = useState<UploadLog[]>([])
@@ -356,6 +381,11 @@ export default function BulkUploadPage() {
       } else {
         setPreview(data.preview ?? [])
         setPreviewCount(data.count ?? 0)
+        // HU-206 — coincidencias: por defecto se OMITEN (nunca se duplica); el usuario puede cambiarlas.
+        const dups = data.duplicates ?? []
+        setDuplicates(dups)
+        setIdentifierLabel(data.identifierLabel ?? null)
+        setDupActions(Object.fromEntries(dups.map((d) => [d.normalized, 'skip' as const])))
         setStep('preview')
       }
     } catch {
@@ -373,6 +403,8 @@ export default function BulkUploadPage() {
     const fd = new FormData()
     fd.append('type', selectedType)
     fd.append('file', file)
+    // HU-206 — acciones de las coincidencias (omitir/actualizar) por identificador normalizado.
+    if (Object.keys(dupActions).length > 0) fd.append('duplicateActions', JSON.stringify(dupActions))
 
     try {
       const res = await fetch(`${API_URL}/v1/bulk-upload/process`, {
@@ -396,7 +428,7 @@ export default function BulkUploadPage() {
 
       setResult(data)
       setStep('done')
-      showToast(`Se importaron ${data.processed} registros exitosamente.`, true)
+      showToast(data.message ?? `Se importaron ${data.processed} registros.`, true)
       void loadHistory()
     } catch {
       setStep('failed')
@@ -412,6 +444,9 @@ export default function BulkUploadPage() {
     setErrors([])
     setPreview([])
     setPreviewCount(0)
+    setDuplicates([])
+    setDupActions({})
+    setIdentifierLabel(null)
     setResult(null)
     setFileError('')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -426,14 +461,21 @@ export default function BulkUploadPage() {
       {step === 'processing' && <ProcessingOverlay count={previewCount} />}
 
       {/* Modal de confirmación */}
-      {confirmOpen && selectedType && (
-        <ConfirmModal
-          selectedType={selectedType}
-          count={previewCount}
-          onConfirm={() => void handleProcess()}
-          onCancel={() => setConfirmOpen(false)}
-        />
-      )}
+      {confirmOpen && selectedType && (() => {
+        const updateCount = duplicates.filter((d) => (dupActions[d.normalized] ?? 'skip') === 'update').length
+        const skipCount   = duplicates.length - updateCount
+        const newCount    = Math.max(0, previewCount - duplicates.length)
+        return (
+          <ConfirmModal
+            selectedType={selectedType}
+            newCount={newCount}
+            updateCount={updateCount}
+            skipCount={skipCount}
+            onConfirm={() => void handleProcess()}
+            onCancel={() => setConfirmOpen(false)}
+          />
+        )
+      })()}
 
       <div className="mx-auto max-w-5xl px-4 py-8">
         {/* Encabezado */}
@@ -684,6 +726,69 @@ export default function BulkUploadPage() {
                 </button>
               </div>
 
+              {/* HU-206 — coincidencias: registros que YA existen. El usuario elige omitir o actualizar. */}
+              {duplicates.length > 0 && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/10">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      {duplicates.length} ya {duplicates.length !== 1 ? 'existen' : 'existe'} en el sistema (por {identifierLabel ?? 'identificador'}) — elige qué hacer:
+                    </p>
+                    <div className="flex gap-2 text-xs">
+                      <button
+                        onClick={() => setDupActions(Object.fromEntries(duplicates.map((d) => [d.normalized, 'skip' as const])))}
+                        className="rounded-md border border-amber-300 px-2 py-1 font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
+                      >Omitir todos</button>
+                      <button
+                        onClick={() => setDupActions(Object.fromEntries(duplicates.map((d) => [d.normalized, 'update' as const])))}
+                        className="rounded-md border border-amber-300 px-2 py-1 font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
+                      >Actualizar todos</button>
+                    </div>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-amber-200 dark:border-amber-800/50">
+                    <table className="min-w-full text-xs">
+                      <thead>
+                        <tr className="bg-amber-100 dark:bg-amber-900/30 text-left">
+                          <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-300">Fila</th>
+                          <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-300">{identifierLabel ?? 'ID'}</th>
+                          <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-300">En el archivo</th>
+                          <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-300">Ya existe</th>
+                          <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-300">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {duplicates.map((d) => {
+                          const action = dupActions[d.normalized] ?? 'skip'
+                          return (
+                            <tr key={d.normalized} className="border-t border-amber-200 bg-white dark:border-amber-800/30 dark:bg-slate-900/30">
+                              <td className="px-3 py-2 font-mono font-bold text-amber-700 dark:text-amber-400">#{d.row}</td>
+                              <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300">{d.identifier}</td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{d.fileName || '—'}</td>
+                              <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{d.existingName || '—'}</td>
+                              <td className="px-3 py-2">
+                                <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
+                                  <button
+                                    onClick={() => setDupActions((a) => ({ ...a, [d.normalized]: 'skip' }))}
+                                    className={`px-2.5 py-1 text-xs font-medium ${action === 'skip' ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}
+                                  >Omitir</button>
+                                  <button
+                                    onClick={() => setDupActions((a) => ({ ...a, [d.normalized]: 'update' }))}
+                                    className={`px-2.5 py-1 text-xs font-medium ${action === 'update' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}
+                                  >Actualizar</button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300/80">
+                    <strong>Omitir</strong>: deja intacto el registro que ya existe (no carga el del archivo).{' '}
+                    <strong>Actualizar</strong>: reemplaza sus datos con los del archivo. Nunca se crea un duplicado ni se borra lo existente.
+                  </p>
+                </div>
+              )}
+
               {preview.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border border-emerald-200 dark:border-emerald-800/50">
                   <table className="min-w-full text-xs">
@@ -733,12 +838,23 @@ export default function BulkUploadPage() {
               <h2 className="mb-2 text-lg font-bold text-slate-900 dark:text-white">
                 ¡Importación exitosa!
               </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Se crearon{' '}
-                <strong className="text-emerald-600">{result.processed} {typeInfo.label.toLowerCase()}</strong>{' '}
-                en tu cuenta.
-              </p>
-              <p className="mt-1 text-xs text-slate-400">Log ID: {result.logId}</p>
+              {/* HU-206 — resumen: nuevos / actualizados / omitidos */}
+              <div className="mx-auto mt-2 flex max-w-md flex-wrap justify-center gap-3 text-sm">
+                <span className="rounded-lg bg-emerald-100 px-3 py-1.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  {result.summary?.created ?? result.processed} nuevos
+                </span>
+                {(result.summary?.updated ?? 0) > 0 && (
+                  <span className="rounded-lg bg-blue-100 px-3 py-1.5 font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    {result.summary!.updated} actualizados
+                  </span>
+                )}
+                {(result.summary?.skipped ?? 0) > 0 && (
+                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                    {result.summary!.skipped} omitidos
+                  </span>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-slate-400">Log ID: {result.logId}</p>
               <div className="mt-6 flex justify-center gap-3">
                 <button
                   onClick={reset}
