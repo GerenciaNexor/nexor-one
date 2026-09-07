@@ -55,6 +55,14 @@ export const UpdateEventSchema = z.object({
   attendees: z.array(AttendeeInput).max(50).optional(),
 })
 
+/** HU-205 — chequeo de disponibilidad (ocupado/libre) de varios usuarios en un rango. */
+export const AvailabilityCheckSchema = z.object({
+  userIds:   z.array(z.string().min(1)).min(1, 'Indica al menos un usuario').max(50),
+  from:      z.string({ required_error: 'from es requerido' }),
+  to:        z.string({ required_error: 'to es requerido' }),
+  excludeId: z.string().optional(), // al editar un evento, se excluye a sí mismo del chequeo
+})
+
 export const UpdateStatusSchema = z.object({
   status: z.enum(['confirmed', 'completed', 'cancelled', 'no_show'], {
     required_error: 'status es requerido',
@@ -73,6 +81,7 @@ export const ListAppointmentsQuerySchema = z.object({
 
 export type CreateAppointment     = z.infer<typeof CreateAppointmentSchema>
 export type UpdateEvent           = z.infer<typeof UpdateEventSchema>
+export type AvailabilityCheck     = z.infer<typeof AvailabilityCheckSchema>
 export type UpdateStatus          = z.infer<typeof UpdateStatusSchema>
 export type ListAppointmentsQuery = z.infer<typeof ListAppointmentsQuerySchema>
 export type AttendeeInputT        = z.infer<typeof AttendeeInput>

@@ -1240,6 +1240,9 @@ model Appointment {
   channel        String   @default("manual") @db.VarChar(50)
   reminderSent   Boolean  @default(false) @map("reminder_sent")
   createdByAgent Boolean  @default(false) @map("created_by_agent")
+  // HU-205 — quién creó la cita/evento (userId, escalar sin relación). Para la visibilidad del evento
+  // libre: lo ven su creador, sus asistentes y los admins transversales.
+  createdBy      String?  @map("created_by") @db.VarChar(30)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1256,6 +1259,7 @@ model Appointment {
   @@index([tenantId, startAt])
   @@index([tenantId, status])
   @@index([tenantId, type, startAt])
+  @@index([tenantId, createdBy])
   @@index([professionalId, startAt])
   @@map("appointments")
 }

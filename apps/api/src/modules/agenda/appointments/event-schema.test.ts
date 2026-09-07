@@ -3,7 +3,7 @@
  * y del AttendeeInput. La cita de servicio conserva sus requisitos; el evento libre solo exige título.
  */
 import { describe, it, expect } from 'vitest'
-import { CreateAppointmentSchema, AttendeeInput } from './schema'
+import { CreateAppointmentSchema, AttendeeInput, AvailabilityCheckSchema } from './schema'
 
 describe('HU-204 — CreateAppointmentSchema (servicio vs evento)', () => {
   it('servicio: exige sucursal, servicio y cliente', () => {
@@ -40,5 +40,11 @@ describe('HU-204 — CreateAppointmentSchema (servicio vs evento)', () => {
     expect(AttendeeInput.safeParse({ userId: 'u1' }).success).toBe(true)
     expect(AttendeeInput.safeParse({ email: 'a@b.com' }).success).toBe(true)
     expect(AttendeeInput.safeParse({ email: 'no-es-correo' }).success).toBe(false)
+  })
+
+  it('HU-205 — AvailabilityCheckSchema exige al menos un usuario + rango', () => {
+    expect(AvailabilityCheckSchema.safeParse({ userIds: [], from: 'a', to: 'b' }).success).toBe(false)
+    const ok = AvailabilityCheckSchema.safeParse({ userIds: ['u1', 'u2'], from: '2026-09-10T15:00:00.000Z', to: '2026-09-10T16:00:00.000Z', excludeId: 'ap1' })
+    expect(ok.success).toBe(true)
   })
 })

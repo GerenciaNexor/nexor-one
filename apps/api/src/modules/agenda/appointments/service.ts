@@ -60,17 +60,28 @@ export async function listAppointments(
   tenantId: string,
   query: ListAppointmentsQuery,
   branchFilter: string | undefined,
+  userId?: string,
 ) {
   const where: Prisma.AppointmentWhereInput = { tenantId }
 
-  // HU-204 — los EVENTOS libres son del calendario general del tenant (pueden no tener sucursal), así
-  // que no se recortan por sucursal: un rol acotado a su sede ve las citas de servicio de SU sucursal
-  // MÁS todos los eventos del tenant. Las citas de servicio conservan el filtro por sucursal de siempre.
-  if (branchFilter) {
-    where.OR = [{ branchId: branchFilter }, { type: 'event' }]
-  } else if (query.branchId) {
-    where.OR = [{ branchId: query.branchId }, { type: 'event' }]
+  // HU-205 — Visibilidad:
+  //  · CITA DE SERVICIO: por sucursal (sin cambios) — la ven los usuarios de esa sede.
+  //  · EVENTO LIBRE: PRIVADO de sus participantes — solo su creador, sus asistentes internos y los
+  //    admins transversales (branchFilter undefined = TENANT_ADMIN). Un invitado lo ve aunque sea de
+  //    otra sede; alguien no invitado (no admin) no lo ve, aunque sea de su misma sede.
+  const uid = userId ?? '__no_user__'
+  const eventVisibleToUser: Prisma.AppointmentWhereInput = {
+    type: 'event',
+    OR: [{ createdBy: uid }, { attendees: { some: { userId: uid } } }],
   }
+  if (branchFilter) {
+    // Rol acotado a su sucursal: citas de servicio de SU sede + eventos donde participa.
+    where.OR = [{ type: 'service', branchId: branchFilter }, eventVisibleToUser]
+  } else if (query.branchId) {
+    // Admin transversal filtrando por sucursal: servicio de esa sede + TODOS los eventos (ve todo).
+    where.OR = [{ type: 'service', branchId: query.branchId }, { type: 'event' }]
+  }
+  // else: admin transversal sin filtro → ve todas las citas y todos los eventos del tenant.
 
   if (query.status)         where.status         = query.status
   if (query.professionalId) where.professionalId = query.professionalId
@@ -100,11 +111,11 @@ export async function listAppointments(
   return { data, total: data.length }
 }
 
-export async function createAppointment(tenantId: string, data: CreateAppointment) {
+export async function createAppointment(tenantId: string, data: CreateAppointment, userId?: string) {
   await assertDemoLimit(tenantId, 'appointments') // HU-143 — tope del plan demo
   // HU-204 — evento libre: camino propio (sin servicio/disponibilidad/solapamiento). La cita de
   // servicio sigue exactamente igual debajo.
-  if (data.type === 'event') return createEvent(tenantId, data)
+  if (data.type === 'event') return createEvent(tenantId, data, userId)
   // ── 1. Cargar tenant, servicio y sucursal en paralelo ──────────────────────
   const [tenant, service, branch] = await Promise.all([
     prisma.tenant.findFirst({
@@ -281,6 +292,7 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
         notes:          data.notes,
         channel:        data.channel,
         createdByAgent: data.createdByAgent,
+        createdBy:      userId ?? null,
       },
       select: APPOINTMENT_SELECT,
     })
@@ -383,7 +395,7 @@ async function notifyEventAttendees(
 }
 
 /** Crea un evento libre (título, descripción, inicio/fin, sucursal opcional, asistentes). */
-async function createEvent(tenantId: string, data: CreateAppointment) {
+async function createEvent(tenantId: string, data: CreateAppointment, userId?: string) {
   const tenant     = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true, name: true } })
   const timezone   = tenant?.timezone ?? 'America/Bogota'
   const tenantName = tenant?.name ?? 'NEXOR'
@@ -400,7 +412,7 @@ async function createEvent(tenantId: string, data: CreateAppointment) {
   const appt = await prisma.appointment.create({
     data: {
       tenantId, type: 'event', title: data.title!.trim(),
-      branchId: data.branchId ?? null,
+      branchId: data.branchId ?? null, createdBy: userId ?? null,
       startAt, endAt, status: data.status, notes: data.notes, channel: data.channel, createdByAgent: data.createdByAgent,
       ...(rows.length ? { attendees: { create: rows.map((r) => ({ tenantId, userId: r.userId ?? undefined, email: r.email ?? undefined, name: r.name ?? undefined })) } } : {}),
     },
@@ -467,6 +479,46 @@ export async function deleteAppointment(tenantId: string, id: string) {
   await prisma.appointment.delete({ where: { id } })
   await notifyEventAttendees(tenantId, existing, rows, 'cancelación', timezone, tenantName)
   return { id, deleted: true }
+}
+
+/**
+ * HU-205 — Indicador de disponibilidad al invitar (estilo Google Calendar). Devuelve, por usuario del
+ * MISMO tenant, si está OCUPADO en el rango [from, to). NUNCA revela de qué está ocupado (ni título ni
+ * con quién): solo el booleano. No bloquea ni sugiere horarios (eso lo decide el frontend). Una persona
+ * está ocupada si en ese rango es profesional de una cita, creador de un evento, o asistente interno de
+ * una cita/evento (no cancelados). Preparado para sumar Google Calendar en una HU posterior.
+ */
+export async function checkAvailability(
+  tenantId: string,
+  params: { userIds: string[]; from: string; to: string; excludeId?: string },
+): Promise<{ busy: Record<string, boolean> }> {
+  const ids  = [...new Set(params.userIds)].filter(Boolean)
+  const busy: Record<string, boolean> = {}
+  for (const id of ids) busy[id] = false
+  if (ids.length === 0) return { busy }
+
+  const start = new Date(params.from)
+  const end   = new Date(params.to)
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return { busy }
+
+  // Solapamiento clásico: empieza antes de que termine el rango y termina después de que empiece.
+  const overlap: Prisma.AppointmentWhereInput = {
+    tenantId,
+    status:  { notIn: ['cancelled'] },
+    startAt: { lt: end },
+    endAt:   { gt: start },
+    ...(params.excludeId ? { id: { not: params.excludeId } } : {}),
+  }
+
+  const [asProf, asCreator, asAttendee] = await Promise.all([
+    prisma.appointment.findMany({ where: { ...overlap, professionalId: { in: ids } }, select: { professionalId: true } }),
+    prisma.appointment.findMany({ where: { ...overlap, createdBy: { in: ids } }, select: { createdBy: true } }),
+    prisma.appointmentAttendee.findMany({ where: { tenantId, userId: { in: ids }, appointment: overlap }, select: { userId: true } }),
+  ])
+  for (const a of asProf)     if (a.professionalId) busy[a.professionalId] = true
+  for (const a of asCreator)  if (a.createdBy)      busy[a.createdBy]      = true
+  for (const a of asAttendee) if (a.userId)         busy[a.userId]         = true
+  return { busy }
 }
 
 export async function updateAppointmentStatus(
