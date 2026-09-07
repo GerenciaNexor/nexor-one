@@ -130,7 +130,7 @@ export function ReceiveModal({ poId, orderNumber, items, onClose, onSuccess }: P
         </div>
 
         {/* Form */}
-        <form id="receive-form" onSubmit={handleSubmit} className="max-h-[60vh] overflow-y-auto">
+        <form id="receive-form" onSubmit={handleSubmit} className="max-h-[60dvh] overflow-y-auto">
           <div className="px-6 py-5">
 
             {receivable.length === 0 ? (

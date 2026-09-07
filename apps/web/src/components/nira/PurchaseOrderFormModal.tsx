@@ -176,7 +176,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
   // ── Cargar datos de referencia ─────────────────────────────────────────────
   useEffect(() => {
     apiClient.get<{ data: Supplier[] }>('/v1/nira/suppliers').then((r) => setSuppliers(r.data)).catch(() => null)
-    apiClient.get<{ data: Branch[] }>('/v1/branches').then((r) => {
+    apiClient.get<{ data: Branch[] }>('/v1/branches?active=true').then((r) => {
       setBranches(r.data)
       // HU-165 — si solo hay una sucursal, preseleccionarla (la sucursal es obligatoria).
       if (r.data.length === 1) setBranchId(r.data[0]!.id)
@@ -351,7 +351,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
         </div>
 
         {/* Form */}
-        <form id="po-form" onSubmit={handleSubmit} className="max-h-[72vh] overflow-y-auto">
+        <form id="po-form" onSubmit={handleSubmit} className="max-h-[72dvh] overflow-y-auto">
           <div className="space-y-5 px-6 py-5">
 
             {/* ── Encabezado de la OC ──────────────────────────────────── */}

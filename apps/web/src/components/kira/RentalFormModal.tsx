@@ -44,7 +44,7 @@ export function RentalFormModal({ onClose, onSuccess }: { onClose: () => void; o
     apiClient.get<{ data: ClientOpt[] }>('/v1/kira/rentals/clients').then((r) => setClients(r.data)).catch(() => setClients([]))
     apiClient.get<{ data: ProductOpt[] }>('/v1/kira/products?active=true').then((r) => setProducts(r.data.filter((p) => p.isRentable))).catch(() => setProducts([]))
     apiClient.get<{ data: StockRow[] }>('/v1/kira/stock').then((r) => setStocks(r.data)).catch(() => setStocks([]))
-    if (!isOperative) apiClient.get<{ data: BranchOpt[] }>('/v1/branches').then((r) => setBranches(r.data)).catch(() => setBranches([]))
+    if (!isOperative) apiClient.get<{ data: BranchOpt[] }>('/v1/branches?active=true').then((r) => setBranches(r.data)).catch(() => setBranches([]))
   }, [isOperative])
 
   const selectedProduct = products.find((p) => p.id === productId)
@@ -102,7 +102,7 @@ export function RentalFormModal({ onClose, onSuccess }: { onClose: () => void; o
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Nuevo alquiler</h3>
           <p className="mt-0.5 text-xs text-slate-500">Salida temporal: baja el disponible, no el total.</p>
 
-          <div className="mt-4 max-h-[64vh] space-y-3 overflow-y-auto pr-1">
+          <div className="mt-4 max-h-[64dvh] space-y-3 overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Cliente *</label>

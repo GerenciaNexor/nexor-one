@@ -263,13 +263,15 @@ export function FloatingChat() {
   }
 
   return (
-    <Portal>
+    <Portal lockScroll={false}>
       {/* ── FAB (oculto en mobile cuando el chat está abierto) ─────────────────── */}
       <button
         onClick={handleOpen}
         aria-label="Abrir chat con el agente"
+        // HU-198 — safe-area: separar el FAB de la barra de gestos de iOS.
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))', right: 'calc(1.5rem + env(safe-area-inset-right))' }}
         className={[
-          'fixed bottom-6 right-6 z-50',
+          'fixed z-50',
           'flex h-14 w-14 items-center justify-center',
           'rounded-full bg-blue-600 text-white shadow-lg',
           'transition-all duration-200 hover:bg-blue-700 hover:scale-105 active:scale-95',
@@ -303,7 +305,7 @@ export function FloatingChat() {
           ].join(' ')}
         >
           {/* Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-blue-600 px-4 py-3">
+          <div style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' }} className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-blue-600 px-4 py-3 lg:!pt-3">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
                 <AgentIcon size={16} />
@@ -368,7 +370,7 @@ export function FloatingChat() {
           </div>
 
           {/* Input */}
-          <div className="shrink-0 border-t border-slate-100 bg-white p-3">
+          <div style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }} className="shrink-0 border-t border-slate-100 bg-white p-3 lg:!pb-3">
             <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-200 transition-all">
               <textarea
                 ref={inputRef}

@@ -86,7 +86,7 @@ export function IncomingRentalFormModal({ onClose, onSuccess }: { onClose: () =>
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Nuevo alquiler entrante</h3>
           <p className="mt-0.5 text-xs text-slate-500">Rentas un producto de un tercero. No entra a tu inventario; el costo va a tus finanzas.</p>
 
-          <div className="mt-4 max-h-[64vh] space-y-3 overflow-y-auto pr-1">
+          <div className="mt-4 max-h-[64dvh] space-y-3 overflow-y-auto pr-1">
             {/* Tercero: proveedor existente o entidad nueva suelta */}
             <div>
               <label className={lbl}>¿De quién lo rentas? *</label>

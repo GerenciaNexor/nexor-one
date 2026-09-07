@@ -2,6 +2,7 @@ import { prisma, directPrisma } from '../../lib/prisma'
 import { Prisma } from '@prisma/client'
 import { ensureGenericSupplier } from '../nira/suppliers/service'
 import { ensureGenericClient } from '../ari/clients/service'
+import { assertBranchActive } from '../branches/service'
 import { businessToday } from '../../lib/dates'
 import { validateProjectId } from '../proyectos/service'
 import { applyAssignment } from '../proyectos/budget'
@@ -40,7 +41,7 @@ export async function listQuickProducts(tenantId: string) {
 
 export async function listQuickSuppliers(tenantId: string) {
   await ensureGenericSupplier(prisma, tenantId)
-  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true, taxId: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
+  const data = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, isGeneric: true, taxId: true, documentType: true }, orderBy: [{ isGeneric: 'desc' }, { name: 'asc' }] })
   return { data, total: data.length }
 }
 
@@ -321,6 +322,7 @@ export async function quickPurchase(tenantId: string, userId: string, input: Qui
     const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true, name: true } })
     if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+    await assertBranchActive(tenantId, input.branchId, tx) // HU-197 — no registrar en sede desactivada
     const categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
     return applyPurchaseItem(tx, tenantId, userId, { supplierName: supplier.name, categoryId, now, projectId }, {
@@ -340,6 +342,7 @@ export async function quickSale(tenantId: string, userId: string, input: QuickSa
     const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
     const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { id: true, name: true } })
     if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+    await assertBranchActive(tenantId, input.branchId, tx) // HU-197 — no registrar en sede desactivada
     const categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
     return applySaleItem(tx, tenantId, userId, { clientName: client.name, categoryId, now, projectId }, {
@@ -429,6 +432,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
   return prisma.$transaction(async (tx) => {
     const now = input.date ? new Date(input.date) : businessToday()
     const effectiveBranch = branchId ?? input.branchId ?? null
+    await assertBranchActive(tenantId, effectiveBranch, tx) // HU-197 — no registrar en sede desactivada
     const projectId = await validateProjectId(tenantId, input.projectId, tx) // HU-199 — mismo tenant
 
     let counterpartyName: string
@@ -453,7 +457,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
-        issuer: input.issuer ?? null, nit: input.nit ?? null, invoiceNumber: input.invoiceNumber ?? null,
+        issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
         imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
@@ -506,7 +510,7 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
+    select: { id: true, kind: true, issuer: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
   // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
@@ -523,7 +527,7 @@ export async function getInvoice(tenantId: string, id: string) {
   // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
   const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
-    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit,
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit, documentType: inv.documentType,
     // HU-195 — número/código de factura: columna dedicada, con fallback a facturas viejas (JSON).
     invoiceNumber: inv.invoiceNumber ?? invoiceNumberOf(inv.fullExtraction),
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,

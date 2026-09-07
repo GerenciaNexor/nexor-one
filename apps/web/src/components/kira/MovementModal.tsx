@@ -84,7 +84,7 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
     ]
     if (!isOperative) {
       calls.push(
-        apiClient.get<{ data: BranchOption[] }>('/v1/branches').then((r) => setBranches(r.data)),
+        apiClient.get<{ data: BranchOption[] }>('/v1/branches?active=true').then((r) => setBranches(r.data)),
       )
     }
     Promise.all(calls).finally(() => setLoadingOpts(false))
@@ -179,7 +179,7 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
           </div>
         ) : (
           <form id="movement-form" onSubmit={handleSubmit}
-            className="max-h-[65vh] overflow-y-auto px-6 py-4"
+            className="max-h-[65dvh] overflow-y-auto px-6 py-4"
           >
             <div className="space-y-4">
 

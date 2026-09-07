@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DOCUMENT_TYPE_CODES } from '@nexor/shared'
 
 /**
  * HU-169 — Registro rápido de compra/venta (transacción ya ocurrida, sin aprobación).
@@ -121,6 +122,7 @@ export const RegisterInvoiceSchema = z.object({
   // Encabezado leído (columnas propias de la factura).
   issuer:         z.string().max(255).nullish(),
   nit:            z.string().max(50).nullish(),
+  documentType:   z.enum(DOCUMENT_TYPE_CODES as [string, ...string[]]).nullish(),  // HU-196 — tipo del documento (NIT/CC/…)
   invoiceNumber:  z.string().max(100).nullish(),  // HU-195 — número/código de la factura
   total:          z.number().nonnegative().nullish(),
   // Imagen comprimida (miniatura) + factura COMPLETA leída (nada se pierde).

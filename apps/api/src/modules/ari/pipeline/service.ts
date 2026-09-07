@@ -3,6 +3,7 @@ import type { Role } from '@nexor/shared'
 import { prisma } from '../../../lib/prisma'
 import { hasMinRole } from '../../../lib/guards'
 import { businessToday } from '../../../lib/dates'
+import { assertBranchActive } from '../../branches/service'
 import type {
   CreateStageInput,
   UpdateStageInput,
@@ -302,6 +303,8 @@ export async function createDeal(tenantId: string, input: CreateDealInput) {
     select: { id: true },
   })
   if (!stage) throw { statusCode: 404, message: 'Etapa no encontrada', code: 'NOT_FOUND' }
+
+  await assertBranchActive(tenantId, input.branchId) // HU-197 — no registrar en sede desactivada
 
   const deal = await prisma.deal.create({
     data: {

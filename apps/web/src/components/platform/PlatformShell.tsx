@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useVisualViewportHeight } from '@/lib/use-viewport-height'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/auth'
@@ -59,6 +60,10 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // HU-198 — altura real (visualViewport) en móvil: el teclado no tapa inputs. Ver AppShell.
+  const shellRef = useRef<HTMLDivElement>(null)
+  useVisualViewportHeight(shellRef)
+
   // Cerrar el sidebar móvil al cambiar de ruta
   useEffect(() => {
     setSidebarOpen(false)
@@ -74,7 +79,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div ref={shellRef} className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
 
       {/* Overlay móvil */}
       {sidebarOpen && (

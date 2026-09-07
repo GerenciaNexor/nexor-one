@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import { validateProjectId } from '../../proyectos/service'
 import { applyAssignment } from '../../proyectos/budget'
+import { assertBranchActive } from '../../branches/service'
 import type {
   CreateManualTransactionInput,
   UpdateManualTransactionInput,
@@ -99,6 +100,7 @@ export async function getTransaction(tenantId: string, id: string) {
 
 export async function createManualTransaction(tenantId: string, input: CreateManualTransactionInput, userId?: string) {
   await validateClassification(tenantId, input.type, input.categoryId, input.costCenterId)
+  await assertBranchActive(tenantId, input.branchId) // HU-197 — no registrar en sede desactivada
   const projectId = await validateProjectId(tenantId, input.projectId) // HU-199 — mismo tenant
 
   const created = await prisma.transaction.create({

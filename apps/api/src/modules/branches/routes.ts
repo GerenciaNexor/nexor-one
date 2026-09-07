@@ -12,13 +12,15 @@ export async function branchesRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:        ['Branches'],
       summary:     'Listar sucursales',
-      description: 'TENANT_ADMIN ve todas; BRANCH_ADMIN y roles menores ven solo la suya.',
+      description: 'TENANT_ADMIN ve todas; BRANCH_ADMIN y roles menores ven solo la suya. Con ?active=true solo las activas (para seleccionar en registros nuevos).',
       security:    bearerAuth,
+      querystring: { type: 'object', properties: { active: { type: 'string', enum: ['true'] } } },
       response:    { 200: listRes, ...stdErrors },
     },
   }, async (request, reply) => {
     const branchIdFilter = getBranchFilter(request.user)
-    const result = await listBranches(request.user.tenantId, branchIdFilter)
+    const activeOnly = (request.query as { active?: string }).active === 'true'
+    const result = await listBranches(request.user.tenantId, branchIdFilter, activeOnly)
     return reply.code(200).send(result)
   })
 

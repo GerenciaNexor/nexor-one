@@ -235,7 +235,7 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#12162a] dark:text-slate-200">
-        <div className="max-h-[80vh] overflow-y-auto pr-1">
+        <div className="max-h-[80dvh] overflow-y-auto pr-1">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Nuevo cliente</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Crea la empresa, su usuario administrador y su suscripción.</p>
 

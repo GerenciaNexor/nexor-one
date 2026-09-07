@@ -210,7 +210,7 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
           </div>
 
           {/* Form */}
-          <form id="client-form" onSubmit={handleSubmit} className="max-h-[68vh] overflow-y-auto">
+          <form id="client-form" onSubmit={handleSubmit} className="max-h-[68dvh] overflow-y-auto">
             <div className="space-y-5 px-6 pb-2">
 
               {/* ── Información principal ───────────────────────────────────── */}

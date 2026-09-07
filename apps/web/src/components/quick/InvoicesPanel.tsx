@@ -94,7 +94,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
                   <tr key={r.id} onClick={() => setDetailId(r.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDate(r.date)}</td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.invoiceNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.issuer ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.nit ?? '—'}</td>
@@ -116,7 +116,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
 // ─── Detalle: TODA la información + imagen original ─────────────────────────────
 
 interface InvoiceDetail {
-  id: string; kind: Kind; issuer: string | null; nit: string | null; invoiceNumber?: string | null; date: string | null; total: number | null
+  id: string; kind: Kind; issuer: string | null; nit: string | null; documentType?: string | null; invoiceNumber?: string | null; date: string | null; total: number | null
   hasImage: boolean; createdAt: string; createdByName?: string | null
   additionalFields: { label: string; value: string }[]
   items: Array<{ description?: string; quantity?: number; unitValue?: number; amount?: number; productName?: string; affectsStock?: boolean; addedToInventory?: boolean; transactionId?: string }>
@@ -147,7 +147,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
-        <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
+        <div className="max-h-[90dvh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Factura de {isSale ? 'venta' : 'compra'}</h3>
@@ -165,7 +165,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
               <div className="space-y-4">
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <div><dt className="text-xs text-slate-500">{isSale ? 'Cliente' : 'Proveedor / Emisor'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.issuer ?? '—'}</dd></div>
-                  <div><dt className="text-xs text-slate-500">NIT</dt><dd className="text-slate-800 dark:text-slate-100">{inv.nit ?? '—'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">{inv.documentType ? inv.documentType : 'NIT'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.nit ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">N.º de factura</dt><dd className="text-slate-800 dark:text-slate-100">{inv.invoiceNumber ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">Fecha</dt><dd className="text-slate-800 dark:text-slate-100">{fmtDate(inv.date)}</dd></div>
                   <div><dt className="text-xs text-slate-500">Total</dt><dd className="font-semibold text-slate-900 dark:text-slate-100">{money(inv.total)}</dd></div>
@@ -215,7 +215,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagen original</p>
                 {inv.hasImage ? (
                   imgUrl
-                    ? <a href={imgUrl} target="_blank" rel="noreferrer"><img src={imgUrl} alt="Factura" className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700" /></a>
+                    ? <a href={imgUrl} target="_blank" rel="noreferrer"><img src={imgUrl} alt="Factura" className="max-h-[60dvh] w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700" /></a>
                     : <div className="h-64 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700" />
                 ) : (
                   <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-xs text-slate-400 dark:border-slate-600">Sin imagen guardada.</p>

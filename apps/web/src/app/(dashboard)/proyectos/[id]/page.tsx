@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { ProjectFormModal, type Project } from '@/components/proyectos/ProjectFormModal'
 import { money, StatusBadge, TypeBadge, ProgressBar } from '@/components/proyectos/util'
+import { downloadFile, toQuery } from '@/lib/download'
 
 interface AssignedTx {
   id: string; type: 'income' | 'expense'; amount: number; description: string
@@ -34,6 +35,21 @@ export default function ProyectoDetailPage() {
   const [err, setErr]     = useState<string | null>(null)
   const [edit, setEdit]   = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // HU-202 — filtros del historial de transacciones asignadas + descarga a Excel.
+  const [fq, setFq]       = useState('')
+  const [ffrom, setFfrom] = useState('')
+  const [fto, setFto]     = useState('')
+  const [ftype, setFtype] = useState('')   // '' | 'income' | 'expense'
+  const [exporting, setExporting] = useState(false)
+
+  async function exportExcel() {
+    setExporting(true)
+    try {
+      const qs = toQuery({ q: fq.trim(), from: ffrom, to: fto, type: ftype })
+      await downloadFile(`/v1/proyectos/${id}/export${qs}`, `proyecto-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch { /* noop */ } finally { setExporting(false) }
+  }
 
   const load = useCallback(async () => {
     setErr(null)
@@ -102,6 +118,18 @@ export default function ProyectoDetailPage() {
 
   const pr = project.progress
   const isLimit = project.type === 'limite'
+
+  // HU-202 — el historial mostrado respeta los filtros (la suma/avance de arriba sigue siendo total).
+  const hasFilters = !!(fq || ffrom || fto || ftype)
+  const filtered = project.transactions.filter((t) => {
+    if (ftype && t.type !== ftype) return false
+    if (fq && !t.description.toLowerCase().includes(fq.trim().toLowerCase())) return false
+    const d = t.date.slice(0, 10)
+    if (ffrom && d < ffrom) return false
+    if (fto && d > fto) return false
+    return true
+  })
+  const inp = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -208,18 +236,44 @@ export default function ProyectoDetailPage() {
 
       {/* Transacciones asignadas (HU-199) */}
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Transacciones asignadas</h2>
           <span className="text-xs text-slate-400">{project.transactions.length} · suma {money(pr.current)}</span>
         </div>
+
+        {/* HU-202 — filtros del historial + descarga a Excel (respeta el filtro; todo si no hay). */}
+        {project.transactions.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <input value={fq} onChange={(e) => setFq(e.target.value)} placeholder="Buscar descripción…" className={`${inp} min-w-[160px] flex-1`} />
+            <label className="flex flex-col text-[11px] text-slate-500">Desde<input type="date" value={ffrom} onChange={(e) => setFfrom(e.target.value)} className={inp} /></label>
+            <label className="flex flex-col text-[11px] text-slate-500">Hasta<input type="date" value={fto} onChange={(e) => setFto(e.target.value)} className={inp} /></label>
+            <label className="flex flex-col text-[11px] text-slate-500">Tipo
+              <select value={ftype} onChange={(e) => setFtype(e.target.value)} className={inp}>
+                <option value="">Todas</option>
+                <option value="expense">Compras / gastos</option>
+                <option value="income">Ventas / ingresos</option>
+              </select>
+            </label>
+            {hasFilters && (
+              <button onClick={() => { setFq(''); setFfrom(''); setFto(''); setFtype('') }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
+            )}
+            <button onClick={exportExcel} disabled={exporting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
+              {exporting ? 'Generando…' : '⬇ Descargar Excel'}
+            </button>
+          </div>
+        )}
+
         {project.transactions.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">
             Aún no hay transacciones asignadas. Asigna compras, ventas, gastos o alquileres a este proyecto
             desde su formulario de registro (campo «Proyecto») para que su monto cuente en el {isLimit ? 'consumo' : 'avance'}.
           </p>
+        ) : filtered.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">Ninguna transacción coincide con los filtros.</p>
         ) : (
           <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-700">
-            {project.transactions.map((t) => (
+            {filtered.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-slate-800 dark:text-slate-200">
@@ -231,7 +285,7 @@ export default function ProyectoDetailPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className={`text-sm font-medium ${t.assignmentStatus === 'pending' ? 'text-amber-500' : t.type === 'income' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-200'}`}>
-                    {t.type === 'income' ? '+' : '−'}{money(t.amount)}
+                    {money(t.amount)}
                   </span>
                   {isManager && (
                     <button onClick={() => unassign(t.id)} className="text-xs text-slate-400 hover:text-red-600" title="Quitar del proyecto">Quitar</button>

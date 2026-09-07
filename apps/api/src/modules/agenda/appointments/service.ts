@@ -73,6 +73,14 @@ export async function listAppointments(
     const dayStart = localMinutesToUTC(query.date, 0,             tz)
     const dayEnd   = localMinutesToUTC(query.date, 23 * 60 + 59,  tz)
     where.startAt  = { gte: dayStart, lte: new Date(dayEnd.getTime() + 60_000) }
+  } else if (query.from || query.to) {
+    // HU-203 — rango de fechas (p. ej. próximas citas). Se resuelve en la zona del tenant.
+    const tenant = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } })
+    const tz     = tenant?.timezone ?? 'America/Bogota'
+    where.startAt = {
+      ...(query.from ? { gte: localMinutesToUTC(query.from, 0, tz) } : {}),
+      ...(query.to   ? { lte: new Date(localMinutesToUTC(query.to, 23 * 60 + 59, tz).getTime() + 60_000) } : {}),
+    }
   }
 
   const data = await prisma.appointment.findMany({
@@ -102,12 +110,14 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     }),
     prisma.branch.findFirst({
       where:  { id: data.branchId, tenantId },
-      select: { name: true },
+      select: { name: true, isActive: true },
     }),
   ])
 
   if (!service) throw { statusCode: 404, message: 'Servicio no encontrado o inactivo', code: 'NOT_FOUND' }
   if (!branch)  throw { statusCode: 404, message: 'Sucursal no encontrada',            code: 'NOT_FOUND' }
+  // HU-197 — no se pueden agendar citas nuevas en una sucursal desactivada (su histórico sí se conserva).
+  if (!branch.isActive) throw { statusCode: 422, message: 'La sucursal está desactivada; no se pueden agendar citas nuevas en ella.', code: 'BRANCH_INACTIVE' }
 
   const timezone   = tenant?.timezone ?? 'America/Bogota'
   const tenantName = tenant?.name ?? 'NEXOR'

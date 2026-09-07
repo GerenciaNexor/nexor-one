@@ -5,9 +5,10 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
+import { DOCUMENT_TYPES } from '@nexor/shared'
 
 type Kind = 'purchase' | 'sale'
-interface Opt  { id: string; name: string; isGeneric?: boolean; taxId?: string | null }
+interface Opt  { id: string; name: string; isGeneric?: boolean; taxId?: string | null; documentType?: string | null }
 
 // Normaliza NIT/documento para comparar (solo dígitos): "900.276.9662-1" ≈ "9002769662-1".
 const normId = (s?: string | null) => (s ?? '').replace(/\D/g, '')
@@ -113,6 +114,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
   // Encabezado (editable).
   const [issuer, setIssuer] = useState('')
   const [nit, setNit]       = useState('')
+  const [documentType, setDocumentType] = useState('NIT')
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [date, setDate]     = useState('')
   const [total, setTotal]   = useState('')
@@ -171,7 +173,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
           (nId && normId(o.taxId) === nId) ||
           (nName && (normName(o.name) === nName || (nName.length > 3 && normName(o.name).includes(nName))))
         ))
-        if (match) setCpId(match.id)  // ya existe → se selecciona solo
+        if (match) { setCpId(match.id); if (match.documentType) setDocumentType(match.documentType) }  // ya existe → se selecciona solo
       }
       setItems((data.items ?? []).map((it) => ({
         description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',
@@ -195,6 +197,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
     if (opt && !opt.isGeneric) {
       setIssuer(opt.name)
       setNit(opt.taxId ?? '')
+      if (opt.documentType) setDocumentType(opt.documentType)  // tipo de documento del proveedor existente
     } else {
       setIssuer(readIssuer.current)
       setNit(readNit.current)
@@ -244,7 +247,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
         kind, ...(isSale ? { clientId: cpId || null } : { supplierId: cpId || null }),
         branchId: branchId || undefined, date: date || undefined,
         ...(projectId ? { projectId } : {}), // HU-199 — asignación opcional a un proyecto
-        issuer: issuer || null, nit: nit || null, invoiceNumber: invoiceNumber || null, total: total ? Number(total) : null,
+        issuer: issuer || null, nit: nit || null, documentType: documentType || null, invoiceNumber: invoiceNumber || null, total: total ? Number(total) : null,
         imageBase64: image?.base64, imageMime: image?.mime, fullExtraction: fullExtraction ?? {},
         items: payloadItems,
       })
@@ -302,9 +305,10 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
 
           {/* ── Fase revisión ── */}
           {phase === 'review' && (
-            <div className="mt-4 max-h-[68vh] space-y-4 overflow-y-auto pr-1">
-              {/* Encabezado + contraparte */}
-              <div className="grid grid-cols-2 gap-3">
+            <div className="mt-4 max-h-[68dvh] space-y-4 overflow-y-auto pr-1">
+              {/* Encabezado + contraparte. `[&>div]:min-w-0` deja que los <select> largos (proveedor,
+                  sucursal) encojan y no corten la columna derecha en móvil (HU-198). */}
+              <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
                 <div><label className={lbl}>{isSale ? 'Cliente' : 'Proveedor / Emisor'}</label>
                   <select value={cpId} onChange={(e) => selectCounterparty(e.target.value)} className={inp}>
                     {counterparties.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isGeneric ? ' (genérico)' : ''}</option>)}
@@ -317,6 +321,10 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
                     </select></div>
                 )}
                 <div><label className={lbl}>{manual ? 'Emisor' : 'Emisor (leído)'}</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inp} placeholder={manual ? 'Nombre del proveedor/emisor' : 'Nombre en la factura'} /></div>
+                <div><label className={lbl}>Tipo de documento</label>
+                  <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} className={inp}>
+                    {DOCUMENT_TYPES.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
+                  </select></div>
                 <div><label className={lbl}>NIT o documento</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>{manual ? 'N.º de factura' : 'N.º de factura (leído)'}</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={inp} placeholder="Ej: GOZ5292464" /></div>
                 <div><label className={lbl}>Fecha</label><input type="date" value={date?.slice(0, 10) ?? ''} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
