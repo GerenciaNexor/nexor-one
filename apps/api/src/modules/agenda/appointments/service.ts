@@ -2,9 +2,10 @@ import type { Role } from '@nexor/shared'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
-import { sendAppointmentConfirmation } from '../../../lib/email'
+import { sendAppointmentConfirmation, sendEventInvitation } from '../../../lib/email'
 import { canAccessBranch } from '../../../lib/guards'
-import type { CreateAppointment, ListAppointmentsQuery } from './schema'
+import { assertBranchActive } from '../../branches/service'
+import type { CreateAppointment, UpdateEvent, ListAppointmentsQuery } from './schema'
 
 // ─── Utilidades de zona horaria ───────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ function localMinutesToUTC(dateStr: string, minutesFromMidnight: number, timezon
 
 const APPOINTMENT_SELECT = {
   id:             true,
+  type:           true,   // HU-204 — service | event
+  title:          true,   // HU-204 — título del evento libre
   branchId:       true,
   clientId:       true,
   serviceTypeId:  true,
@@ -47,6 +50,8 @@ const APPOINTMENT_SELECT = {
   serviceType:    { select: { id: true, name: true, durationMinutes: true } },
   professional:   { select: { id: true, name: true } },
   client:         { select: { id: true, name: true, email: true } },
+  // HU-204 — asistentes del evento libre (internos/externos).
+  attendees:      { select: { id: true, userId: true, email: true, name: true, response: true } },
 } as const
 
 // ─── Servicios ────────────────────────────────────────────────────────────────
@@ -58,10 +63,13 @@ export async function listAppointments(
 ) {
   const where: Prisma.AppointmentWhereInput = { tenantId }
 
+  // HU-204 — los EVENTOS libres son del calendario general del tenant (pueden no tener sucursal), así
+  // que no se recortan por sucursal: un rol acotado a su sede ve las citas de servicio de SU sucursal
+  // MÁS todos los eventos del tenant. Las citas de servicio conservan el filtro por sucursal de siempre.
   if (branchFilter) {
-    where.branchId = branchFilter
+    where.OR = [{ branchId: branchFilter }, { type: 'event' }]
   } else if (query.branchId) {
-    where.branchId = query.branchId
+    where.OR = [{ branchId: query.branchId }, { type: 'event' }]
   }
 
   if (query.status)         where.status         = query.status
@@ -94,6 +102,9 @@ export async function listAppointments(
 
 export async function createAppointment(tenantId: string, data: CreateAppointment) {
   await assertDemoLimit(tenantId, 'appointments') // HU-143 — tope del plan demo
+  // HU-204 — evento libre: camino propio (sin servicio/disponibilidad/solapamiento). La cita de
+  // servicio sigue exactamente igual debajo.
+  if (data.type === 'event') return createEvent(tenantId, data)
   // ── 1. Cargar tenant, servicio y sucursal en paralelo ──────────────────────
   const [tenant, service, branch] = await Promise.all([
     prisma.tenant.findFirst({
@@ -314,6 +325,150 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
   return appointment
 }
 
+// ─── HU-204 — Evento libre (calendario general con asistentes múltiples) ───────
+
+type AttendeeRow = { tenantId: string; userId: string | null; email: string | null; name: string | null }
+
+/** Resuelve los asistentes a filas: internos (userId del tenant, con su nombre/correo) o externos (correo). */
+async function resolveAttendeeRows(tenantId: string, attendees: CreateAppointment['attendees']): Promise<AttendeeRow[]> {
+  const input = attendees ?? []
+  const internalIds = [...new Set(input.filter((a) => a.userId).map((a) => a.userId as string))]
+  const users = internalIds.length
+    ? await prisma.user.findMany({ where: { tenantId, id: { in: internalIds } }, select: { id: true, name: true, email: true } })
+    : []
+  const uMap = new Map(users.map((u) => [u.id, u]))
+  return input.map((a) => {
+    if (a.userId) {
+      const u = uMap.get(a.userId)
+      if (!u) throw { statusCode: 400, message: 'Asistente interno no encontrado en tu empresa', code: 'ATTENDEE_NOT_FOUND' }
+      return { tenantId, userId: u.id, email: u.email, name: (a.name?.trim() || u.name) }
+    }
+    return { tenantId, userId: null, email: a.email!.trim().toLowerCase(), name: a.name?.trim() || null }
+  })
+}
+
+/** Notifica a los asistentes: internos → notificación in-app; externos → correo (HU-182). */
+async function notifyEventAttendees(
+  tenantId: string,
+  appt: { title: string | null; startAt: Date; endAt: Date; notes: string | null },
+  rows: AttendeeRow[],
+  action: 'invitación' | 'actualización' | 'cancelación',
+  timezone: string,
+  tenantName: string,
+): Promise<void> {
+  const title = appt.title ?? 'Evento'
+  const when  = new Date(appt.startAt).toLocaleString('es-CO', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' })
+  const label = action === 'invitación' ? `Invitación: ${title}` : action === 'actualización' ? `Evento actualizado: ${title}` : `Evento cancelado: ${title}`
+  const type  = action === 'invitación' ? 'evento_invitacion' : action === 'actualización' ? 'evento_actualizado' : 'evento_cancelado'
+
+  const internalIds = [...new Set(rows.filter((r) => r.userId).map((r) => r.userId as string))]
+  if (internalIds.length) {
+    await prisma.notification.createMany({
+      data: internalIds.map((uid) => ({
+        tenantId, userId: uid, module: 'AGENDA' as const, type,
+        title: label,
+        message: action === 'cancelación' ? `El evento "${title}" (${when}) fue cancelado.` : `Evento "${title}" — ${when}.`,
+        link: '/agenda/appointments',
+      })),
+    })
+  }
+
+  const externals = rows.filter((r) => !r.userId && r.email)
+  for (const ex of externals) {
+    sendEventInvitation({
+      to: ex.email!, action, eventTitle: title, description: appt.notes ?? null,
+      startAt: new Date(appt.startAt), endAt: new Date(appt.endAt), tenantName, timezone,
+    }).catch((err) => console.error('[Event] email invitación error:', err))
+  }
+}
+
+/** Crea un evento libre (título, descripción, inicio/fin, sucursal opcional, asistentes). */
+async function createEvent(tenantId: string, data: CreateAppointment) {
+  const tenant     = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true, name: true } })
+  const timezone   = tenant?.timezone ?? 'America/Bogota'
+  const tenantName = tenant?.name ?? 'NEXOR'
+
+  const startAt = new Date(data.startAt)
+  if (isNaN(startAt.getTime())) throw { statusCode: 400, message: 'startAt inválido', code: 'VALIDATION_ERROR' }
+  let endAt = data.endAt ? new Date(data.endAt) : new Date(startAt.getTime() + 60 * 60_000)
+  if (isNaN(endAt.getTime()) || endAt <= startAt) endAt = new Date(startAt.getTime() + 60 * 60_000)
+
+  if (data.branchId) await assertBranchActive(tenantId, data.branchId) // HU-197 — sede activa si se indica
+
+  const rows = await resolveAttendeeRows(tenantId, data.attendees)
+
+  const appt = await prisma.appointment.create({
+    data: {
+      tenantId, type: 'event', title: data.title!.trim(),
+      branchId: data.branchId ?? null,
+      startAt, endAt, status: data.status, notes: data.notes, channel: data.channel, createdByAgent: data.createdByAgent,
+      ...(rows.length ? { attendees: { create: rows.map((r) => ({ tenantId, userId: r.userId ?? undefined, email: r.email ?? undefined, name: r.name ?? undefined })) } } : {}),
+    },
+    select: APPOINTMENT_SELECT,
+  })
+
+  await notifyEventAttendees(tenantId, appt, rows, 'invitación', timezone, tenantName)
+  return appt
+}
+
+/** Edita un evento libre (título, descripción, horario, sucursal y asistentes); refleja a los asistentes. */
+export async function updateEvent(tenantId: string, id: string, data: UpdateEvent) {
+  const existing = await prisma.appointment.findFirst({ where: { id, tenantId }, select: { id: true, type: true, startAt: true, endAt: true } })
+  if (!existing) throw { statusCode: 404, message: 'Cita no encontrada', code: 'NOT_FOUND' }
+  if (existing.type !== 'event') throw { statusCode: 422, message: 'Solo los eventos libres se editan por esta vía', code: 'NOT_AN_EVENT' }
+
+  const tenant     = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true, name: true } })
+  const timezone   = tenant?.timezone ?? 'America/Bogota'
+  const tenantName = tenant?.name ?? 'NEXOR'
+
+  const startAt = data.startAt ? new Date(data.startAt) : existing.startAt
+  let endAt     = data.endAt   ? new Date(data.endAt)   : existing.endAt
+  if (isNaN(startAt.getTime())) throw { statusCode: 400, message: 'startAt inválido', code: 'VALIDATION_ERROR' }
+  if (isNaN(endAt.getTime()) || endAt <= startAt) endAt = new Date(startAt.getTime() + 60 * 60_000)
+
+  if (data.branchId) await assertBranchActive(tenantId, data.branchId)
+  const rows = data.attendees !== undefined ? await resolveAttendeeRows(tenantId, data.attendees) : null
+
+  const appt = await prisma.$transaction(async (tx) => {
+    if (rows) await tx.appointmentAttendee.deleteMany({ where: { tenantId, appointmentId: id } })
+    return tx.appointment.update({
+      where: { id },
+      data: {
+        ...(data.title    !== undefined && { title: data.title!.trim() }),
+        ...(data.notes    !== undefined && { notes: data.notes ?? null }),
+        ...(data.branchId !== undefined && { branchId: data.branchId ?? null }),
+        startAt, endAt,
+        ...(rows ? { attendees: { create: rows.map((r) => ({ tenantId, userId: r.userId ?? undefined, email: r.email ?? undefined, name: r.name ?? undefined })) } } : {}),
+      },
+      select: APPOINTMENT_SELECT,
+    })
+  })
+
+  const notifyRows: AttendeeRow[] = rows ?? appt.attendees.map((a) => ({ tenantId, userId: a.userId, email: a.email, name: a.name }))
+  await notifyEventAttendees(tenantId, appt, notifyRows, 'actualización', timezone, tenantName)
+  return appt
+}
+
+/** Elimina un evento libre (cascade borra asistentes) y avisa la cancelación. Las citas de servicio NO
+ *  se borran por aquí (se cancelan por estado). */
+export async function deleteAppointment(tenantId: string, id: string) {
+  const existing = await prisma.appointment.findFirst({
+    where:  { id, tenantId },
+    select: { id: true, type: true, title: true, startAt: true, endAt: true, notes: true, attendees: { select: { userId: true, email: true, name: true } } },
+  })
+  if (!existing) throw { statusCode: 404, message: 'Cita no encontrada', code: 'NOT_FOUND' }
+  if (existing.type !== 'event') throw { statusCode: 422, message: 'Las citas de servicio se cancelan por estado, no se eliminan', code: 'NOT_AN_EVENT' }
+
+  const tenant     = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true, name: true } })
+  const timezone   = tenant?.timezone ?? 'America/Bogota'
+  const tenantName = tenant?.name ?? 'NEXOR'
+  const rows: AttendeeRow[] = existing.attendees.map((a) => ({ tenantId, userId: a.userId, email: a.email, name: a.name }))
+
+  await prisma.appointment.delete({ where: { id } })
+  await notifyEventAttendees(tenantId, existing, rows, 'cancelación', timezone, tenantName)
+  return { id, deleted: true }
+}
+
 export async function updateAppointmentStatus(
   tenantId: string,
   id: string,
@@ -338,7 +493,9 @@ export async function updateAppointmentStatus(
 
   if (!appointment) throw { statusCode: 404, message: 'Cita no encontrada', code: 'NOT_FOUND' }
 
-  if (!canAccessBranch(user, appointment.branchId)) {
+  // HU-204 — un evento libre puede no tener sucursal (calendario general): el control por sucursal
+  // solo aplica a citas con sucursal.
+  if (appointment.branchId && !canAccessBranch(user, appointment.branchId)) {
     throw { statusCode: 403, message: 'No tienes acceso a esta cita', code: 'FORBIDDEN' }
   }
 
@@ -359,9 +516,9 @@ export async function updateAppointmentStatus(
     })
     sendAppointmentConfirmation({
       to:               appointment.clientEmail,
-      clientName:       appointment.clientName,
+      clientName:       appointment.clientName ?? 'Cliente',
       serviceName:      appointment.serviceType?.name ?? 'Servicio',
-      branchName:       appointment.branch.name,
+      branchName:       appointment.branch?.name ?? 'Sucursal',
       professionalName: appointment.professional?.name,
       startAt:          appointment.startAt,
       endAt:            appointment.endAt,

@@ -1,15 +1,32 @@
 import { z } from 'zod'
 
+/** HU-204 — un asistente de evento libre: interno (userId) o externo (email); nombre opcional. */
+export const AttendeeInput = z
+  .object({
+    userId: z.string().min(1).optional(),
+    email:  z.string().email('Correo de asistente inválido').optional(),
+    name:   z.string().max(255).optional(),
+  })
+  .refine((a) => !!(a.userId || a.email), { message: 'Cada asistente requiere un usuario interno o un correo' })
+
 export const CreateAppointmentSchema = z
   .object({
-    branchId:       z.string({ required_error: 'branchId es requerido' }),
-    serviceTypeId:  z.string({ required_error: 'serviceTypeId es requerido' }),
+    // HU-204 — tipo: cita de servicio (actual) o evento libre (nuevo). Default 'service' (compatibilidad).
+    type:           z.enum(['service', 'event']).default('service'),
     startAt:        z.string({ required_error: 'startAt es requerido' }),
+    // ── Cita de servicio ──
+    branchId:       z.string().optional(),
+    serviceTypeId:  z.string().optional(),
     clientId:       z.string().optional(),
     clientName:     z.string().min(1).optional(),
     clientEmail:    z.string().email('Email inválido').optional(),
     clientPhone:    z.string().optional(),
     professionalId: z.string().optional(),
+    // ── Evento libre ──
+    title:          z.string().min(1, 'El título es requerido').max(255).optional(),
+    endAt:          z.string().optional(),        // fin explícito (evento); si falta se usa +1h
+    attendees:      z.array(AttendeeInput).max(50, 'Demasiados asistentes').optional(),
+    // ── Comunes ──
     notes:          z.string().optional(),
     channel:        z.enum(['manual', 'whatsapp', 'email', 'internal']).default('manual'),
     status:         z.enum(['scheduled', 'confirmed']).default('scheduled'),
@@ -18,10 +35,25 @@ export const CreateAppointmentSchema = z
     // (los horarios son sugerencia), pero NUNCA el control de solapamiento. Solo lo usa el panel interno.
     manualTime:     z.boolean().optional(),
   })
-  .refine((d) => !!(d.clientId || d.clientName), {
-    message: 'Se requiere clientId o clientName',
-    path:    ['clientName'],
+  .superRefine((d, ctx) => {
+    if (d.type === 'event') {
+      if (!d.title?.trim()) ctx.addIssue({ code: 'custom', path: ['title'], message: 'El título del evento es requerido' })
+    } else {
+      if (!d.serviceTypeId) ctx.addIssue({ code: 'custom', path: ['serviceTypeId'], message: 'serviceTypeId es requerido' })
+      if (!d.branchId)      ctx.addIssue({ code: 'custom', path: ['branchId'],      message: 'branchId es requerido' })
+      if (!(d.clientId || d.clientName)) ctx.addIssue({ code: 'custom', path: ['clientName'], message: 'Se requiere clientId o clientName' })
+    }
   })
+
+/** HU-204 — editar un evento libre (título, descripción, horario, sucursal y asistentes). */
+export const UpdateEventSchema = z.object({
+  title:     z.string().min(1).max(255).optional(),
+  notes:     z.string().nullish(),
+  startAt:   z.string().optional(),
+  endAt:     z.string().optional(),
+  branchId:  z.string().nullish(),
+  attendees: z.array(AttendeeInput).max(50).optional(),
+})
 
 export const UpdateStatusSchema = z.object({
   status: z.enum(['confirmed', 'completed', 'cancelled', 'no_show'], {
@@ -40,5 +72,7 @@ export const ListAppointmentsQuerySchema = z.object({
 })
 
 export type CreateAppointment     = z.infer<typeof CreateAppointmentSchema>
+export type UpdateEvent           = z.infer<typeof UpdateEventSchema>
 export type UpdateStatus          = z.infer<typeof UpdateStatusSchema>
 export type ListAppointmentsQuery = z.infer<typeof ListAppointmentsQuerySchema>
+export type AttendeeInputT        = z.infer<typeof AttendeeInput>

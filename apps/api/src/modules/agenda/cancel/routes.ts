@@ -98,7 +98,7 @@ export async function cancelAppointmentRoutes(app: FastifyInstance): Promise<voi
     // Si la cita ya estaba cancelada, mostrar éxito igualmente (idempotente)
     if (cancelToken.appointment.status === 'cancelled') {
       return reply.code(200).type('text/html').send(
-        successHtml(cancelToken.appointment.clientName),
+        successHtml(cancelToken.appointment.clientName ?? 'Cliente'),
       )
     }
 
@@ -134,7 +134,7 @@ export async function cancelAppointmentRoutes(app: FastifyInstance): Promise<voi
     }
 
     return reply.code(200).type('text/html').send(
-      successHtml(cancelToken.appointment.clientName),
+      successHtml(cancelToken.appointment.clientName ?? 'Cliente'),
     )
   })
 }

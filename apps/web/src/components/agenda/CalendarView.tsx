@@ -8,13 +8,23 @@ import { AppointmentFormModal } from './AppointmentFormModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface Attendee {
+  id?:      string
+  userId:   string | null
+  email:    string | null
+  name:     string | null
+  response?: string
+}
+
 export interface Appointment {
   id:             string
-  branchId:       string
+  type?:          'service' | 'event'   // HU-204
+  title?:         string | null         // HU-204 — título del evento libre
+  branchId:       string | null
   clientId:       string | null
-  serviceTypeId:  string
+  serviceTypeId:  string | null
   professionalId: string | null
-  clientName:     string
+  clientName:     string | null
   clientEmail:    string | null
   clientPhone:    string | null
   startAt:        string
@@ -23,9 +33,10 @@ export interface Appointment {
   notes:          string | null
   channel:        string
   createdByAgent: boolean
-  branch:         { id: string; name: string }
-  serviceType:    { id: string; name: string; durationMinutes: number }
+  branch:         { id: string; name: string } | null
+  serviceType:    { id: string; name: string; durationMinutes: number } | null
   professional:   { id: string; name: string } | null
+  attendees?:     Attendee[]            // HU-204
 }
 
 // Recordatorio (se muestra también en el calendario — el usuario los revisa aquí).
@@ -122,10 +133,15 @@ function fmtTime(iso: string): string {
 
 // ─── AppointmentBlock ─────────────────────────────────────────────────────────
 
+// HU-204 — estilo propio del EVENTO LIBRE (violeta), distinto de las citas de servicio.
+const EVENT_BLOCK = 'border-l-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200'
+
 function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
   const top    = apptTopPx(appt.startAt)
   const height = apptHeightPx(appt.startAt, appt.endAt)
-  const style  = STATUS_BLOCK[appt.status] ?? STATUS_BLOCK.confirmed
+  const isEvent = appt.type === 'event'
+  const style  = isEvent ? EVENT_BLOCK : (STATUS_BLOCK[appt.status] ?? STATUS_BLOCK.confirmed)
+  const attendees = appt.attendees?.length ?? 0
 
   return (
     <div
@@ -134,11 +150,15 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
       className={`absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded border-l-2 px-1 py-0.5 text-xs shadow-sm transition-all hover:brightness-95 ${style}`}
       style={{ top: `${top}px`, height: `${height}px`, minHeight: '24px' }}
     >
-      <div className="truncate font-medium leading-tight">{appt.clientName}</div>
+      <div className="truncate font-medium leading-tight">
+        {isEvent ? <>📅 {appt.title ?? 'Evento'}</> : appt.clientName}
+      </div>
       {height > 34 && (
-        <div className="truncate text-[10px] leading-tight opacity-75">{appt.serviceType.name}</div>
+        <div className="truncate text-[10px] leading-tight opacity-75">
+          {isEvent ? (attendees > 0 ? `${attendees} asistente${attendees === 1 ? '' : 's'}` : 'Evento') : (appt.serviceType?.name ?? '')}
+        </div>
       )}
-      {height > 50 && appt.professional && (
+      {height > 50 && !isEvent && appt.professional && (
         <div className="truncate text-[10px] leading-tight opacity-75">{appt.professional.name}</div>
       )}
       {appt.createdByAgent && (
@@ -468,6 +488,8 @@ export function CalendarView() {
   const [profFilter,  setProfFilter]  = useState('')
   const [detailAppt,  setDetailAppt]  = useState<Appointment | null>(null)
   const [createSlot,  setCreateSlot]  = useState<CreateSlot | null>(null)
+  const [createMode,  setCreateMode]  = useState<'service' | 'event'>('service') // HU-204
+  const [editEvent,   setEditEvent]   = useState<Appointment | null>(null)       // HU-204
 
   // Derive professionals list from loaded appointments
   const professionals = useMemo(() => {
@@ -555,9 +577,16 @@ export function CalendarView() {
   function handleApptCreated(appt: Appointment) {
     setAppointments((prev) => [appt, ...prev])
     setCreateSlot(null)
+    setEditEvent(null)
   }
 
-  function openCreate(date?: string, time?: string) {
+  function handleEventDeleted(id: string) {
+    setAppointments((prev) => prev.filter((a) => a.id !== id))
+    setDetailAppt(null)
+  }
+
+  function openCreate(date?: string, time?: string, mode: 'service' | 'event' = 'service') {
+    setCreateMode(mode)
     setCreateSlot({
       date:     date ?? currentDate.toLocaleDateString('en-CA'),
       time:     time ?? '09:00',
@@ -626,6 +655,12 @@ export function CalendarView() {
           )}
 
           <button
+            onClick={() => openCreate(undefined, undefined, 'event')}
+            className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 transition-colors dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/20"
+          >
+            + Evento
+          </button>
+          <button
             onClick={() => openCreate()}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
           >
@@ -680,6 +715,8 @@ export function CalendarView() {
           appointment={detailAppt}
           onClose={() => setDetailAppt(null)}
           onUpdated={handleApptUpdated}
+          onEditEvent={(a) => { setDetailAppt(null); setEditEvent(a) }}
+          onDeleted={handleEventDeleted}
         />
       )}
       {createSlot && (
@@ -687,9 +724,18 @@ export function CalendarView() {
           initialDate={createSlot.date}
           initialTime={createSlot.time}
           initialBranchId={createSlot.branchId}
+          initialMode={createMode}
           branches={branches}
           onClose={() => setCreateSlot(null)}
           onSuccess={handleApptCreated}
+        />
+      )}
+      {editEvent && (
+        <AppointmentFormModal
+          event={editEvent}
+          branches={branches}
+          onClose={() => setEditEvent(null)}
+          onSuccess={handleApptUpdated}
         />
       )}
     </div>

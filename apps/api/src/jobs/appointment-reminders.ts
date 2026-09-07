@@ -66,6 +66,7 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
   const appointments = await prisma.appointment.findMany({
     where: {
       tenantId,
+      type:         'service',   // HU-204 — solo citas de servicio reciben recordatorio al cliente
       reminderSent: false,
       status:       { in: ['confirmed', 'scheduled'] },
       startAt:      range,
@@ -103,9 +104,9 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
 
       await sendAppointmentReminder({
         to:               appt.clientEmail!,
-        clientName:       appt.clientName,
+        clientName:       appt.clientName ?? 'Cliente',
         serviceName:      appt.serviceType?.name ?? 'Servicio',
-        branchName:       appt.branch.name,
+        branchName:       appt.branch?.name ?? 'Sucursal',
         professionalName: appt.professional?.name,
         startAt:          appt.startAt,
         tenantName:       tenant.name,

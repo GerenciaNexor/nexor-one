@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { requireRoleAndModule } from '../../../lib/guards'
 import { getBranchFilter } from '../../../lib/guards'
-import { CreateAppointmentSchema, UpdateStatusSchema, ListAppointmentsQuerySchema } from './schema'
-import { listAppointments, createAppointment, updateAppointmentStatus } from './service'
+import { CreateAppointmentSchema, UpdateStatusSchema, UpdateEventSchema, ListAppointmentsQuerySchema } from './schema'
+import { listAppointments, createAppointment, updateAppointmentStatus, updateEvent, deleteAppointment } from './service'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../../lib/openapi'
 
 export async function appointmentsRoutes(app: FastifyInstance): Promise<void> {
@@ -58,6 +58,47 @@ export async function appointmentsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const appointment = await createAppointment(request.user.tenantId, parsed.data)
       return reply.code(201).send(appointment)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * PUT /v1/agenda/appointments/:id — HU-204: editar un EVENTO LIBRE (título, descripción, horario,
+   * sucursal, asistentes). Solo aplica a eventos; las citas de servicio no se editan por aquí.
+   */
+  app.put('/:id', {
+    schema: {
+      tags: ['AGENDA'], summary: 'Editar evento libre', security: bearerAuth,
+      params: idParam, body: z2j(UpdateEventSchema), response: { 200: objRes, ...stdErrors },
+    },
+    preHandler: requireRoleAndModule('OPERATIVE', 'AGENDA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = UpdateEventSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const result = await updateEvent(request.user.tenantId, id, parsed.data)
+      return reply.code(200).send(result)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * DELETE /v1/agenda/appointments/:id — HU-204: eliminar un EVENTO LIBRE (avisa a los asistentes).
+   * Las citas de servicio NO se eliminan aquí (se cancelan por estado).
+   */
+  app.delete('/:id', {
+    schema: { tags: ['AGENDA'], summary: 'Eliminar evento libre', security: bearerAuth, params: idParam, response: { 200: objRes, ...stdErrors } },
+    preHandler: requireRoleAndModule('OPERATIVE', 'AGENDA'),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try {
+      const result = await deleteAppointment(request.user.tenantId, id)
+      return reply.code(200).send(result)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

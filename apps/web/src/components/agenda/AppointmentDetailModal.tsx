@@ -32,12 +32,16 @@ interface Props {
   onClose:       () => void
   onUpdated:     (a: Appointment) => void
   onRescheduled?: (oldId: string, newAppt: Appointment) => void
+  onEditEvent?:  (a: Appointment) => void   // HU-204
+  onDeleted?:    (id: string) => void       // HU-204
 }
 
-export function AppointmentDetailModal({ appointment, branches = [], onClose, onUpdated, onRescheduled }: Props) {
+export function AppointmentDetailModal({ appointment, branches = [], onClose, onUpdated, onRescheduled, onEditEvent, onDeleted }: Props) {
   const [loading,      setLoading]      = useState<string | null>(null)
   const [error,        setError]        = useState<string | null>(null)
   const [rescheduling, setRescheduling] = useState(false)
+
+  const isEvent = appointment.type === 'event' // HU-204
 
   const start = new Date(appointment.startAt)
   const end   = new Date(appointment.endAt)
@@ -46,6 +50,18 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
     d.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const fmtTime = (d: Date) =>
     d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+
+  async function deleteEvent() {
+    if (!confirm('¿Eliminar este evento? Se avisará a los asistentes.')) return
+    setLoading('delete'); setError(null)
+    try {
+      await apiClient.delete(`/v1/agenda/appointments/${appointment.id}`)
+      onDeleted?.(appointment.id)
+    } catch (err: unknown) {
+      setError((err as { message?: string }).message ?? 'Error al eliminar el evento')
+      setLoading(null)
+    }
+  }
 
   async function changeStatus(newStatus: string) {
     setLoading(newStatus)
@@ -79,11 +95,88 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
   if (rescheduling) {
     return (
       <AppointmentFormModal
-        initialBranchId={appointment.branchId}
+        initialBranchId={appointment.branchId ?? undefined}
         branches={branches}
         onClose={() => setRescheduling(false)}
         onSuccess={handleRescheduleSuccess}
       />
+    )
+  }
+
+  // ── HU-204 — Detalle de EVENTO LIBRE ──
+  if (isEvent) {
+    const attendees = appointment.attendees ?? []
+    return (
+      <Portal>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-800 dark:ring-slate-700">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-700">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">Evento</span>
+                Detalle
+              </h2>
+              <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors dark:hover:bg-slate-700">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="1" y1="1" x2="13" y2="13" /><line x1="13" y1="1" x2="1" y2="13" /></svg>
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Título</p>
+                <p className="mt-0.5 font-medium text-slate-900 dark:text-white">{appointment.title ?? 'Evento'}</p>
+              </div>
+              {appointment.notes && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Descripción</p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{appointment.notes}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Fecha y hora</p>
+                <p className="mt-0.5 text-sm font-medium capitalize text-slate-700 dark:text-slate-300">{fmtDate(start)}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{fmtTime(start)} – {fmtTime(end)}</p>
+              </div>
+              {appointment.branch && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Sucursal</p>
+                  <p className="mt-0.5 text-sm text-slate-700 dark:text-slate-300">{appointment.branch.name}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Asistentes ({attendees.length})</p>
+                {attendees.length === 0 ? (
+                  <p className="mt-0.5 text-sm text-slate-400">Sin asistentes</p>
+                ) : (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {attendees.map((a, i) => (
+                      <span key={a.id ?? i} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                        {a.userId ? '👤' : '✉️'} {a.name ?? a.email}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {error && <p className="text-xs text-red-500">{error}</p>}
+
+              <div className="flex gap-2 border-t border-slate-100 pt-3 dark:border-slate-700">
+                {onEditEvent && (
+                  <button onClick={() => onEditEvent(appointment)} disabled={!!loading}
+                    className="flex-1 rounded-lg bg-blue-600 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60 transition-colors">
+                    Editar
+                  </button>
+                )}
+                {onDeleted && (
+                  <button onClick={deleteEvent} disabled={!!loading}
+                    className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60 transition-colors dark:border-red-800 dark:text-red-400">
+                    {loading === 'delete' ? '…' : 'Eliminar'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Portal>
     )
   }
 
@@ -121,7 +214,7 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
             {/* Client */}
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Cliente</p>
-              <p className="mt-0.5 font-medium text-slate-900 dark:text-white">{appointment.clientName}</p>
+              <p className="mt-0.5 font-medium text-slate-900 dark:text-white">{appointment.clientName ?? '—'}</p>
               {appointment.clientPhone && <p className="text-sm text-slate-500 dark:text-slate-400">{appointment.clientPhone}</p>}
               {appointment.clientEmail && <p className="text-sm text-slate-500 dark:text-slate-400">{appointment.clientEmail}</p>}
             </div>
@@ -130,8 +223,8 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Servicio</p>
-                <p className="mt-0.5 text-sm font-medium text-slate-700 dark:text-slate-300">{appointment.serviceType.name}</p>
-                <p className="text-xs text-slate-400">{appointment.serviceType.durationMinutes} min</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-700 dark:text-slate-300">{appointment.serviceType?.name ?? '—'}</p>
+                <p className="text-xs text-slate-400">{appointment.serviceType?.durationMinutes ?? 0} min</p>
               </div>
               {appointment.professional && (
                 <div>
@@ -152,7 +245,7 @@ export function AppointmentDetailModal({ appointment, branches = [], onClose, on
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Sucursal</p>
-                <p className="mt-0.5 text-sm text-slate-700 dark:text-slate-300">{appointment.branch.name}</p>
+                <p className="mt-0.5 text-sm text-slate-700 dark:text-slate-300">{appointment.branch?.name ?? '—'}</p>
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Canal</p>

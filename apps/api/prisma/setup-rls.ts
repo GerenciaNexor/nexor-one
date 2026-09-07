@@ -48,6 +48,8 @@ const BUSINESS_TABLES = [
   'service_types',
   'availability',
   'appointments',
+  // HU-204 — asistentes de eventos libres (tenant_id propio).
+  'appointment_attendees',
   'transactions',
   // HU-114 — bandeja y carga masiva (conversation_messages lleva RLS propia
   // por tener su propia columna tenant_id, aunque sea tabla "hija").
