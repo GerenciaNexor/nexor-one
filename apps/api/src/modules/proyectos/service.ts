@@ -135,6 +135,43 @@ export async function getProject(tenantId: string, id: string) {
   }
 }
 
+/** HU-202 — filtros del historial de transacciones de un proyecto. */
+export interface ProjectTxFilters {
+  q?:    string
+  from?: string
+  to?:   string
+  type?: 'income' | 'expense'
+}
+
+export type ProjectTxRow = {
+  id: string; type: 'income' | 'expense'; amount: number; description: string
+  date: Date; referenceType: string | null; category: string | null; assignmentStatus: string | null
+}
+
+/**
+ * HU-202 — Transacciones asignadas a un proyecto ya FILTRADAS (búsqueda, rango de fecha, tipo). Se
+ * usa para el historial detallado y su exportación a Excel. Valida que el proyecto sea del tenant.
+ */
+export async function queryProjectTransactions(
+  tenantId: string, id: string, f: ProjectTxFilters,
+): Promise<{ projectName: string; rows: ProjectTxRow[] }> {
+  const p = await prisma.proyecto.findFirst({ where: { id, tenantId }, select: { name: true } })
+  if (!p) throw { statusCode: 404, message: 'Proyecto no encontrado', code: 'NOT_FOUND' }
+  const gte = f.from ? new Date(f.from) : undefined
+  const lte = f.to   ? new Date(new Date(f.to).setHours(23, 59, 59, 999)) : undefined
+  const rows = await prisma.transaction.findMany({
+    where: {
+      tenantId, projectId: id,
+      ...(f.type ? { type: f.type } : {}),
+      ...(f.q?.trim() ? { description: { contains: f.q.trim(), mode: 'insensitive' } } : {}),
+      ...((gte || lte) ? { date: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {}),
+    },
+    select: { id: true, type: true, amount: true, description: true, date: true, referenceType: true, category: true, assignmentStatus: true },
+    orderBy: { date: 'desc' },
+  })
+  return { projectName: p.name, rows: rows.map((t) => ({ ...t, type: t.type as 'income' | 'expense', amount: Number(t.amount) })) }
+}
+
 /**
  * HU-199 — Asigna/quita/cambia el proyecto de una transacción (manual, opcional). Valida que la
  * transacción y el proyecto sean del MISMO tenant (nunca cross-tenant). `projectId = null` la desasigna.

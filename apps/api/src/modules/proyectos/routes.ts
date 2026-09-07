@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { CreateProjectSchema, UpdateProjectSchema } from './schema'
-import { createProject, listProjects, getProject, updateProject, deleteProject, assignTransaction } from './service'
+import { createProject, listProjects, getProject, updateProject, deleteProject, assignTransaction, queryProjectTransactions } from './service'
+import { projectTxToXlsx } from './export'
 import { listPendingApprovals, resolveApproval } from './budget'
 import { requireRole } from '../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -43,6 +44,28 @@ export async function proyectosRoutes(app: FastifyInstance): Promise<void> {
     try {
       const p = await getProject(request.user.tenantId, id)
       return reply.code(200).send({ success: true, data: p })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/proyectos/:id/export — Excel del historial de transacciones del proyecto (respeta filtros). */
+  app.get('/:id/export', {
+    preHandler: canRead,
+    schema: {
+      tags: ['Proyectos'], summary: 'Exportar transacciones del proyecto a Excel', security: bearerAuth, params: idParam,
+      querystring: { type: 'object', properties: {
+        q: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, type: { type: 'string', enum: ['income', 'expense'] },
+      } },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const q = request.query as { q?: string; from?: string; to?: string; type?: 'income' | 'expense' }
+    try {
+      const { projectName, rows } = await queryProjectTransactions(request.user.tenantId, id, { q: q.q, from: q.from, to: q.to, type: q.type })
+      const buffer = await projectTxToXlsx(projectName, rows)
+      const safe = projectName.replace(/[^\w-]+/g, '_').slice(0, 40) || 'proyecto'
+      const fname = `proyecto-${safe}-${new Date().toISOString().slice(0, 10)}.xlsx`
+      return reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', `attachment; filename="${fname}"`).send(buffer)
     } catch (err) { return errReply(reply, err) }
   })
 
