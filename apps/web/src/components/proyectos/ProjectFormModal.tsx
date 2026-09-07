@@ -112,7 +112,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: {
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
+        <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{isEdit ? 'Editar proyecto' : 'Nuevo proyecto'}</h3>
           <p className="mt-0.5 text-xs text-slate-500">Una línea de negocio con una meta cuantificada: un objetivo a superar o un límite a controlar.</p>
 

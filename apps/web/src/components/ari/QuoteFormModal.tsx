@@ -430,7 +430,7 @@ export function QuoteFormModal({ onClose, onSuccess, initialData }: Props) {
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-        <div className="flex w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700 max-h-[calc(100vh-2rem)]">
+        <div className="flex w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700 max-h-[calc(100dvh-2rem)]">
 
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-5">

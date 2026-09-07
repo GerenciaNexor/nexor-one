@@ -305,9 +305,10 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
 
           {/* ── Fase revisión ── */}
           {phase === 'review' && (
-            <div className="mt-4 max-h-[68vh] space-y-4 overflow-y-auto pr-1">
-              {/* Encabezado + contraparte */}
-              <div className="grid grid-cols-2 gap-3">
+            <div className="mt-4 max-h-[68dvh] space-y-4 overflow-y-auto pr-1">
+              {/* Encabezado + contraparte. `[&>div]:min-w-0` deja que los <select> largos (proveedor,
+                  sucursal) encojan y no corten la columna derecha en móvil (HU-198). */}
+              <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
                 <div><label className={lbl}>{isSale ? 'Cliente' : 'Proveedor / Emisor'}</label>
                   <select value={cpId} onChange={(e) => selectCounterparty(e.target.value)} className={inp}>
                     {counterparties.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isGeneric ? ' (genérico)' : ''}</option>)}

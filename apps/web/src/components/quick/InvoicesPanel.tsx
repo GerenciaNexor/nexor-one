@@ -147,7 +147,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
-        <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
+        <div className="max-h-[90dvh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Factura de {isSale ? 'venta' : 'compra'}</h3>
@@ -215,7 +215,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Imagen original</p>
                 {inv.hasImage ? (
                   imgUrl
-                    ? <a href={imgUrl} target="_blank" rel="noreferrer"><img src={imgUrl} alt="Factura" className="max-h-[60vh] w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700" /></a>
+                    ? <a href={imgUrl} target="_blank" rel="noreferrer"><img src={imgUrl} alt="Factura" className="max-h-[60dvh] w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700" /></a>
                     : <div className="h-64 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700" />
                 ) : (
                   <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-xs text-slate-400 dark:border-slate-600">Sin imagen guardada.</p>

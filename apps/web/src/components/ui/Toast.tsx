@@ -22,10 +22,11 @@ export function Toast({ message, success, onDismiss, duration = 4500 }: ToastPro
   }, [duration, onDismiss])
 
   return (
-    <Portal>
+    <Portal lockScroll={false}>
       <div
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))', right: 'calc(1.5rem + env(safe-area-inset-right))' }}
         className={[
-          'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all duration-200',
+          'fixed z-50 flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all duration-200',
           success ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white',
           visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
         ].join(' ')}

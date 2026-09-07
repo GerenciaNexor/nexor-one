@@ -106,7 +106,7 @@ export function TransactionFormModal({ tx, branches, onClose, onSuccess }: Props
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
+      <div className="relative flex max-h-[90dvh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
 
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">

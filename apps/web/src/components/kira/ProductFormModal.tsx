@@ -192,7 +192,7 @@ export function ProductFormModal({ mode, product, onClose, onSuccess }: Props) {
 
         {/* Form */}
         <form id="product-form" onSubmit={handleSubmit}
-          className="max-h-[68vh] overflow-y-auto"
+          className="max-h-[68dvh] overflow-y-auto"
         >
           <div className="space-y-5 px-6 pb-2">
 

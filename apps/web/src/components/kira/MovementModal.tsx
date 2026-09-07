@@ -179,7 +179,7 @@ export function MovementModal({ stocks, initialProductId, initialBranchId, onClo
           </div>
         ) : (
           <form id="movement-form" onSubmit={handleSubmit}
-            className="max-h-[65vh] overflow-y-auto px-6 py-4"
+            className="max-h-[65dvh] overflow-y-auto px-6 py-4"
           >
             <div className="space-y-4">
 

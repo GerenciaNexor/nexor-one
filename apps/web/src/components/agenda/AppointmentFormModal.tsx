@@ -159,7 +159,7 @@ export function AppointmentFormModal({
           </div>
 
           <form onSubmit={handleSubmit}>
-            <div className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-4">
+            <div className="max-h-[70dvh] space-y-4 overflow-y-auto px-6 py-4">
 
               {/* Branch */}
               <div>

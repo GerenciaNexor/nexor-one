@@ -107,7 +107,7 @@ export function DealDetailModal({ dealId, onClose, onChanged }: {
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
         <div
-          className="flex w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700 max-h-[calc(100vh-2rem)]"
+          className="flex w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700 max-h-[calc(100dvh-2rem)]"
           onClick={(e) => e.stopPropagation()}
         >
           {loading ? (

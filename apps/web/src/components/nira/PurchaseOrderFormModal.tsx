@@ -351,7 +351,7 @@ export function PurchaseOrderFormModal({ onClose, onSuccess, initialData }: Prop
         </div>
 
         {/* Form */}
-        <form id="po-form" onSubmit={handleSubmit} className="max-h-[72vh] overflow-y-auto">
+        <form id="po-form" onSubmit={handleSubmit} className="max-h-[72dvh] overflow-y-auto">
           <div className="space-y-5 px-6 py-5">
 
             {/* ── Encabezado de la OC ──────────────────────────────────── */}

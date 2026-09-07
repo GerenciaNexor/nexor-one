@@ -569,7 +569,7 @@ export function CalendarView() {
   const navBtnCls = 'rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] flex-col gap-3 p-4">
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col gap-3 p-4">
 
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">

@@ -211,7 +211,7 @@ export function DealFormModal({ mode, deal, stages, initialStageId, onClose, onS
           </div>
 
           {/* Form */}
-          <form id="deal-form" onSubmit={handleSubmit} className="max-h-[68vh] overflow-y-auto">
+          <form id="deal-form" onSubmit={handleSubmit} className="max-h-[68dvh] overflow-y-auto">
             <div className="space-y-4 px-6 pb-2">
 
               {mode === 'create' && (

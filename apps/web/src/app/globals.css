@@ -13,6 +13,29 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* ── HU-198 — Controles de formulario: dejar que ENCOJAN dentro de grid/flex ──
+   Por defecto un ítem de grid/flex tiene min-width:auto = su contenido mínimo. Un <select> se mide
+   por su opción más larga y un <input> por su contenido → NO encogen y desbordan la columna, que con
+   `overflow-x:hidden` global se ve CORTADA (el clásico "se corta la columna derecha" en móvil).
+   min-width:0 permite que respeten el ancho de su contenedor (w-full) y truncan en vez de desbordar. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea { min-width: 0; }
+
+/* ── HU-198 — Evitar el ZOOM automático de iOS al enfocar un campo ──
+   iOS Safari hace zoom si el control tiene font-size < 16px. Casi toda la app usa `text-sm` (14px).
+   En móvil (donde ocurre) forzamos 16px SOLO en los controles de texto; en ≥ sm se respeta el diseño
+   (text-sm). No se usa maximum-scale (rompería el zoom por accesibilidad). */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { font-size: 16px; }
+}
+
+/* ── HU-198 — Utilidades de safe-area (iOS notch / isla / barra de gestos) ── */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    FUENTE DE MARCA — solo para el wordmark "NEXOR" (logotipo), nunca para la UI.
    Eight One (Jerry Hodge, libre para uso comercial).
