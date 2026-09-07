@@ -94,7 +94,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {rows.map((r) => (
                   <tr key={r.id} onClick={() => setDetailId(r.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3 text-slate-500">{fmtDateTime(r.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDate(r.date)}</td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.invoiceNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.issuer ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.nit ?? '—'}</td>
