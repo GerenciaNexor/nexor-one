@@ -225,6 +225,7 @@ export const crearCita: AgentTool = {
     // ── Crear la cita (toda la lógica de validación está en el servicio) ──────
     try {
       const appointment = await createAppointment(tenantId, {
+        type:           'service',
         branchId:       branchId as string,
         serviceTypeId:  serviceId as string,
         startAt:        startAt as string,
@@ -246,7 +247,7 @@ export const crearCita: AgentTool = {
         citaId:     appointment.id,
         cliente:    appointment.clientName,
         servicio:   appointment.serviceType?.name ?? null,
-        sucursal:   appointment.branch.name,
+        sucursal:   appointment.branch?.name ?? null,
         profesional: appointment.professional?.name ?? null,
         inicio:     appointment.startAt,
         fin:        appointment.endAt,
@@ -399,7 +400,7 @@ const consultarCitas: AgentTool = {
         cliente:     a.clientName,
         servicio:    a.serviceType?.name ?? null,
         profesional: a.professional?.name ?? null,
-        sucursal:    a.branch.name,
+        sucursal:    a.branch?.name ?? null,
         estado:      a.status,
         inicio:      a.startAt.toISOString(),
         fin:         a.endAt.toISOString(),

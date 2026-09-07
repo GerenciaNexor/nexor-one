@@ -167,6 +167,71 @@ export async function sendAppointmentConfirmation(params: {
   }
 }
 
+// ─── HU-204 — Invitación / actualización / cancelación de EVENTO LIBRE ─────────
+
+type EventAction = 'invitación' | 'actualización' | 'cancelación'
+
+function eventHtml(p: {
+  action: EventAction; eventTitle: string; description: string | null
+  startAt: Date; endAt: Date; tenantName: string; timezone: string
+}): string {
+  const dateStr  = formatDate(p.startAt, p.timezone)
+  const startStr = formatTime(p.startAt, p.timezone)
+  const endStr   = formatTime(p.endAt,   p.timezone)
+  const cancelled = p.action === 'cancelación'
+  const header = p.action === 'invitación' ? 'Invitación a un evento' : p.action === 'actualización' ? 'Evento actualizado' : 'Evento cancelado'
+  const accent = cancelled ? '#dc2626' : '#6366f1'
+  const intro  = cancelled
+    ? `El evento <strong>${esc(p.eventTitle)}</strong> fue cancelado.`
+    : p.action === 'actualización'
+      ? `El evento <strong>${esc(p.eventTitle)}</strong> cambió. Estos son los datos actualizados:`
+      : `Te invitaron al evento <strong>${esc(p.eventTitle)}</strong>.`
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${header}</title></head>
+<body style="font-family:sans-serif;background:#f8fafc;margin:0;padding:0;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:${accent};padding:28px 32px;">
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">${header}</h1>
+      <p style="margin:4px 0 0;color:#e0e7ff;font-size:14px;">${esc(p.tenantName)}</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 20px;color:#374151;font-size:15px;">${intro}</p>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;color:#6b7280;font-size:13px;width:140px;">Evento</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;color:#111827;font-size:14px;font-weight:500;">${esc(p.eventTitle)}</td></tr>
+        <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;color:#6b7280;font-size:13px;">Fecha</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;color:#111827;font-size:14px;font-weight:500;">${dateStr}</td></tr>
+        <tr><td style="padding:10px 0;${p.description ? 'border-bottom:1px solid #f1f5f9;' : ''}color:#6b7280;font-size:13px;">Hora</td><td style="padding:10px 0;${p.description ? 'border-bottom:1px solid #f1f5f9;' : ''}color:#111827;font-size:14px;font-weight:500;">${startStr} – ${endStr}</td></tr>
+        ${p.description ? `<tr><td style="padding:10px 0;color:#6b7280;font-size:13px;">Descripción</td><td style="padding:10px 0;color:#111827;font-size:14px;">${esc(p.description)}</td></tr>` : ''}
+      </table>
+    </div>
+    <div style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Mensaje automático de ${esc(p.tenantName)}. No respondas a este correo.</p>
+    </div>
+  </div></body></html>`
+}
+
+/**
+ * HU-204 — Envía a un asistente EXTERNO la invitación / actualización / cancelación de un evento libre.
+ * Fire-and-forget: si Resend no está configurado, se omite en silencio (no tumba el flujo).
+ */
+export async function sendEventInvitation(params: {
+  to: string; action: EventAction; eventTitle: string; description: string | null
+  startAt: Date; endAt: Date; tenantName: string; timezone?: string
+}): Promise<void> {
+  const resend = getResend()
+  if (!resend) return
+  const tz = params.timezone ?? 'America/Bogota'
+  const subjectVerb = params.action === 'invitación' ? 'Invitación' : params.action === 'actualización' ? 'Evento actualizado' : 'Evento cancelado'
+  try {
+    await resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      params.to,
+      subject: `${subjectVerb}: ${params.eventTitle} — ${params.tenantName}`,
+      html:    eventHtml({ ...params, timezone: tz }),
+    })
+  } catch (err) {
+    console.error('[Email] Error enviando invitación de evento:', err)
+  }
+}
+
 // ─── HU-203 — Contacto de la landing (NEXOR / NEXOR IT) ────────────────────────
 
 export interface ContactRequest {

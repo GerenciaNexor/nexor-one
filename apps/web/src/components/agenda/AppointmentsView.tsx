@@ -71,7 +71,7 @@ export function AppointmentsView() {
     let list = appointments
     if (search.trim()) {
       const q = search.toLowerCase()
-      list = list.filter((a) => a.clientName.toLowerCase().includes(q))
+      list = list.filter((a) => (a.clientName ?? a.title ?? '').toLowerCase().includes(q))
     }
     if (filterDateFrom) {
       list = list.filter((a) => a.startAt.slice(0, 10) >= filterDateFrom)
@@ -247,8 +247,13 @@ export function AppointmentsView() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-slate-900 dark:text-white">
-                            {a.clientName}
+                            {a.clientName ?? a.title ?? '—'}
                           </span>
+                          {a.type === 'event' && (
+                            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                              Evento
+                            </span>
+                          )}
                           {a.createdByAgent && (
                             <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                               IA
@@ -260,7 +265,7 @@ export function AppointmentsView() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                        {a.serviceType.name}
+                        {a.serviceType?.name ?? (a.type === 'event' ? 'Evento' : '—')}
                       </td>
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                         {a.professional?.name ?? <span className="text-slate-300 dark:text-slate-600">—</span>}
@@ -273,7 +278,7 @@ export function AppointmentsView() {
                       </td>
                       {isManager && (
                         <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                          {a.branch.name}
+                          {a.branch?.name ?? '—'}
                         </td>
                       )}
                       <td className="px-4 py-3">
@@ -312,14 +317,19 @@ export function AppointmentsView() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="truncate font-medium text-slate-900 dark:text-white">{a.clientName}</p>
+                      <p className="truncate font-medium text-slate-900 dark:text-white">{a.clientName ?? a.title ?? '—'}</p>
+                      {a.type === 'event' && (
+                        <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                          Evento
+                        </span>
+                      )}
                       {a.createdByAgent && (
                         <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                           IA
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{a.serviceType.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{a.serviceType?.name ?? (a.type === 'event' ? 'Evento' : '—')}</p>
                   </div>
                   <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[a.status] ?? STATUS_BADGE.confirmed}`}>
                     {STATUS_LABELS[a.status] ?? a.status}

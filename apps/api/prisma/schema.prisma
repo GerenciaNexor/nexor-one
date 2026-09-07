@@ -110,6 +110,7 @@ model Tenant {
   serviceTypes          ServiceType[]
   availability          Availability[]
   appointments          Appointment[]
+  appointmentAttendees  AppointmentAttendee[]
   blockedDates          BlockedDate[]
   cancelTokens          AppointmentCancelToken[]
   transactions          Transaction[]
@@ -204,6 +205,7 @@ model User {
   stockMovements           StockMovement[]
   availabilitySchedules    Availability[]
   professionalAppointments Appointment[]         @relation("AppointmentProfessional")
+  attendeeFor              AppointmentAttendee[] @relation("AttendeeUser")
   serviceProfessionals     ServiceProfessional[]
   refreshTokens            RefreshToken[]
   chatMessages             ChatMessage[]
@@ -1219,11 +1221,16 @@ model Availability {
 model Appointment {
   id             String   @id @default(cuid()) @db.VarChar(30)
   tenantId       String   @map("tenant_id") @db.VarChar(30)
-  branchId       String   @map("branch_id") @db.VarChar(30)
+  // HU-204 — tipo de cita: "service" (cita de servicio, la actual) | "event" (evento libre nuevo).
+  type           String   @default("service") @db.VarChar(20)
+  // HU-204 — título del evento libre (las citas de servicio usan clientName + serviceType).
+  title          String?  @db.VarChar(255)
+  // HU-204 — branchId y clientName ahora opcionales: un evento libre puede no tener sucursal ni cliente.
+  branchId       String?  @map("branch_id") @db.VarChar(30)
   clientId       String?  @map("client_id") @db.VarChar(30)
   serviceTypeId  String?  @map("service_type_id") @db.VarChar(30)
   professionalId String?  @map("professional_id") @db.VarChar(30)
-  clientName     String   @map("client_name") @db.VarChar(255)
+  clientName     String?  @map("client_name") @db.VarChar(255)
   clientPhone    String?  @map("client_phone") @db.VarChar(20)
   clientEmail    String?  @map("client_email") @db.VarChar(255)
   startAt        DateTime @map("start_at") @db.Timestamptz(6)
@@ -1238,17 +1245,40 @@ model Appointment {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch                   @relation(fields: [branchId], references: [id])
+  branch       Branch?                  @relation(fields: [branchId], references: [id])
   client       Client?                  @relation(fields: [clientId], references: [id])
   serviceType  ServiceType?             @relation(fields: [serviceTypeId], references: [id])
   professional User?                    @relation("AppointmentProfessional", fields: [professionalId], references: [id])
   cancelTokens AppointmentCancelToken[]
+  attendees    AppointmentAttendee[]
 
   @@index([tenantId, branchId, startAt])
   @@index([tenantId, startAt])
   @@index([tenantId, status])
+  @@index([tenantId, type, startAt])
   @@index([professionalId, startAt])
   @@map("appointments")
+}
+
+/// HU-204 — Asistentes de un evento libre (uno o varios). Internos (userId, del mismo tenant) o
+/// externos (por correo). Estructura compatible con Google Calendar (email + estado de respuesta).
+model AppointmentAttendee {
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  tenantId      String   @map("tenant_id") @db.VarChar(30)
+  appointmentId String   @map("appointment_id") @db.VarChar(30)
+  userId        String?  @map("user_id") @db.VarChar(30)   // asistente interno (usuario del tenant)
+  email         String?  @db.VarChar(255)                   // asistente externo (por correo)
+  name          String?  @db.VarChar(255)
+  response      String   @default("pending") @db.VarChar(20) // pending | accepted | declined
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User?       @relation("AttendeeUser", fields: [userId], references: [id])
+
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, userId])
+  @@map("appointment_attendees")
 }
 
 /// Token de un solo uso para cancelar una cita desde el email de recordatorio sin autenticarse.

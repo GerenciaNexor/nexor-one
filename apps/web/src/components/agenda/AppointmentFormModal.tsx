@@ -15,11 +15,17 @@ interface Slot    {
   availableProfessionals?: Array<{ id: string; name: string }>
 }
 
+interface UserOpt { id: string; name: string; email: string | null }
+
 interface Props {
   initialDate?:     string
   initialTime?:     string
   initialBranchId?: string
   branches:         Branch[]
+  /** HU-204 — modo inicial: cita de servicio (default) o evento libre. */
+  initialMode?:     'service' | 'event'
+  /** HU-204 — si se pasa, el modal edita ESE evento libre (PUT) en vez de crear. */
+  event?:           Appointment
   onClose:          () => void
   onSuccess:        (a: Appointment) => void
 }
@@ -33,12 +39,32 @@ export function AppointmentFormModal({
   initialTime,
   initialBranchId,
   branches,
+  initialMode,
+  event,
   onClose,
   onSuccess,
 }: Props) {
   const user        = useAuthStore((s) => s.user)
   const isOperative = user?.role === 'OPERATIVE'
   const defaultBranch = initialBranchId || (isOperative ? (user?.branchId ?? '') : '')
+
+  // HU-204 — modo del formulario. Si se edita un evento, arranca en 'event'.
+  const [mode, setMode] = useState<'service' | 'event'>(event ? 'event' : (initialMode ?? 'service'))
+  const isEditingEvent = !!event
+
+  // ── Estado del EVENTO LIBRE (HU-204) ──
+  const toLocalDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-CA') : (initialDate ?? new Date().toLocaleDateString('en-CA')))
+  const toLocalTime = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : (initialTime ?? '09:00'))
+  const [evTitle,   setEvTitle]   = useState(event?.title ?? '')
+  const [evDesc,    setEvDesc]    = useState(event?.notes ?? '')
+  const [evDate,    setEvDate]    = useState(toLocalDate(event?.startAt))
+  const [evStart,   setEvStart]   = useState(toLocalTime(event?.startAt))
+  const [evEnd,     setEvEnd]     = useState(event?.endAt ? toLocalTime(event.endAt) : '10:00')
+  const [evBranch,  setEvBranch]  = useState(event?.branchId ?? '')
+  const [internalIds, setInternalIds] = useState<string[]>(event?.attendees?.filter((a) => a.userId).map((a) => a.userId as string) ?? [])
+  const [externalEmails, setExternalEmails] = useState<string[]>(event?.attendees?.filter((a) => !a.userId && a.email).map((a) => a.email as string) ?? [])
+  const [emailDraft, setEmailDraft] = useState('')
+  const [users, setUsers] = useState<UserOpt[]>([])
 
   const [branchId,     setBranchId]     = useState(defaultBranch)
   const [serviceId,    setServiceId]    = useState('')
@@ -93,8 +119,66 @@ export function AppointmentFormModal({
     if (match) setSelectedSlot(match)
   }, [slots]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSubmit(e: React.FormEvent) {
+  // HU-204 — cargar usuarios del tenant para elegir asistentes internos (solo en modo evento).
+  useEffect(() => {
+    if (mode !== 'event' || users.length) return
+    apiClient.get<{ data: UserOpt[] }>('/v1/users?limit=100').then((r) => setUsers(r.data ?? [])).catch(() => {})
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleInternal(id: string) {
+    setInternalIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
+  function addEmail() {
+    const e = emailDraft.trim().toLowerCase()
+    if (!e) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { setSubmitError('Correo de asistente inválido'); return }
+    if (!externalEmails.includes(e)) setExternalEmails((prev) => [...prev, e])
+    setEmailDraft(''); setSubmitError(null)
+  }
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (mode === 'event') return void handleEventSubmit()
+    return void handleServiceSubmit()
+  }
+
+  // ── HU-204 — crear / editar EVENTO LIBRE ──
+  async function handleEventSubmit() {
+    if (!evTitle.trim()) { setSubmitError('El título del evento es requerido'); return }
+    const start = new Date(`${evDate}T${evStart}`)
+    const end   = new Date(`${evDate}T${evEnd}`)
+    if (isNaN(start.getTime())) { setSubmitError('Fecha/hora de inicio inválida'); return }
+    if (isNaN(end.getTime()) || end <= start) { setSubmitError('La hora de fin debe ser posterior al inicio'); return }
+    const attendees = [
+      ...internalIds.map((id) => ({ userId: id })),
+      ...externalEmails.map((email) => ({ email })),
+    ]
+    setSubmitting(true); setSubmitError(null)
+    try {
+      const body: Record<string, unknown> = {
+        type:    'event',
+        title:   evTitle.trim(),
+        startAt: start.toISOString(),
+        endAt:   end.toISOString(),
+        channel: 'internal',
+        status:  'confirmed',
+      }
+      if (evDesc.trim())     body.notes     = evDesc.trim()
+      if (evBranch)          body.branchId  = evBranch
+      if (attendees.length)  body.attendees = attendees
+
+      const appt = isEditingEvent
+        ? await apiClient.put<Appointment>(`/v1/agenda/appointments/${event!.id}`, body)
+        : await apiClient.post<Appointment>('/v1/agenda/appointments', body)
+      onSuccess(appt)
+    } catch (err: unknown) {
+      setSubmitError((err as { message?: string }).message ?? 'Error al guardar el evento')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleServiceSubmit() {
     // Slot sugerido, o una hora ESPECÍFICA (sin horarios, o si el usuario eligió "otra hora").
     const useManual = noAvail || timeMode === 'manual'
     let startAt: string
@@ -147,7 +231,9 @@ export function AppointmentFormModal({
 
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-700">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Nueva cita</h2>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              {isEditingEvent ? 'Editar evento' : mode === 'event' ? 'Nuevo evento' : 'Nueva cita'}
+            </h2>
             <button
               onClick={onClose}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors dark:hover:bg-slate-700"
@@ -161,6 +247,19 @@ export function AppointmentFormModal({
           <form onSubmit={handleSubmit}>
             <div className="max-h-[70dvh] space-y-4 overflow-y-auto px-6 py-4">
 
+              {/* HU-204 — selector de tipo: cita de servicio (actual) o evento libre (nuevo). Oculto al editar. */}
+              {!isEditingEvent && (
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-700/50">
+                  {(['service', 'event'] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => { setMode(m); setSubmitError(null) }}
+                      className={`rounded-md py-1.5 text-xs font-medium transition-colors ${mode === m ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>
+                      {m === 'service' ? 'Cita de servicio' : 'Evento libre'}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {mode === 'service' && (<>
               {/* Branch */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Sucursal</label>
@@ -355,6 +454,77 @@ export function AppointmentFormModal({
                   className={inputCls + ' resize-none'}
                 />
               </div>
+              </>)}
+
+              {/* ── HU-204 — Formulario de EVENTO LIBRE ── */}
+              {mode === 'event' && (<>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Título *</label>
+                  <input type="text" value={evTitle} onChange={(e) => setEvTitle(e.target.value)} required
+                    placeholder="Reunión, grabación, bloqueo…" className={inputCls} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Descripción</label>
+                  <textarea value={evDesc} onChange={(e) => setEvDesc(e.target.value)} rows={2}
+                    placeholder="Detalles del evento…" className={inputCls + ' resize-none'} />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Fecha</label>
+                    <input type="date" value={evDate} onChange={(e) => setEvDate(e.target.value)} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Inicio</label>
+                    <input type="time" value={evStart} onChange={(e) => setEvStart(e.target.value)} required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Fin</label>
+                    <input type="time" value={evEnd} onChange={(e) => setEvEnd(e.target.value)} required className={inputCls} />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Sucursal (opcional)</label>
+                  <select value={evBranch} onChange={(e) => setEvBranch(e.target.value)} disabled={isOperative} className={inputCls + ' disabled:opacity-60'}>
+                    <option value="">Sin sucursal (general)</option>
+                    {branches.filter((b) => b.isActive !== false).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+
+                {/* Asistentes internos */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Asistentes internos</label>
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                    {users.length === 0 ? <p className="px-1 text-xs text-slate-400">Cargando usuarios…</p> : users.map((u) => (
+                      <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">
+                        <input type="checkbox" checked={internalIds.includes(u.id)} onChange={() => toggleInternal(u.id)} className="h-4 w-4" />
+                        {u.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Asistentes externos (por correo) */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Asistentes externos (correo)</label>
+                  <div className="flex gap-2">
+                    <input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail() } }}
+                      placeholder="correo@ejemplo.com" className={inputCls} />
+                    <button type="button" onClick={addEmail} className="shrink-0 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">Agregar</button>
+                  </div>
+                  {externalEmails.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {externalEmails.map((em) => (
+                        <span key={em} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                          {em}
+                          <button type="button" onClick={() => setExternalEmails((prev) => prev.filter((x) => x !== em))} className="text-slate-400 hover:text-red-600">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-slate-400">A los externos se les envía la invitación por correo; a los internos les llega una notificación.</p>
+                </div>
+              </>)}
 
               {submitError && <p className="text-xs text-red-500">{submitError}</p>}
             </div>
@@ -370,10 +540,10 @@ export function AppointmentFormModal({
               </button>
               <button
                 type="submit"
-                disabled={submitting || (noAvail ? !manualTime : !selectedSlot)}
+                disabled={submitting || (mode === 'event' ? !evTitle.trim() : (noAvail ? !manualTime : !selectedSlot))}
                 className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
               >
-                {submitting ? 'Agendando…' : 'Agendar cita'}
+                {submitting ? 'Guardando…' : mode === 'event' ? (isEditingEvent ? 'Guardar evento' : 'Crear evento') : 'Agendar cita'}
               </button>
             </div>
           </form>

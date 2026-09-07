@@ -109,7 +109,7 @@ describe.skipIf(!HAS_DB)('HU-197 — cobertura Sprint 20 (BD temporal)', () => {
   // ── HU-195 — agendamiento sin doble-reserva (servicio SIN profesionales) ──────
   describe('HU-195 — sin doble-reserva', () => {
     const appt = (hourUTC: number) => createAppointment(T.tenant, {
-      branchId: T.branch, serviceTypeId: T.svc, startAt: `${DATE}T${String(hourUTC).padStart(2, '0')}:00:00.000Z`,
+      type: 'service', branchId: T.branch, serviceTypeId: T.svc, startAt: `${DATE}T${String(hourUTC).padStart(2, '0')}:00:00.000Z`,
       clientName: 'Cliente', clientPhone: '3001', channel: 'manual', status: 'scheduled', createdByAgent: false,
     })
 
