@@ -95,13 +95,15 @@ test.describe('Flujo KIRA — inventario', () => {
     await page.getByRole('button', { name: 'Registrar movimiento' }).click()
     await movementCreated
 
-    // Verificar que el stock del producto ahora es 50
-    await page.goto('/kira/stock')
-    // Esperar que la API de stock responda con datos actualizados antes de verificar
-    await page.waitForResponse(
-      (r) => r.url().includes('/v1/kira/stock') && r.status() === 200,
+    // Verificar que el stock del producto ahora es 50.
+    // El listener se registra ANTES del goto: el GET de la lista se dispara durante la navegación, así
+    // que esperarlo después de goto es un race (el evento puede ocurrir antes de registrar el listener).
+    const stockLoaded = page.waitForResponse(
+      (r) => r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith('/v1/kira/stock') && r.status() === 200,
       { timeout: 15_000 },
     )
+    await page.goto('/kira/stock')
+    await stockLoaded
     // getByRole('cell') evita la ambigüedad entre la <td> de desktop y el <p> de mobile (sm:hidden)
     const cell = page.getByRole('cell', { name, exact: true })
     await expect(cell).toBeVisible({ timeout: 10_000 })
