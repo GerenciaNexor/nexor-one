@@ -285,7 +285,7 @@ export default function ProyectoDetailPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className={`text-sm font-medium ${t.assignmentStatus === 'pending' ? 'text-amber-500' : t.type === 'income' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-200'}`}>
-                    {t.type === 'income' ? '+' : '−'}{money(t.amount)}
+                    {money(t.amount)}
                   </span>
                   {isManager && (
                     <button onClick={() => unassign(t.id)} className="text-xs text-slate-400 hover:text-red-600" title="Quitar del proyecto">Quitar</button>

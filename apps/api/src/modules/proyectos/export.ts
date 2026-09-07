@@ -32,14 +32,14 @@ export async function projectTxToXlsx(projectName: string, rows: ProjectTxRow[])
       description: r.description,
       category:    r.category ?? '',
       status:      r.assignmentStatus ? (STATUS_LABEL[r.assignmentStatus] ?? r.assignmentStatus) : '',
-      // El monto se firma según el tipo (ingresos +, gastos −), como en la UI.
-      amount:      r.type === 'income' ? r.amount : -r.amount,
+      // Monto SIEMPRE positivo: el tipo (compra/venta) ya indica la naturaleza; no se muestra en negativo.
+      amount:      r.amount,
     })
   }
   sheet.getColumn('amount').numFmt = '#,##0'
 
-  // Fila de total (suma firmada).
-  const total = rows.reduce((s, r) => s + (r.type === 'income' ? r.amount : -r.amount), 0)
+  // Fila de total = suma del avance/consumo del proyecto (montos positivos, como en la UI).
+  const total = rows.reduce((s, r) => s + r.amount, 0)
   const totalRow = sheet.addRow({ description: 'TOTAL', amount: total })
   totalRow.font = { bold: true }
 
