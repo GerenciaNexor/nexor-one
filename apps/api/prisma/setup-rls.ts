@@ -50,6 +50,8 @@ const BUSINESS_TABLES = [
   'appointments',
   // HU-204 — asistentes de eventos libres (tenant_id propio).
   'appointment_attendees',
+  // HU-207 — registro de notificaciones enviadas por WhatsApp (tenant_id propio).
+  'whatsapp_messages',
   'transactions',
   // HU-114 — bandeja y carga masiva (conversation_messages lleva RLS propia
   // por tener su propia columna tenant_id, aunque sea tabla "hija").

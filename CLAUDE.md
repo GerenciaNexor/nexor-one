@@ -61,8 +61,8 @@ HU-117; `supplier_ratings` desde HU-125; `client_ratings` desde HU-126; `dashboa
 desde HU-127; `blocked_dates`, `appointment_cancel_tokens`, `transaction_categories`,
 `cost_centers`, `monthly_budgets` desde HU-135-fix — cierre 26→31; `reminders` desde HU-156;
 `rentals` desde HU-158; `incoming_rentals` desde HU-175; `quick_invoices` desde HU-191 — facturas
-por imagen/OCR del registro rápido; y `appointment_attendees` desde HU-204 — asistentes del evento
-libre de AGENDA).
+por imagen/OCR del registro rápido; `appointment_attendees` desde HU-204 — asistentes del evento
+libre de AGENDA; y `whatsapp_messages` desde HU-207 — registro de notificaciones enviadas por WhatsApp).
 Además habilita RLS
 **deny-all** en las tablas de plataforma `platform_admins` (HU-134), `platform_audit_logs` (HU-136),
 `subscriptions` y `platform_notifications` (bandeja de la consola SUPER_ADMIN)

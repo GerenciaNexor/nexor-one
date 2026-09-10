@@ -111,6 +111,7 @@ model Tenant {
   availability          Availability[]
   appointments          Appointment[]
   appointmentAttendees  AppointmentAttendee[]
+  whatsappMessages      WhatsAppMessage[]
   blockedDates          BlockedDate[]
   cancelTokens          AppointmentCancelToken[]
   transactions          Transaction[]
@@ -354,6 +355,31 @@ model Integration {
   @@index([tenantId])
   @@index([channel, identifier])
   @@map("integrations")
+}
+
+/// HU-207 — Registro de notificaciones enviadas por WhatsApp Business (Cloud API, plantillas
+/// aprobadas). Trazabilidad y observabilidad de costo. token_encrypted vive en Integration; aquí
+/// NUNCA se guarda el token, solo el envío. RLS por tenant.
+model WhatsAppMessage {
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  tenantId      String   @map("tenant_id") @db.VarChar(30)
+  toPhone       String   @map("to_phone") @db.VarChar(20)          // destino normalizado (E.164 sin '+')
+  templateName  String   @map("template_name") @db.VarChar(120)
+  languageCode  String   @default("es") @map("language_code") @db.VarChar(10)
+  variables     Json?    @db.JsonB                                  // variables del cuerpo de la plantilla
+  category      String?  @db.VarChar(20)                            // utility | marketing | authentication
+  status        String   @default("queued") @db.VarChar(20)        // queued|sent|delivered|read|failed|invalid_number
+  messageId     String?  @map("message_id") @db.VarChar(160)        // wamid devuelto por Meta
+  estimatedCost Decimal? @map("estimated_cost") @db.Decimal(10, 5)  // costo estimado (USD) del envío
+  errorCode     String?  @map("error_code") @db.VarChar(80)
+  errorDetail   String?  @map("error_detail") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@map("whatsapp_messages")
 }
 
 /// Notificaciones para el equipo de PLATAFORMA (SUPER_ADMIN) — la "campanita" de la consola.
