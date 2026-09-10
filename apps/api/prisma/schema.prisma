@@ -179,6 +179,7 @@ model User {
   branchId     String?     @map("branch_id") @db.VarChar(30)
   email        String      @unique @db.VarChar(255)
   name         String      @db.VarChar(255)
+  phone        String?     @db.VarChar(30)   // HU-208 — WhatsApp del usuario para recordatorios
   passwordHash String      @map("password_hash") @db.VarChar(255)
   role         Role
   module       ModuleName?

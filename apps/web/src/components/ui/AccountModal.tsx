@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Portal } from '@/components/ui/Portal'
 import { ChangePasswordModal } from '@/components/ui/ChangePasswordModal'
+import { apiClient } from '@/lib/api-client'
+import { useAuthStore } from '@/store/auth'
 import type { LoginUser } from '@/lib/auth-api'
 
 // Etiquetas legibles de rol y módulo (no mostramos los códigos internos al usuario).
@@ -29,6 +31,25 @@ function initials(name: string): string {
  */
 export function AccountModal({ user, onClose }: { user: LoginUser; onClose: () => void }) {
   const [pwOpen, setPwOpen] = useState(false)
+  const patchUser = useAuthStore((s) => s.patchUser)
+
+  // HU-208 — teléfono/WhatsApp editable (para recibir recordatorios).
+  const [phone, setPhone]   = useState(user.phone ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved]   = useState(false)
+  const [error, setError]   = useState('')
+  const dirty = (phone.trim() || '') !== (user.phone ?? '')
+
+  async function savePhone() {
+    setSaving(true); setError(''); setSaved(false)
+    try {
+      await apiClient.put('/v1/users/me', { phone: phone.trim() || null })
+      patchUser({ phone: phone.trim() || null })
+      setSaved(true)
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'No se pudo guardar')
+    } finally { setSaving(false) }
+  }
 
   const rows: { label: string; value: string }[] = [
     { label: 'Nombre',  value: user.name },
@@ -68,6 +89,28 @@ export function AccountModal({ user, onClose }: { user: LoginUser; onClose: () =
                 </div>
               ))}
             </dl>
+
+            {/* HU-208 — teléfono/WhatsApp para recordatorios */}
+            <div className="mt-4">
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Teléfono / WhatsApp (recordatorios)</label>
+              <div className="flex gap-2">
+                <input
+                  type="tel" value={phone}
+                  onChange={(e) => { setPhone(e.target.value); setSaved(false) }}
+                  placeholder="+57 300 000 0000"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <button
+                  onClick={() => void savePhone()}
+                  disabled={saving || !dirty}
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
+                >
+                  {saving ? '…' : 'Guardar'}
+                </button>
+              </div>
+              {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+              {saved && !dirty && <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Teléfono guardado ✓</p>}
+            </div>
 
             {/* Acciones */}
             <div className="mt-5 flex justify-end">

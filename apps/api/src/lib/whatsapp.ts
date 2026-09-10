@@ -197,6 +197,11 @@ export const WHATSAPP_TEMPLATES = {
     language: process.env['WA_TPL_APPOINTMENT_CONFIRMATION_LANG'] ?? 'es',
     category: 'utility' as WaCategory,
   },
+  general_reminder: {
+    name:     process.env['WA_TPL_GENERAL_REMINDER'] ?? 'general_reminder',
+    language: process.env['WA_TPL_GENERAL_REMINDER_LANG'] ?? 'es',
+    category: 'utility' as WaCategory,
+  },
 } as const
 
 export type WhatsAppTemplateKey = keyof typeof WHATSAPP_TEMPLATES

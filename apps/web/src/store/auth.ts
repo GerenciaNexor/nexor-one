@@ -27,6 +27,8 @@ interface AuthState {
   _hasHydrated: boolean
   setHasHydrated: (v: boolean) => void
   setAuth: (token: string, refreshToken: string, user: LoginUser) => void
+  /** HU-208 — actualiza campos del usuario en sesión (p. ej. tras editar el perfil). */
+  patchUser: (patch: Partial<LoginUser>) => void
   setPlatformAuth: (token: string, admin: PlatformAdminInfo) => void
   clearAuth: () => void
   /** Entra en modo impersonación: guarda el token de plataforma y activa la sesión de tenant. */
@@ -47,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
       setHasHydrated: (v) => set({ _hasHydrated: v }),
       setAuth: (token, refreshToken, user) =>
         set({ token, refreshToken, user, platformAdmin: null, impersonation: null }),
+      patchUser: (patch) => { const u = get().user; if (u) set({ user: { ...u, ...patch } }) },
       setPlatformAuth: (token, admin) =>
         set({ token, refreshToken: null, user: null, platformAdmin: admin, impersonation: null }),
       clearAuth: () =>

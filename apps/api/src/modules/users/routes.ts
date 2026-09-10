@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { CreateUserSchema, UpdateUserSchema, ChangePasswordSchema } from './schema'
-import { listUsers, createUser, updateUser, changeOwnPassword } from './service'
+import { CreateUserSchema, UpdateUserSchema, UpdateMeSchema, ChangePasswordSchema } from './schema'
+import { listUsers, createUser, updateUser, updateMe, changeOwnPassword } from './service'
 import { requireTenantAdmin } from '../../lib/guards'
 import { z2j, idParam, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
@@ -57,6 +57,33 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     try {
       const user = await createUser(request.user.tenantId, parsed.data)
       return reply.code(201).send(user)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /**
+   * PUT /v1/users/me — HU-208: el usuario edita su propio perfil (nombre, teléfono/WhatsApp).
+   * Cualquier usuario autenticado. El teléfono se usa para recibir recordatorios por WhatsApp.
+   */
+  app.put('/me', {
+    schema: {
+      tags:        ['Users'],
+      summary:     'Editar mi perfil',
+      description: 'El usuario autenticado actualiza su nombre y teléfono (WhatsApp para recordatorios).',
+      security:    bearerAuth,
+      body:        z2j(UpdateMeSchema),
+      response:    { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const parsed = UpdateMeSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos de entrada invalidos', code: 'VALIDATION_ERROR' })
+    }
+    try {
+      const user = await updateMe(request.user.tenantId, request.user.userId, parsed.data)
+      return reply.code(200).send(user)
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })

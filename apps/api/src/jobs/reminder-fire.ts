@@ -13,6 +13,7 @@
 import { ModuleName } from '@prisma/client'
 import { directPrisma } from '../lib/prisma'
 import { nextOccurrence } from '../modules/reminders/recurrence'
+import { sendWhatsAppNotification } from '../lib/whatsapp'
 
 const ONE_MINUTE_MS = 60 * 1000
 
@@ -30,7 +31,7 @@ export async function runReminderFire(): Promise<{ fired: number }> {
   const now = new Date()
   const due = await directPrisma.reminder.findMany({
     where:  { isActive: true, remindAt: { lte: now } },
-    select: { id: true, tenantId: true, userId: true, title: true, description: true, remindAt: true, alertLevel: true, recurrence: true, relatedType: true },
+    select: { id: true, tenantId: true, userId: true, title: true, description: true, remindAt: true, alertLevel: true, recurrence: true, relatedType: true, user: { select: { phone: true } }, tenant: { select: { timezone: true } } },
   })
 
   for (const r of due) {
@@ -47,6 +48,13 @@ export async function runReminderFire(): Promise<{ fired: number }> {
           link:     rel?.link ?? null,
         },
       })
+      // HU-208 — además del aviso in-app (respaldo), enviar por WhatsApp al teléfono del usuario si lo
+      // tiene. Solo lleva lo necesario (título + hora); nunca rompe el flujo (la capa nunca lanza).
+      if (r.user?.phone) {
+        const tz   = r.tenant?.timezone ?? 'America/Bogota'
+        const hora = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' }).format(r.remindAt)
+        void sendWhatsAppNotification('general_reminder', { tenantId: r.tenantId, to: r.user.phone, bodyParams: [r.title, hora] })
+      }
       const next = nextOccurrence(r.remindAt, r.recurrence, now)
       // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.
       await directPrisma.reminder.updateMany({

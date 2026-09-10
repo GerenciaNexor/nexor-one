@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma'
 import { assertDemoLimit } from '../../lib/demo-limits'
 import bcrypt from 'bcryptjs'
-import type { CreateUserInput, UpdateUserInput } from './schema'
+import type { CreateUserInput, UpdateUserInput, UpdateMeInput } from './schema'
 
 const USER_SELECT = {
   id:          true,
@@ -9,6 +9,7 @@ const USER_SELECT = {
   branchId:    true,
   email:       true,
   name:        true,
+  phone:       true,
   role:        true,
   module:      true,
   isActive:    true,
@@ -74,6 +75,7 @@ export async function createUser(tenantId: string, input: CreateUserInput) {
       branchId:     input.branchId,
       email:        input.email,
       name:         input.name,
+      phone:        input.phone ?? null,
       passwordHash: hash,
       role:         input.role,
       module:       input.module,
@@ -105,6 +107,7 @@ export async function updateUser(
 
   const data: Record<string, unknown> = {}
   if (input.name     !== undefined) data['name']     = input.name
+  if (input.phone    !== undefined) data['phone']    = input.phone
   if (input.role     !== undefined) data['role']     = input.role
   if (input.module   !== undefined) data['module']   = input.module
   if (input.branchId !== undefined) data['branchId'] = input.branchId
@@ -116,6 +119,19 @@ export async function updateUser(
     data,
     select: USER_SELECT,
   })
+}
+
+/** HU-208 — el usuario edita su PROPIO perfil (nombre y teléfono/WhatsApp para recordatorios). */
+export async function updateMe(tenantId: string, userId: string, input: UpdateMeInput) {
+  const data: Record<string, unknown> = {}
+  if (input.name  !== undefined) data['name']  = input.name
+  if (input.phone !== undefined) data['phone'] = input.phone
+  if (Object.keys(data).length === 0) {
+    const u = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: USER_SELECT })
+    if (!u) throw { statusCode: 404, message: 'Usuario no encontrado', code: 'NOT_FOUND' }
+    return u
+  }
+  return prisma.user.update({ where: { id: userId }, data, select: USER_SELECT })
 }
 
 /**

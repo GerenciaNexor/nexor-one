@@ -4,6 +4,7 @@ export interface LoginUser {
   id: string
   email: string
   name: string
+  phone?: string | null   // HU-208 — WhatsApp para recordatorios
   role: string
   /** Módulo principal del usuario (AREA_MANAGER/OPERATIVE). null para admins transversales. */
   module: string | null

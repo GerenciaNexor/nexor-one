@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const CreateUserSchema = z.object({
   email:    z.string().email('Email invalido'),
   name:     z.string().min(1, 'El nombre es requerido').max(255),
+  phone:    z.string().max(30).nullable().optional(),  // HU-208 — WhatsApp para recordatorios
   password: z.string().min(8, 'La contrasena debe tener al menos 8 caracteres'),
   role:     z.enum(['TENANT_ADMIN', 'BRANCH_ADMIN', 'AREA_MANAGER', 'OPERATIVE']),
   // TENANT_ADMIN / BRANCH_ADMIN acceden a TODAS las áreas → no llevan módulo (el frontend envía null).
@@ -18,11 +19,18 @@ export const CreateUserSchema = z.object({
 
 export const UpdateUserSchema = z.object({
   name:     z.string().min(1).max(255).optional(),
+  phone:    z.string().max(30).nullable().optional(),  // HU-208
   role:     z.enum(['TENANT_ADMIN', 'BRANCH_ADMIN', 'AREA_MANAGER', 'OPERATIVE']).optional(),
   module:   z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA']).nullable().optional(),
   branchId: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(8).optional(),
+})
+
+/** HU-208 — el usuario edita su PROPIO perfil (nombre, teléfono/WhatsApp para recordatorios). */
+export const UpdateMeSchema = z.object({
+  name:  z.string().min(1).max(255).optional(),
+  phone: z.string().max(30).nullable().optional(),
 })
 
 /** Cambio de la PROPIA contraseña (self-service): verifica la actual y setea la nueva. */
@@ -33,4 +41,5 @@ export const ChangePasswordSchema = z.object({
 
 export type CreateUserInput     = z.infer<typeof CreateUserSchema>
 export type UpdateUserInput     = z.infer<typeof UpdateUserSchema>
+export type UpdateMeInput       = z.infer<typeof UpdateMeSchema>
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>
