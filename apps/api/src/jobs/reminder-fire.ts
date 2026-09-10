@@ -31,7 +31,7 @@ export async function runReminderFire(): Promise<{ fired: number }> {
   const now = new Date()
   const due = await directPrisma.reminder.findMany({
     where:  { isActive: true, remindAt: { lte: now } },
-    select: { id: true, tenantId: true, userId: true, title: true, description: true, remindAt: true, alertLevel: true, recurrence: true, relatedType: true, user: { select: { phone: true, whatsappOptIn: true } }, tenant: { select: { timezone: true } } },
+    select: { id: true, tenantId: true, userId: true, title: true, description: true, remindAt: true, alertLevel: true, recurrence: true, relatedType: true, user: { select: { name: true, phone: true, whatsappOptIn: true } }, tenant: { select: { timezone: true } } },
   })
 
   for (const r of due) {
@@ -52,9 +52,11 @@ export async function runReminderFire(): Promise<{ fired: number }> {
       // tiene. Solo lleva lo necesario (título + hora); nunca rompe el flujo (la capa nunca lanza).
       // HU-209 — respeta el opt-in del usuario; si lo desactivó, queda solo el aviso in-app.
       if (r.user?.phone) {
-        const tz   = r.tenant?.timezone ?? 'America/Bogota'
-        const hora = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' }).format(r.remindAt)
-        void sendWhatsAppNotificationIfOptedIn('general_reminder', { tenantId: r.tenantId, to: r.user.phone, optIn: r.user.whatsappOptIn, bodyParams: [r.title, hora] })
+        const tz    = r.tenant?.timezone ?? 'America/Bogota'
+        const fecha = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'long' }).format(r.remindAt)
+        const hora  = new Intl.DateTimeFormat('es-CO', { timeZone: tz, timeStyle: 'short' }).format(r.remindAt)
+        // recordatorio_general → 1=nombre, 2=asunto, 3=fecha, 4=hora
+        void sendWhatsAppNotificationIfOptedIn('general_reminder', { tenantId: r.tenantId, to: r.user.phone, optIn: r.user.whatsappOptIn, bodyParams: [r.user.name, r.title, fecha, hora] })
       }
       const next = nextOccurrence(r.remindAt, r.recurrence, now)
       // HU-202 — defensa en profundidad: directPrisma bypasea RLS → forzar tenantId en el where.

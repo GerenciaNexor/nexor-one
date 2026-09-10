@@ -67,7 +67,9 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
 
   if (appointments.length === 0) return { sent: 0 }
 
-  const fmt = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' })
+  // HU-209 — plantilla recordatorio_cita: fecha y hora en variables separadas ({{2}}/{{3}}).
+  const fmtDate = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'long' })
+  const fmtTime = new Intl.DateTimeFormat('es-CO', { timeZone: tz, timeStyle: 'short' })
   let sent = 0
 
   for (const appt of appointments) {
@@ -94,9 +96,10 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
       // Privacidad: solo nombre, fecha/hora y servicio/sucursal; nada de terceros.
       // HU-209 — respeta el opt-in del cliente; sin cliente registrado (número inline) = opt-in implícito.
       if (appt.clientPhone) {
+        // recordatorio_cita → 1=nombre, 2=fecha, 3=hora, 4=lugar (servicio en la sucursal).
         void sendWhatsAppNotificationIfOptedIn('appointment_reminder', {
           tenantId, to: appt.clientPhone, optIn: appt.client?.whatsappOptIn ?? true,
-          bodyParams: [clientName, fmt.format(appt.startAt), `${serviceName} — ${branchName}`],
+          bodyParams: [clientName, fmtDate.format(appt.startAt), fmtTime.format(appt.startAt), `${serviceName} — ${branchName}`],
         })
       }
 

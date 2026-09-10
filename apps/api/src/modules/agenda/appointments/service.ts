@@ -323,10 +323,12 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     // HU-209 — confirmación por WhatsApp con plantilla aprobada, respetando el opt-in del cliente.
     // Privacidad: solo nombre, fecha/hora y servicio/sucursal; nada de terceros. Nunca rompe el flujo.
     if (resolvedPhone) {
-      const fmt = new Intl.DateTimeFormat('es-CO', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' })
+      // confirmacion_cita → 1=nombre, 2=fecha, 3=hora, 4=lugar
+      const fmtDate = new Intl.DateTimeFormat('es-CO', { timeZone: timezone, dateStyle: 'long' })
+      const fmtTime = new Intl.DateTimeFormat('es-CO', { timeZone: timezone, timeStyle: 'short' })
       void sendWhatsAppNotificationIfOptedIn('appointment_confirmation', {
         tenantId, to: resolvedPhone, optIn: clientOptIn,
-        bodyParams: [resolvedName || 'Cliente', fmt.format(startAt), `${service.name} — ${branch.name}`],
+        bodyParams: [resolvedName || 'Cliente', fmtDate.format(startAt), fmtTime.format(startAt), `${service.name} — ${branch.name}`],
       })
     }
   }
@@ -608,10 +610,12 @@ export async function updateAppointmentStatus(
     }
 
     if (appointment.clientPhone) {
-      const fmt = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' })
+      // confirmacion_cita → 1=nombre, 2=fecha, 3=hora, 4=lugar
+      const fmtDate = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'long' })
+      const fmtTime = new Intl.DateTimeFormat('es-CO', { timeZone: tz, timeStyle: 'short' })
       void sendWhatsAppNotificationIfOptedIn('appointment_confirmation', {
         tenantId, to: appointment.clientPhone, optIn: appointment.client?.whatsappOptIn ?? true,
-        bodyParams: [clientName, fmt.format(appointment.startAt), `${serviceName} — ${branchName}`],
+        bodyParams: [clientName, fmtDate.format(appointment.startAt), fmtTime.format(appointment.startAt), `${serviceName} — ${branchName}`],
       })
     }
   }

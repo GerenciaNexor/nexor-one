@@ -186,20 +186,25 @@ export async function sendWhatsAppTemplate(p: SendTemplateParams): Promise<SendT
  * EXACTAMENTE con el aprobado en Meta; se puede sobreescribir por env sin tocar código. Las
  * notificaciones concretas (HU-208/209) llenan las variables al invocar `sendWhatsAppTemplate`.
  */
+// Nombres/idioma de las plantillas APROBADAS en Meta (WABA de producción). Idioma es_CO (Spanish COL).
+// El orden de variables debe coincidir EXACTAMENTE con el aprobado (ver los call-sites):
+//   recordatorio_cita     → 1=nombre, 2=fecha, 3=hora, 4=lugar
+//   recordatorio_general  → 1=nombre, 2=asunto, 3=fecha, 4=hora
+//   confirmacion_cita     → 1=nombre, 2=fecha, 3=hora, 4=lugar
 export const WHATSAPP_TEMPLATES = {
   appointment_reminder: {
-    name:     process.env['WA_TPL_APPOINTMENT_REMINDER'] ?? 'appointment_reminder',
-    language: process.env['WA_TPL_APPOINTMENT_REMINDER_LANG'] ?? 'es',
+    name:     process.env['WA_TPL_APPOINTMENT_REMINDER'] ?? 'recordatorio_cita',
+    language: process.env['WA_TPL_APPOINTMENT_REMINDER_LANG'] ?? 'es_CO',
     category: 'utility' as WaCategory,
   },
   appointment_confirmation: {
-    name:     process.env['WA_TPL_APPOINTMENT_CONFIRMATION'] ?? 'appointment_confirmation',
-    language: process.env['WA_TPL_APPOINTMENT_CONFIRMATION_LANG'] ?? 'es',
+    name:     process.env['WA_TPL_APPOINTMENT_CONFIRMATION'] ?? 'confirmacion_cita',
+    language: process.env['WA_TPL_APPOINTMENT_CONFIRMATION_LANG'] ?? 'es_CO',
     category: 'utility' as WaCategory,
   },
   general_reminder: {
-    name:     process.env['WA_TPL_GENERAL_REMINDER'] ?? 'general_reminder',
-    language: process.env['WA_TPL_GENERAL_REMINDER_LANG'] ?? 'es',
+    name:     process.env['WA_TPL_GENERAL_REMINDER'] ?? 'recordatorio_general',
+    language: process.env['WA_TPL_GENERAL_REMINDER_LANG'] ?? 'es_CO',
     category: 'utility' as WaCategory,
   },
 } as const
