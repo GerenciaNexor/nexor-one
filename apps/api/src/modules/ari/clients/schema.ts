@@ -32,6 +32,7 @@ export const CreateClientSchema = z.object({
   email:      z.string().email('Email inválido').optional(),
   phone:      z.string().max(20).optional(),
   whatsappId: z.string().max(50).optional(),
+  whatsappOptIn: z.boolean().optional(),  // HU-209 — consentimiento de WhatsApp (default true)
   company:    z.string().max(255).optional(),
   taxId:      z.string().max(50).optional(),
   address:    z.string().max(500).optional(),
@@ -49,6 +50,7 @@ export const UpdateClientSchema = z.object({
   email:      z.string().email().nullable().optional(),
   phone:      z.string().max(20).nullable().optional(),
   whatsappId: z.string().max(50).nullable().optional(),
+  whatsappOptIn: z.boolean().optional(),  // HU-209
   company:    z.string().max(255).nullable().optional(),
   taxId:      z.string().max(50).nullable().optional(),
   address:    z.string().max(500).nullable().optional(),

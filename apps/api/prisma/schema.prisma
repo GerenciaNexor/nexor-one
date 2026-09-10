@@ -180,6 +180,10 @@ model User {
   email        String      @unique @db.VarChar(255)
   name         String      @db.VarChar(255)
   phone        String?     @db.VarChar(30)   // HU-208 — WhatsApp del usuario para recordatorios
+  // HU-209 — consentimiento (opt-in) para recibir notificaciones por WhatsApp. Por defecto activo
+  // (mensajes de utilidad sobre la propia operación: recordatorios que el usuario mismo programó);
+  // se respeta SIEMPRE al desactivarlo — la notificación interna queda como respaldo.
+  whatsappOptIn Boolean    @default(true) @map("whatsapp_opt_in")
   passwordHash String      @map("password_hash") @db.VarChar(255)
   role         Role
   module       ModuleName?
@@ -569,6 +573,9 @@ model Client {
   email         String?  @db.VarChar(255)
   phone         String?  @db.VarChar(20)
   whatsappId    String?  @map("whatsapp_id") @db.VarChar(50)
+  /// HU-209 — consentimiento (opt-in) del cliente para notificaciones por WhatsApp (confirmación y
+  /// recordatorio de cita). Por defecto activo (utilidad sobre su propia cita); se respeta al desactivarlo.
+  whatsappOptIn Boolean  @default(true) @map("whatsapp_opt_in")
   company       String?  @db.VarChar(255)
   taxId         String?  @map("tax_id") @db.VarChar(50)
   address       String?  @db.VarChar(500)

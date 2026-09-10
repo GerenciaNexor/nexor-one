@@ -221,3 +221,21 @@ export async function sendWhatsAppNotification(
     bodyParams:   args.bodyParams,
   })
 }
+
+/**
+ * HU-209 — Envío que RESPETA EL CONSENTIMIENTO (opt-in) del destinatario. Regla dura del sprint: solo se
+ * envía WhatsApp a quien lo aceptó. Si `optIn` es false NO se envía (el canal interno queda como respaldo)
+ * y se devuelve `opted_out` sin registrar nada en `whatsapp_messages` (no fue un intento de envío). Es la
+ * ÚNICA vía que usan las notificaciones de cliente/usuario; preparada para más tipos a futuro sin rehacer
+ * la base: quien llame resuelve el `optIn` del destinatario y pasa la clave de plantilla.
+ */
+export async function sendWhatsAppNotificationIfOptedIn(
+  key: WhatsAppTemplateKey,
+  args: { tenantId: string; to: string; optIn: boolean; bodyParams?: (string | number)[] },
+): Promise<SendTemplateResult | { status: 'opted_out' }> {
+  if (!args.optIn) {
+    console.info('[WhatsApp] skip', JSON.stringify({ tenantId: args.tenantId, template: WHATSAPP_TEMPLATES[key].name, reason: 'opted_out' }))
+    return { status: 'opted_out' }
+  }
+  return sendWhatsAppNotification(key, { tenantId: args.tenantId, to: args.to, bodyParams: args.bodyParams })
+}

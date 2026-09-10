@@ -18,7 +18,7 @@ import crypto from 'node:crypto'
 // implicaría withTenantContext con envío de emails dentro.
 import { directPrisma as prisma } from '../lib/prisma'
 import { sendAppointmentReminder } from '../lib/email'
-import { sendWhatsAppNotification } from '../lib/whatsapp'
+import { sendWhatsAppNotificationIfOptedIn } from '../lib/whatsapp'
 
 // HU-208 — anticipación CONFIGURABLE (horas antes de la cita). Default 24 h ("el día anterior").
 // El job corre cada 15 min y avisa las citas que entran en la ventana [ahora+H, ahora+H+15min);
@@ -61,6 +61,7 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
       serviceType: { select: { name: true } },
       branch:      { select: { name: true } },
       professional: { select: { name: true } },
+      client:      { select: { whatsappOptIn: true } }, // HU-209 — consentimiento del cliente
     },
   })
 
@@ -91,9 +92,10 @@ export async function sendRemindersForTenant(tenantId: string): Promise<{ sent: 
 
       // ── WhatsApp (si hay teléfono) — HU-208, vía capa oficial de HU-207 ──────
       // Privacidad: solo nombre, fecha/hora y servicio/sucursal; nada de terceros.
+      // HU-209 — respeta el opt-in del cliente; sin cliente registrado (número inline) = opt-in implícito.
       if (appt.clientPhone) {
-        void sendWhatsAppNotification('appointment_reminder', {
-          tenantId, to: appt.clientPhone,
+        void sendWhatsAppNotificationIfOptedIn('appointment_reminder', {
+          tenantId, to: appt.clientPhone, optIn: appt.client?.whatsappOptIn ?? true,
           bodyParams: [clientName, fmt.format(appt.startAt), `${serviceName} — ${branchName}`],
         })
       }

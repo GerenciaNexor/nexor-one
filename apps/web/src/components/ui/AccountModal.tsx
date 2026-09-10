@@ -33,18 +33,20 @@ export function AccountModal({ user, onClose }: { user: LoginUser; onClose: () =
   const [pwOpen, setPwOpen] = useState(false)
   const patchUser = useAuthStore((s) => s.patchUser)
 
-  // HU-208 — teléfono/WhatsApp editable (para recibir recordatorios).
+  // HU-208 — teléfono/WhatsApp editable; HU-209 — consentimiento de notificaciones por WhatsApp.
   const [phone, setPhone]   = useState(user.phone ?? '')
+  const [optIn, setOptIn]   = useState(user.whatsappOptIn ?? true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
-  const dirty = (phone.trim() || '') !== (user.phone ?? '')
+  const dirty = (phone.trim() || '') !== (user.phone ?? '') || optIn !== (user.whatsappOptIn ?? true)
 
-  async function savePhone() {
+  async function savePrefs() {
     setSaving(true); setError(''); setSaved(false)
     try {
-      await apiClient.put('/v1/users/me', { phone: phone.trim() || null })
-      patchUser({ phone: phone.trim() || null })
+      const body = { phone: phone.trim() || null, whatsappOptIn: optIn }
+      await apiClient.put('/v1/users/me', body)
+      patchUser(body)
       setSaved(true)
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'No se pudo guardar')
@@ -90,26 +92,35 @@ export function AccountModal({ user, onClose }: { user: LoginUser; onClose: () =
               ))}
             </dl>
 
-            {/* HU-208 — teléfono/WhatsApp para recordatorios */}
+            {/* HU-208/209 — teléfono/WhatsApp para recordatorios + consentimiento */}
             <div className="mt-4">
               <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Teléfono / WhatsApp (recordatorios)</label>
-              <div className="flex gap-2">
+              <input
+                type="tel" value={phone}
+                onChange={(e) => { setPhone(e.target.value); setSaved(false) }}
+                placeholder="+57 300 000 0000"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              />
+              {/* HU-209 — consentimiento (opt-in). Si se desactiva, no se envían WhatsApp; el aviso interno se mantiene. */}
+              <label className="mt-3 flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <input
-                  type="tel" value={phone}
-                  onChange={(e) => { setPhone(e.target.value); setSaved(false) }}
-                  placeholder="+57 300 000 0000"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                  type="checkbox" checked={optIn}
+                  onChange={(e) => { setOptIn(e.target.checked); setSaved(false) }}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
+                <span>Quiero recibir notificaciones por WhatsApp (recordatorios y confirmaciones). Siempre verás los avisos dentro de la app.</span>
+              </label>
+              <div className="mt-2 flex items-center justify-end gap-2">
+                {error && <p className="mr-auto text-xs text-red-500">{error}</p>}
+                {saved && !dirty && <p className="mr-auto text-xs text-emerald-600 dark:text-emerald-400">Preferencias guardadas ✓</p>}
                 <button
-                  onClick={() => void savePhone()}
+                  onClick={() => void savePrefs()}
                   disabled={saving || !dirty}
                   className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
                 >
                   {saving ? '…' : 'Guardar'}
                 </button>
               </div>
-              {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-              {saved && !dirty && <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Teléfono guardado ✓</p>}
             </div>
 
             {/* Acciones */}

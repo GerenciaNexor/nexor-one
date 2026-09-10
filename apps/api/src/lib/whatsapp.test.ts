@@ -3,7 +3,7 @@
  * Un número inválido devuelve null → la capa central no intenta enviar y registra el motivo.
  */
 import { describe, it, expect } from 'vitest'
-import { normalizePhone } from './whatsapp'
+import { normalizePhone, sendWhatsAppNotificationIfOptedIn } from './whatsapp'
 
 describe('HU-207 — normalizePhone', () => {
   it('celular colombiano de 10 dígitos → antepone el indicativo 57', () => {
@@ -25,5 +25,14 @@ describe('HU-207 — normalizePhone', () => {
     expect(normalizePhone('123')).toBeNull()
     expect(normalizePhone('abc')).toBeNull()
     expect(normalizePhone('9'.repeat(16))).toBeNull() // demasiado largo
+  })
+})
+
+describe('HU-209 — consentimiento (opt-in)', () => {
+  it('optIn=false → NO envía (no toca la BD ni la red) y devuelve opted_out', async () => {
+    const res = await sendWhatsAppNotificationIfOptedIn('appointment_confirmation', {
+      tenantId: 'tnt_test', to: '573001234567', optIn: false, bodyParams: ['Ana', 'hoy', 'Corte'],
+    })
+    expect(res).toEqual({ status: 'opted_out' })
   })
 })

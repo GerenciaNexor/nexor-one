@@ -13,6 +13,7 @@ export interface Client {
   email: string | null
   phone: string | null
   whatsappId: string | null
+  whatsappOptIn?: boolean
   company: string | null
   taxId: string | null
   address: string | null
@@ -39,6 +40,7 @@ interface FormFields {
   email: string
   phone: string
   whatsappId: string
+  whatsappOptIn: boolean
   company: string
   taxId: string
   address: string
@@ -60,7 +62,7 @@ interface Props {
 }
 
 const EMPTY: FormFields = {
-  name: '', email: '', phone: '', whatsappId: '',
+  name: '', email: '', phone: '', whatsappId: '', whatsappOptIn: true,
   company: '', taxId: '', address: '', city: '',
   source: '', tags: '', notes: '', assignedTo: '',
   isFavorite: false, discountType: '', discountValue: '',
@@ -72,6 +74,7 @@ function toFormFields(c: Client): FormFields {
     email:      c.email      ?? '',
     phone:      c.phone      ?? '',
     whatsappId: c.whatsappId ?? '',
+    whatsappOptIn: c.whatsappOptIn ?? true,
     company:    c.company    ?? '',
     taxId:      c.taxId      ?? '',
     address:    c.address    ?? '',
@@ -146,6 +149,7 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
       email:      form.email.trim()      || undefined,
       phone:      form.phone.trim()      || undefined,
       whatsappId: form.whatsappId.trim() || undefined,
+      whatsappOptIn: form.whatsappOptIn,
       company:    form.company.trim()    || undefined,
       taxId:      form.taxId.trim()      || undefined,
       address:    form.address.trim()    || undefined,
@@ -302,6 +306,19 @@ export function ClientFormModal({ mode, client, onClose, onSuccess }: Props) {
                       />
                     </div>
                   </div>
+                  {/* HU-209 — consentimiento (opt-in) de notificaciones por WhatsApp */}
+                  <label className="flex cursor-pointer select-none items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={form.whatsappOptIn}
+                      onChange={(e) => setForm((prev) => ({ ...prev, whatsappOptIn: e.target.checked }))}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#25D366] focus:ring-green-200"
+                    />
+                    <span className="text-sm text-slate-700">
+                      Acepta recibir notificaciones por WhatsApp (confirmación y recordatorio de citas).
+                      <span className="block text-[10px] text-slate-400">Si se desactiva, no se le envían WhatsApp; protege la calidad del número ante Meta.</span>
+                    </span>
+                  </label>
                 </div>
               </div>
 

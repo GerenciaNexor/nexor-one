@@ -10,6 +10,7 @@ const USER_SELECT = {
   email:       true,
   name:        true,
   phone:       true,
+  whatsappOptIn: true,  // HU-209
   role:        true,
   module:      true,
   isActive:    true,
@@ -76,6 +77,7 @@ export async function createUser(tenantId: string, input: CreateUserInput) {
       email:        input.email,
       name:         input.name,
       phone:        input.phone ?? null,
+      ...(input.whatsappOptIn !== undefined && { whatsappOptIn: input.whatsappOptIn }),
       passwordHash: hash,
       role:         input.role,
       module:       input.module,
@@ -108,6 +110,7 @@ export async function updateUser(
   const data: Record<string, unknown> = {}
   if (input.name     !== undefined) data['name']     = input.name
   if (input.phone    !== undefined) data['phone']    = input.phone
+  if (input.whatsappOptIn !== undefined) data['whatsappOptIn'] = input.whatsappOptIn
   if (input.role     !== undefined) data['role']     = input.role
   if (input.module   !== undefined) data['module']   = input.module
   if (input.branchId !== undefined) data['branchId'] = input.branchId
@@ -126,6 +129,7 @@ export async function updateMe(tenantId: string, userId: string, input: UpdateMe
   const data: Record<string, unknown> = {}
   if (input.name  !== undefined) data['name']  = input.name
   if (input.phone !== undefined) data['phone'] = input.phone
+  if (input.whatsappOptIn !== undefined) data['whatsappOptIn'] = input.whatsappOptIn
   if (Object.keys(data).length === 0) {
     const u = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: USER_SELECT })
     if (!u) throw { statusCode: 404, message: 'Usuario no encontrado', code: 'NOT_FOUND' }

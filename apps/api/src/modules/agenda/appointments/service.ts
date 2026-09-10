@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
 import { sendAppointmentConfirmation, sendEventInvitation } from '../../../lib/email'
+import { sendWhatsAppNotificationIfOptedIn } from '../../../lib/whatsapp'
 import { canAccessBranch } from '../../../lib/guards'
 import { assertBranchActive } from '../../branches/service'
 import type { CreateAppointment, UpdateEvent, ListAppointmentsQuery } from './schema'
@@ -211,18 +212,24 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     }
   }
 
-  // ── 4. Resolver nombre y email del cliente ─────────────────────────────────
+  // ── 4. Resolver nombre, email y teléfono del cliente ───────────────────────
   let resolvedName  = data.clientName ?? ''
   let resolvedEmail = data.clientEmail
+  let resolvedPhone = data.clientPhone
+  // HU-209 — un número dado explícitamente para ESTA cita es un número legítimamente asociado a la
+  // operación → opt-in implícito. Si la cita referencia un cliente registrado, manda su preferencia.
+  let clientOptIn   = true
 
   if (data.clientId) {
     const client = await prisma.client.findFirst({
       where:  { id: data.clientId, tenantId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, phone: true, whatsappOptIn: true },
     })
     if (!client) throw { statusCode: 404, message: 'Cliente no encontrado', code: 'NOT_FOUND' }
-    resolvedName  = data.clientName ?? client.name
+    resolvedName  = data.clientName  ?? client.name
     resolvedEmail = data.clientEmail ?? (client.email ?? undefined)
+    resolvedPhone = data.clientPhone ?? (client.phone ?? undefined)
+    clientOptIn   = client.whatsappOptIn
   }
 
   // ── 5. Validar profesional si se especificó ────────────────────────────────
@@ -285,7 +292,7 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
         professionalId: data.professionalId,
         clientName:     resolvedName,
         clientEmail:    resolvedEmail,
-        clientPhone:    data.clientPhone,
+        clientPhone:    resolvedPhone,   // HU-209 — hereda el teléfono del cliente si no vino explícito
         startAt,
         endAt,
         status:         data.status,
@@ -298,19 +305,30 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     })
   })
 
-  // ── 7. Email de confirmación (fire-and-forget) ─────────────────────────────
-  if (data.status === 'confirmed' && resolvedEmail) {
-    sendAppointmentConfirmation({
-      to:               resolvedEmail,
-      clientName:       resolvedName,
-      serviceName:      service.name,
-      branchName:       branch.name,
-      professionalName,
-      startAt,
-      endAt,
-      tenantName,
-      timezone,
-    }).catch((err) => console.error('[Appointment] email confirmación error:', err))
+  // ── 7. Confirmación de cita (fire-and-forget) — email y/o WhatsApp ──────────
+  if (data.status === 'confirmed') {
+    if (resolvedEmail) {
+      sendAppointmentConfirmation({
+        to:               resolvedEmail,
+        clientName:       resolvedName,
+        serviceName:      service.name,
+        branchName:       branch.name,
+        professionalName,
+        startAt,
+        endAt,
+        tenantName,
+        timezone,
+      }).catch((err) => console.error('[Appointment] email confirmación error:', err))
+    }
+    // HU-209 — confirmación por WhatsApp con plantilla aprobada, respetando el opt-in del cliente.
+    // Privacidad: solo nombre, fecha/hora y servicio/sucursal; nada de terceros. Nunca rompe el flujo.
+    if (resolvedPhone) {
+      const fmt = new Intl.DateTimeFormat('es-CO', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' })
+      void sendWhatsAppNotificationIfOptedIn('appointment_confirmation', {
+        tenantId, to: resolvedPhone, optIn: clientOptIn,
+        bodyParams: [resolvedName || 'Cliente', fmt.format(startAt), `${service.name} — ${branch.name}`],
+      })
+    }
   }
 
   // ── 8. Notificación in-app si fue creada por el agente ─────────────────────
@@ -534,12 +552,14 @@ export async function updateAppointmentStatus(
       status:       true,
       branchId:     true,
       clientEmail:  true,
+      clientPhone:  true,   // HU-209 — destino de la confirmación por WhatsApp
       clientName:   true,
       startAt:      true,
       endAt:        true,
       serviceType:  { select: { name: true } },
       branch:       { select: { name: true } },
       professional: { select: { name: true } },
+      client:       { select: { whatsappOptIn: true } }, // HU-209 — consentimiento del cliente
     },
   })
 
@@ -561,22 +581,39 @@ export async function updateAppointmentStatus(
     select: { id: true, status: true, updatedAt: true },
   })
 
-  if (newStatus === 'confirmed' && appointment.status !== 'confirmed' && appointment.clientEmail) {
+  // HU-209 — al confirmar, enviar confirmación por email y/o WhatsApp (esta última respeta el opt-in).
+  const becameConfirmed = newStatus === 'confirmed' && appointment.status !== 'confirmed'
+  if (becameConfirmed && (appointment.clientEmail || appointment.clientPhone)) {
     const tenant = await prisma.tenant.findFirst({
       where:  { id: tenantId },
       select: { timezone: true, name: true },
     })
-    sendAppointmentConfirmation({
-      to:               appointment.clientEmail,
-      clientName:       appointment.clientName ?? 'Cliente',
-      serviceName:      appointment.serviceType?.name ?? 'Servicio',
-      branchName:       appointment.branch?.name ?? 'Sucursal',
-      professionalName: appointment.professional?.name,
-      startAt:          appointment.startAt,
-      endAt:            appointment.endAt,
-      tenantName:       tenant?.name ?? 'NEXOR',
-      timezone:         tenant?.timezone,
-    }).catch((err) => console.error('[Appointment] email confirmación error:', err))
+    const tz          = tenant?.timezone ?? 'America/Bogota'
+    const serviceName = appointment.serviceType?.name ?? 'Servicio'
+    const branchName  = appointment.branch?.name ?? 'Sucursal'
+    const clientName  = appointment.clientName ?? 'Cliente'
+
+    if (appointment.clientEmail) {
+      sendAppointmentConfirmation({
+        to:               appointment.clientEmail,
+        clientName,
+        serviceName,
+        branchName,
+        professionalName: appointment.professional?.name,
+        startAt:          appointment.startAt,
+        endAt:            appointment.endAt,
+        tenantName:       tenant?.name ?? 'NEXOR',
+        timezone:         tz,
+      }).catch((err) => console.error('[Appointment] email confirmación error:', err))
+    }
+
+    if (appointment.clientPhone) {
+      const fmt = new Intl.DateTimeFormat('es-CO', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' })
+      void sendWhatsAppNotificationIfOptedIn('appointment_confirmation', {
+        tenantId, to: appointment.clientPhone, optIn: appointment.client?.whatsappOptIn ?? true,
+        bodyParams: [clientName, fmt.format(appointment.startAt), `${serviceName} — ${branchName}`],
+      })
+    }
   }
 
   return updated

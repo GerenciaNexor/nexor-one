@@ -4,6 +4,7 @@ export const CreateUserSchema = z.object({
   email:    z.string().email('Email invalido'),
   name:     z.string().min(1, 'El nombre es requerido').max(255),
   phone:    z.string().max(30).nullable().optional(),  // HU-208 — WhatsApp para recordatorios
+  whatsappOptIn: z.boolean().optional(),               // HU-209 — consentimiento de WhatsApp (default true)
   password: z.string().min(8, 'La contrasena debe tener al menos 8 caracteres'),
   role:     z.enum(['TENANT_ADMIN', 'BRANCH_ADMIN', 'AREA_MANAGER', 'OPERATIVE']),
   // TENANT_ADMIN / BRANCH_ADMIN acceden a TODAS las áreas → no llevan módulo (el frontend envía null).
@@ -20,6 +21,7 @@ export const CreateUserSchema = z.object({
 export const UpdateUserSchema = z.object({
   name:     z.string().min(1).max(255).optional(),
   phone:    z.string().max(30).nullable().optional(),  // HU-208
+  whatsappOptIn: z.boolean().optional(),               // HU-209
   role:     z.enum(['TENANT_ADMIN', 'BRANCH_ADMIN', 'AREA_MANAGER', 'OPERATIVE']).optional(),
   module:   z.enum(['ARI', 'NIRA', 'KIRA', 'AGENDA', 'VERA']).nullable().optional(),
   branchId: z.string().nullable().optional(),
@@ -27,10 +29,11 @@ export const UpdateUserSchema = z.object({
   password: z.string().min(8).optional(),
 })
 
-/** HU-208 — el usuario edita su PROPIO perfil (nombre, teléfono/WhatsApp para recordatorios). */
+/** HU-208/209 — el usuario edita su PROPIO perfil (nombre, teléfono/WhatsApp y consentimiento de WhatsApp). */
 export const UpdateMeSchema = z.object({
   name:  z.string().min(1).max(255).optional(),
   phone: z.string().max(30).nullable().optional(),
+  whatsappOptIn: z.boolean().optional(),  // HU-209
 })
 
 /** Cambio de la PROPIA contraseña (self-service): verifica la actual y setea la nueva. */
