@@ -110,7 +110,7 @@ export async function invoicesToXlsx(rows: InvoiceExportRow[], kind: Kind, optio
     counterparty:  { header: isSale ? 'Cliente' : 'Proveedor', width: 32, get: (r) => r.counterpartyName ?? '' },
     issuer:        { header: 'Emisor (factura)',           width: 32, get: (r) => r.issuer ?? '' },
     documentType:  { header: 'Tipo de documento',          width: 18, get: (r) => r.documentType ?? '' },
-    document:      { header: 'Documento / NIT',            width: 20, get: (r) => docNumber(r.nit) },
+    document:      { header: 'Número de documento',        width: 20, get: (r) => docNumber(r.nit) },
     invoiceNumber: { header: 'N.º factura',                width: 20, get: (r) => r.invoiceNumber ?? '' },
     total:         { header: 'Total',                      width: 16, num: true, get: (r) => r.total ?? '' },
     hasImage:      { header: 'Imagen',                     width: 10, get: (r) => (r.hasImage ? 'Sí' : 'No') },

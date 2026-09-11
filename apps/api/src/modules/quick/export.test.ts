@@ -48,7 +48,7 @@ describe('HU-196 — export a Excel', () => {
     const sheet = await readSheet(await invoicesToXlsx([invRow()], 'purchase'))
     expect(sheet.getRow(1).getCell(2).value).toBe('Proveedor')
     expect(sheet.getRow(1).getCell(4).value).toBe('Tipo de documento')
-    expect(sheet.getRow(1).getCell(5).value).toBe('Documento / NIT')
+    expect(sheet.getRow(1).getCell(5).value).toBe('Número de documento')
     expect(sheet.getRow(1).getCell(6).value).toBe('N.º factura')
     expect(sheet.getRow(2).getCell(2).value).toBe('D1 SAS')         // proveedor registrado
     expect(sheet.getRow(2).getCell(3).value).toBe('GRAN FRUVER')    // emisor leído
@@ -63,7 +63,7 @@ describe('HU-196 — export a Excel', () => {
     }))
     // Solo las 3 columnas pedidas, en el orden fijo.
     expect(sheet.getRow(1).getCell(1).value).toBe('Fecha factura')
-    expect(sheet.getRow(1).getCell(2).value).toBe('Documento / NIT')
+    expect(sheet.getRow(1).getCell(2).value).toBe('Número de documento')
     expect(sheet.getRow(1).getCell(3).value).toBe('Total')
     expect(sheet.getRow(1).getCell(4).value).toBeFalsy()           // no hay 4ª columna
     expect(sheet.getRow(2).getCell(1).value).toBe('2026/04/03')    // formato AAAA/MM/DD (UTC)

@@ -137,7 +137,7 @@ const EXPORT_COLUMNS = (isSale: boolean): { key: string; label: string }[] => [
   { key: 'counterparty',  label: isSale ? 'Cliente' : 'Proveedor' },
   { key: 'issuer',        label: 'Emisor' },
   { key: 'documentType',  label: 'Tipo de documento' },
-  { key: 'document',      label: 'Documento / NIT' },
+  { key: 'document',      label: 'Número de documento' },
   { key: 'invoiceNumber', label: 'N.º factura' },
   { key: 'total',         label: 'Total' },
   { key: 'hasImage',      label: 'Imagen' },
