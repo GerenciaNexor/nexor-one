@@ -564,6 +564,21 @@ export async function updateInvoice(tenantId: string, id: string, input: UpdateI
   if (input.invoiceNumber !== undefined) data.invoiceNumber = input.invoiceNumber
   if (input.total         !== undefined) data.total         = input.total
   if (input.date          !== undefined) data.invoiceDate   = input.date ? new Date(input.date) : null
+  // HU-210 — proveedor/cliente registrado (metadato). Se valida que pertenezca al tenant.
+  if (input.supplierId !== undefined) {
+    if (input.supplierId) {
+      const s = await prisma.supplier.findFirst({ where: { id: input.supplierId, tenantId }, select: { id: true } })
+      if (!s) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+    }
+    data.supplierId = input.supplierId
+  }
+  if (input.clientId !== undefined) {
+    if (input.clientId) {
+      const c = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } })
+      if (!c) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+    }
+    data.clientId = input.clientId
+  }
 
   // HU-202 — defensa en profundidad: el proxy `prisma` ya filtra por RLS; el id se validó por tenant arriba.
   await prisma.quickInvoice.update({ where: { id }, data })

@@ -156,7 +156,11 @@ export type RegisterInvoiceInput = z.infer<typeof RegisterInvoiceSchema>
  * lleguen. `date` es la fecha de la factura (invoice_date).
  */
 export const UpdateInvoiceSchema = z.object({
-  issuer:        z.string().max(255).nullable().optional(),
+  // Proveedor/cliente REGISTRADO (metadato de la factura): distinto del emisor impreso. Cambiarlo NO
+  // altera las transacciones ya registradas (solo corrige a quién se le atribuye la factura en el detalle).
+  supplierId:    z.string().min(1).nullable().optional(),
+  clientId:      z.string().min(1).nullable().optional(),
+  issuer:        z.string().max(255).nullable().optional(),  // emisor impreso en la factura
   nit:           z.string().max(50).nullable().optional(),
   documentType:  z.enum(DOCUMENT_TYPE_CODES as [string, ...string[]]).nullable().optional(),
   invoiceNumber: z.string().max(100).nullable().optional(),

@@ -138,7 +138,8 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
 
   // HU-210 — edición del encabezado + eliminación con reversión.
   const [editing, setEditing]     = useState(false)
-  const [form, setForm]           = useState({ issuer: '', nit: '', documentType: '', invoiceNumber: '', date: '', total: '' })
+  const [form, setForm]           = useState({ counterpartyId: '', issuer: '', nit: '', documentType: '', invoiceNumber: '', date: '', total: '' })
+  const [cps, setCps]             = useState<{ id: string; name: string; isGeneric?: boolean; taxId?: string | null }[]>([])
   const [saving, setSaving]       = useState(false)
   const [confirmDel, setConfirm]  = useState(false)
   const [deleting, setDeleting]   = useState(false)
@@ -154,10 +155,18 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [id])
 
+  // HU-210 — terceros registrados (proveedores/clientes) para poder corregir el proveedor de la factura.
+  useEffect(() => {
+    if (!canManage) return
+    apiClient.get<{ data: typeof cps }>(isSale ? '/v1/quick/clients' : '/v1/quick/suppliers')
+      .then((r) => setCps(r.data)).catch(() => {})
+  }, [canManage, isSale])
+
   function startEdit() {
     if (!inv) return
     setActionErr(null)
     setForm({
+      counterpartyId: inv.counterparty?.id ?? '',
       issuer:        inv.issuer ?? '',
       nit:           inv.nit ?? '',
       documentType:  inv.documentType ?? '',
@@ -172,6 +181,7 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
     setSaving(true); setActionErr(null)
     try {
       const r = await apiClient.patch<{ data: InvoiceDetail }>(`/v1/quick/invoices/${id}`, {
+        ...(isSale ? { clientId: form.counterpartyId || null } : { supplierId: form.counterpartyId || null }),
         issuer:        form.issuer.trim() || null,
         nit:           form.nit.trim() || null,
         documentType:  form.documentType || null,
@@ -226,8 +236,12 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
               <div className="space-y-4">
                 {editing ? (
                   <div className="grid grid-cols-2 gap-x-3 gap-y-3">
-                    <div className="col-span-2"><label className={dlbl}>{isSale ? 'Cliente / Emisor' : 'Proveedor / Emisor'}</label>
-                      <input value={form.issuer} onChange={(e) => setForm((f) => ({ ...f, issuer: e.target.value }))} className={dinp} placeholder="Nombre en la factura" /></div>
+                    <div className="col-span-2"><label className={dlbl}>{isSale ? 'Cliente' : 'Proveedor'} (registrado)</label>
+                      <SearchableSelect value={form.counterpartyId} onChange={(v) => setForm((f) => ({ ...f, counterpartyId: v }))} className={dinp}
+                        placeholder={isSale ? 'Sin cliente' : 'Sin proveedor'}
+                        options={[{ value: '', label: isSale ? 'Sin cliente' : 'Sin proveedor' }, ...cps.map((o) => ({ value: o.id, label: `${o.name}${o.isGeneric ? ' (genérico)' : ''}`, hint: o.taxId ?? undefined }))]} /></div>
+                    <div className="col-span-2"><label className={dlbl}>Emisor (en la factura)</label>
+                      <input value={form.issuer} onChange={(e) => setForm((f) => ({ ...f, issuer: e.target.value }))} className={dinp} placeholder="Nombre impreso en la factura" /></div>
                     <div><label className={dlbl}>Tipo de documento</label>
                       <SearchableSelect value={form.documentType} onChange={(v) => setForm((f) => ({ ...f, documentType: v }))} className={dinp} placeholder="—"
                         options={[{ value: '', label: '—' }, ...DOCUMENT_TYPES.map((d) => ({ value: d.code, label: d.label }))]} /></div>
