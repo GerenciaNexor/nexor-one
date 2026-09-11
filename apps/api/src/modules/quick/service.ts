@@ -437,15 +437,18 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
 
     let counterpartyName: string
     let categoryId: string
+    // HU-210 — se guarda el tercero REGISTRADO (proveedor/cliente) en la factura, aparte del emisor leído.
+    let resolvedSupplierId: string | null = null
+    let resolvedClientId: string | null = null
     if (input.kind === 'purchase') {
-      const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
-      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { name: true } })
+      resolvedSupplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
+      const supplier = await tx.supplier.findFirst({ where: { id: resolvedSupplierId, tenantId }, select: { name: true } })
       if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
       counterpartyName = supplier.name
       categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
     } else {
-      const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
-      const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { name: true } })
+      resolvedClientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
+      const client = await tx.client.findFirst({ where: { id: resolvedClientId, tenantId }, select: { name: true } })
       if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
       counterpartyName = client.name
       categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
@@ -457,6 +460,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
+        supplierId: resolvedSupplierId, clientId: resolvedClientId,
         issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
@@ -510,11 +514,20 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
+    select: { id: true, kind: true, issuer: true, supplierId: true, clientId: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
   // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
   const author = inv.userId ? await prisma.user.findFirst({ where: { id: inv.userId, tenantId }, select: { name: true } }) : null
+  // HU-210 — proveedor/cliente REGISTRADO (distinto del emisor leído). Se resuelve su nombre actual.
+  let counterparty: { id: string; name: string } | null = null
+  if (inv.kind === 'purchase' && inv.supplierId) {
+    const s = await prisma.supplier.findFirst({ where: { id: inv.supplierId, tenantId }, select: { name: true } })
+    if (s) counterparty = { id: inv.supplierId, name: s.name }
+  } else if (inv.kind === 'sale' && inv.clientId) {
+    const c = await prisma.client.findFirst({ where: { id: inv.clientId, tenantId }, select: { name: true } })
+    if (c) counterparty = { id: inv.clientId, name: c.name }
+  }
   const fe = (inv.fullExtraction ?? {}) as {
     additionalFields?: { label: string; value: string }[]
     notes?: { value?: string }
@@ -527,7 +540,7 @@ export async function getInvoice(tenantId: string, id: string) {
   // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
   const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
-    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit, documentType: inv.documentType,
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, counterparty, nit: inv.nit, documentType: inv.documentType,
     // HU-195 — número/código de factura: columna dedicada, con fallback a facturas viejas (JSON).
     invoiceNumber: inv.invoiceNumber ?? invoiceNumberOf(inv.fullExtraction),
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,

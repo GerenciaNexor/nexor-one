@@ -121,7 +121,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
 // ─── Detalle: TODA la información + imagen original ─────────────────────────────
 
 interface InvoiceDetail {
-  id: string; kind: Kind; issuer: string | null; nit: string | null; documentType?: string | null; invoiceNumber?: string | null; date: string | null; total: number | null
+  id: string; kind: Kind; issuer: string | null; counterparty?: { id: string; name: string } | null; nit: string | null; documentType?: string | null; invoiceNumber?: string | null; date: string | null; total: number | null
   hasImage: boolean; createdAt: string; createdByName?: string | null
   additionalFields: { label: string; value: string }[]
   items: Array<{ description?: string; quantity?: number; unitValue?: number; amount?: number; productName?: string; affectsStock?: boolean; addedToInventory?: boolean; transactionId?: string }>
@@ -230,7 +230,7 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
                       <input value={form.issuer} onChange={(e) => setForm((f) => ({ ...f, issuer: e.target.value }))} className={dinp} placeholder="Nombre en la factura" /></div>
                     <div><label className={dlbl}>Tipo de documento</label>
                       <SearchableSelect value={form.documentType} onChange={(v) => setForm((f) => ({ ...f, documentType: v }))} className={dinp} placeholder="—"
-                        options={[{ value: '', label: '—' }, ...DOCUMENT_TYPES.map((d) => ({ value: d.code, label: `${d.code} — ${d.label}` }))]} /></div>
+                        options={[{ value: '', label: '—' }, ...DOCUMENT_TYPES.map((d) => ({ value: d.code, label: d.label }))]} /></div>
                     <div><label className={dlbl}>NIT o documento</label>
                       <input value={form.nit} onChange={(e) => setForm((f) => ({ ...f, nit: e.target.value }))} className={dinp} /></div>
                     <div><label className={dlbl}>N.º de factura</label>
@@ -243,7 +243,9 @@ export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: strin
                   </div>
                 ) : (
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                  <div><dt className="text-xs text-slate-500">{isSale ? 'Cliente' : 'Proveedor / Emisor'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.issuer ?? '—'}</dd></div>
+                  {/* HU-210 — proveedor/cliente REGISTRADO y emisor leído son distintos (mismo NIT, nombre comercial distinto). */}
+                  <div><dt className="text-xs text-slate-500">{isSale ? 'Cliente' : 'Proveedor'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.counterparty?.name ?? '—'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Emisor (en la factura)</dt><dd className="text-slate-800 dark:text-slate-100">{inv.issuer ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">{inv.documentType ? inv.documentType : 'NIT'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.nit ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">N.º de factura</dt><dd className="text-slate-800 dark:text-slate-100">{inv.invoiceNumber ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">Fecha</dt><dd className="text-slate-800 dark:text-slate-100">{fmtDate(inv.date)}</dd></div>

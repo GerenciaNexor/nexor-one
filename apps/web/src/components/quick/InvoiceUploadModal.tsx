@@ -327,7 +327,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
                 <div><label className={lbl}>Tipo de documento</label>
                   <SearchableSelect
                     value={documentType} onChange={setDocumentType} className={inp}
-                    options={DOCUMENT_TYPES.map((d) => ({ value: d.code, label: `${d.code} — ${d.label}` }))}
+                    options={DOCUMENT_TYPES.map((d) => ({ value: d.code, label: d.label }))}
                   /></div>
                 <div><label className={lbl}>NIT o documento</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>{manual ? 'N.º de factura' : 'N.º de factura (leído)'}</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={inp} placeholder="Ej: GOZ5292464" /></div>

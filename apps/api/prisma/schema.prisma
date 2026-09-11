@@ -957,7 +957,11 @@ model QuickInvoice {
   branchId       String?   @map("branch_id") @db.VarChar(30)
   userId         String?   @map("user_id") @db.VarChar(30)
   kind           String    @db.VarChar(20)                     // purchase | sale
-  issuer         String?   @db.VarChar(255)                    // emisor de la factura
+  issuer         String?   @db.VarChar(255)                    // emisor tal como aparece EN la factura
+  // HU-210 — proveedor/cliente REGISTRADO (tercero de la empresa), distinto del emisor leído: en
+  // Colombia un mismo NIT puede facturar bajo un nombre comercial diferente. Se guardan ambos.
+  supplierId     String?   @map("supplier_id") @db.VarChar(30)
+  clientId       String?   @map("client_id") @db.VarChar(30)
   nit            String?   @db.VarChar(50)
   documentType   String?   @map("document_type") @db.VarChar(10)    // HU-196 — tipo de documento (NIT, CC, …)
   invoiceNumber  String?   @map("invoice_number") @db.VarChar(100) // HU-195 — número/código de la factura
