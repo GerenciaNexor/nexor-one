@@ -64,38 +64,73 @@ export async function registersToXlsx(rows: QuickRegisterRow[], kind: Kind): Pro
 }
 
 export interface InvoiceExportRow {
-  issuer: string | null; counterpartyName?: string | null; nit: string | null; invoiceNumber: string | null
+  counterpartyName?: string | null; issuer: string | null; documentType?: string | null; nit: string | null; invoiceNumber: string | null
   date: Date | string | null; total: number | null; hasImage: boolean; createdAt: Date | string
 }
 
-/** Excel de las facturas cargadas (por OCR) ya filtradas. */
-export async function invoicesToXlsx(rows: InvoiceExportRow[], kind: Kind): Promise<Buffer> {
+/** HU-210 — opciones de la exportación de facturas (las elige el usuario en el modal de descarga). */
+export type DateFormat = 'dmy' | 'mdy' | 'ymd'
+export interface InvoiceExportOptions {
+  dateFormat?:    DateFormat   // orden de la fecha (default dmy = DD/MM/AAAA)
+  includeTime?:   boolean      // incluir la hora en "Cargada el" (default true)
+  columns?:       string[]     // claves de columnas a incluir (default: todas)
+  docDigitsOnly?: boolean      // documento: solo lo anterior al "-" (sin dígito de verificación)
+}
+
+/** Formatea una fecha con el ORDEN elegido. `tz` fija la zona (UTC para fechas puras; Bogotá para timestamps). */
+function fmtDateOrder(d: Date | string | null, order: DateFormat, withTime: boolean, tz: string): string {
+  if (!d) return ''
+  const date = typeof d === 'string' ? new Date(d) : d
+  if (isNaN(date.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('es-CO', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  const y = get('year'), m = get('month'), da = get('day')
+  let s = order === 'mdy' ? `${m}/${da}/${y}` : order === 'ymd' ? `${y}/${m}/${da}` : `${da}/${m}/${y}`
+  if (withTime) s += ' ' + new Intl.DateTimeFormat('es-CO', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: true }).format(date)
+  return s
+}
+
+/** Orden fijo de las columnas de facturas (para el Excel y para el selector del modal). */
+export const INVOICE_EXPORT_COLUMNS = ['date', 'counterparty', 'issuer', 'documentType', 'document', 'invoiceNumber', 'total', 'hasImage', 'createdAt'] as const
+export type InvoiceExportColumn = (typeof INVOICE_EXPORT_COLUMNS)[number]
+
+/** Excel de las facturas cargadas (por OCR) ya filtradas, con las opciones elegidas por el usuario. */
+export async function invoicesToXlsx(rows: InvoiceExportRow[], kind: Kind, options: InvoiceExportOptions = {}): Promise<Buffer> {
   const isSale = kind === 'sale'
+  const order       = options.dateFormat ?? 'dmy'
+  const includeTime = options.includeTime !== false
+  const docNumber = (nit: string | null): string => {
+    if (!nit) return ''
+    return options.docDigitsOnly ? (nit.split('-')[0] ?? nit) : nit
+  }
+
+  // Catálogo de columnas: encabezado + cómo obtener el valor de cada fila.
+  const cols: Record<InvoiceExportColumn, { header: string; width: number; num?: boolean; get: (r: InvoiceExportRow) => string | number }> = {
+    date:          { header: 'Fecha factura',              width: 16, get: (r) => fmtDateOrder(r.date, order, false, 'UTC') },
+    counterparty:  { header: isSale ? 'Cliente' : 'Proveedor', width: 32, get: (r) => r.counterpartyName ?? '' },
+    issuer:        { header: 'Emisor (factura)',           width: 32, get: (r) => r.issuer ?? '' },
+    documentType:  { header: 'Tipo de documento',          width: 18, get: (r) => r.documentType ?? '' },
+    document:      { header: 'Documento / NIT',            width: 20, get: (r) => docNumber(r.nit) },
+    invoiceNumber: { header: 'N.º factura',                width: 20, get: (r) => r.invoiceNumber ?? '' },
+    total:         { header: 'Total',                      width: 16, num: true, get: (r) => r.total ?? '' },
+    hasImage:      { header: 'Imagen',                     width: 10, get: (r) => (r.hasImage ? 'Sí' : 'No') },
+    createdAt:     { header: 'Cargada el',                 width: 20, get: (r) => fmtDateOrder(r.createdAt, order, includeTime, 'America/Bogota') },
+  }
+
+  const requested = options.columns?.length
+    ? INVOICE_EXPORT_COLUMNS.filter((k) => options.columns!.includes(k))
+    : [...INVOICE_EXPORT_COLUMNS]
+  const selected = requested.length ? requested : [...INVOICE_EXPORT_COLUMNS]  // nunca vacío
+
   const wb = new ExcelJS.Workbook()
   const sheet = wb.addWorksheet('Facturas cargadas')
-  sheet.columns = [
-    { header: 'Fecha factura',                  key: 'date',          width: 16 },
-    { header: isSale ? 'Cliente' : 'Proveedor', key: 'counterparty',  width: 32 },
-    { header: 'Emisor (factura)',               key: 'issuer',        width: 32 },
-    { header: 'NIT / documento',                key: 'nit',           width: 20 },
-    { header: 'N.º factura',                     key: 'invoiceNumber', width: 20 },
-    { header: 'Total',                           key: 'total',         width: 16 },
-    { header: 'Imagen',                          key: 'hasImage',      width: 10 },
-    { header: 'Cargada el',                      key: 'createdAt',     width: 20 },
-  ]
+  sheet.columns = selected.map((k) => ({ header: cols[k].header, key: k, width: cols[k].width }))
   for (const r of rows) {
-    sheet.addRow({
-      date:          fmtDate(r.date),
-      counterparty:  r.counterpartyName ?? '',
-      issuer:        r.issuer ?? '',
-      nit:           r.nit ?? '',
-      invoiceNumber: r.invoiceNumber ?? '',
-      total:         r.total ?? '',
-      hasImage:      r.hasImage ? 'Sí' : 'No',
-      createdAt:     fmtDate(r.createdAt),
-    })
+    const row: Record<string, string | number> = {}
+    for (const k of selected) row[k] = cols[k].get(r)
+    sheet.addRow(row)
   }
-  sheet.getColumn('total').numFmt = '#,##0'
+  if (selected.includes('total')) sheet.getColumn('total').numFmt = '#,##0'
   styleHeader(sheet)
   return toBuffer(wb)
 }

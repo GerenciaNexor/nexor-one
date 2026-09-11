@@ -685,10 +685,10 @@ export async function listInvoices(tenantId: string, opts: {
   const offset = (opts.page - 1) * opts.limit
 
   const rows = await prisma.$queryRaw<Array<{
-    id: string; kind: string; issuer: string | null; supplier_id: string | null; client_id: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
+    id: string; kind: string; issuer: string | null; supplier_id: string | null; client_id: string | null; document_type: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
     total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
   }>>(Prisma.sql`
-    SELECT id, kind, issuer, supplier_id, client_id, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
+    SELECT id, kind, issuer, supplier_id, client_id, document_type, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
     FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
   const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
   const total = Number(countRes[0]?.n ?? 0)
@@ -709,7 +709,7 @@ export async function listInvoices(tenantId: string, opts: {
       return {
         id: r.id, kind: r.kind, issuer: r.issuer,
         counterpartyName: cpId ? (nameById.get(cpId) ?? null) : null,
-        nit: r.nit,
+        documentType: r.document_type, nit: r.nit,
         date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
         invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
       }

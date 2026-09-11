@@ -31,13 +31,19 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
   const [minTotal, setMin] = useState('')
   const [maxTotal, setMax] = useState('')
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exporting, setExporting]   = useState(false)
 
-  async function exportExcel() {
+  async function runExport(opts: ExportOptions) {
     setExporting(true)
     try {
-      const qs = toQuery({ kind, q: q.trim(), from, to, minTotal, maxTotal })
+      const qs = toQuery({
+        kind, q: q.trim(), from, to, minTotal, maxTotal,
+        dateFormat: opts.dateFormat, includeTime: String(opts.includeTime), docDigitsOnly: String(opts.docDigitsOnly),
+        columns: opts.columns.join(','),
+      })
       await downloadFile(`/v1/quick/invoices/export${qs}`, `facturas-${isSale ? 'venta' : 'compra'}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+      setExportOpen(false)
     } catch { /* noop */ } finally { setExporting(false) }
   }
 
@@ -72,9 +78,9 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
         {(q || from || to || minTotal || maxTotal) && (
           <button onClick={() => { setQ(''); setFrom(''); setTo(''); setMin(''); setMax(''); setTimeout(load, 0) }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
         )}
-        <button onClick={exportExcel} disabled={exporting || rows === null || (rows?.length ?? 0) === 0}
+        <button onClick={() => setExportOpen(true)} disabled={rows === null || (rows?.length ?? 0) === 0}
           className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
-          {exporting ? 'Generando…' : '⬇ Descargar Excel'}
+          ⬇ Descargar Excel
         </button>
       </div>
 
@@ -116,7 +122,104 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
       </div>
 
       {detailId && <InvoiceDetailModal id={detailId} kind={kind} onClose={() => setDetailId(null)} onChanged={load} />}
+      {exportOpen && <ExportOptionsModal isSale={isSale} exporting={exporting} onClose={() => setExportOpen(false)} onConfirm={runExport} />}
     </div>
+  )
+}
+
+// ─── Modal de opciones de descarga a Excel (HU-210) ────────────────────────────
+
+interface ExportOptions { dateFormat: 'dmy' | 'mdy' | 'ymd'; includeTime: boolean; docDigitsOnly: boolean; columns: string[] }
+
+// Orden y etiquetas de las columnas exportables (deben coincidir con INVOICE_EXPORT_COLUMNS del backend).
+const EXPORT_COLUMNS = (isSale: boolean): { key: string; label: string }[] => [
+  { key: 'date',          label: 'Fecha factura' },
+  { key: 'counterparty',  label: isSale ? 'Cliente' : 'Proveedor' },
+  { key: 'issuer',        label: 'Emisor' },
+  { key: 'documentType',  label: 'Tipo de documento' },
+  { key: 'document',      label: 'Documento / NIT' },
+  { key: 'invoiceNumber', label: 'N.º factura' },
+  { key: 'total',         label: 'Total' },
+  { key: 'hasImage',      label: 'Imagen' },
+  { key: 'createdAt',     label: 'Cargada el' },
+]
+
+const DATE_FORMATS: { value: ExportOptions['dateFormat']; label: string }[] = [
+  { value: 'dmy', label: 'DD/MM/AAAA' },
+  { value: 'mdy', label: 'MM/DD/AAAA' },
+  { value: 'ymd', label: 'AAAA/MM/DD' },
+]
+
+function ExportOptionsModal({ isSale, exporting, onClose, onConfirm }: {
+  isSale: boolean; exporting: boolean; onClose: () => void; onConfirm: (o: ExportOptions) => void
+}) {
+  const allCols = EXPORT_COLUMNS(isSale)
+  const [dateFormat, setDateFormat]     = useState<ExportOptions['dateFormat']>('dmy')
+  const [includeTime, setIncludeTime]   = useState(true)
+  const [docDigitsOnly, setDocDigits]   = useState(false)
+  const [cols, setCols] = useState<string[]>(allCols.map((c) => c.key))
+
+  const toggleCol = (k: string) => setCols((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k])
+  const ordered = allCols.filter((c) => cols.includes(c.key)).map((c) => c.key)  // respeta el orden fijo
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Opciones de descarga</h3>
+            <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">Elige cómo quieres el archivo de Excel.</p>
+
+          {/* Formato de fecha */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Formato de fecha</p>
+            <div className="flex flex-wrap gap-2">
+              {DATE_FORMATS.map((f) => (
+                <button key={f.value} onClick={() => setDateFormat(f.value)}
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${dateFormat === f.value ? 'border-blue-500 bg-blue-50 font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Opciones */}
+          <div className="mt-4 space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={includeTime} onChange={(e) => setIncludeTime(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+              Mostrar la hora en &ldquo;Cargada el&rdquo;
+            </label>
+            <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={docDigitsOnly} onChange={(e) => setDocDigits(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
+              <span>Documento sin dígito de verificación<span className="block text-[11px] text-slate-400">Ej: 900276962-1 → 900276962 (solo lo anterior al &ldquo;-&rdquo;)</span></span>
+            </label>
+          </div>
+
+          {/* Columnas */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Columnas a incluir</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {allCols.map((c) => (
+                <label key={c.key} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <input type="checkbox" checked={cols.includes(c.key)} onChange={() => toggleCol(c.key)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-2">
+            <button onClick={onClose} disabled={exporting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
+            <button onClick={() => onConfirm({ dateFormat, includeTime, docDigitsOnly, columns: ordered })} disabled={exporting || ordered.length === 0}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+              {exporting ? 'Generando…' : 'Descargar Excel'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   )
 }
 
