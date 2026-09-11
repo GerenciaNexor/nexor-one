@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { fmtCalendarDate, fmtDateTime } from '@/lib/format-date'
 import { Portal } from '@/components/ui/Portal'
@@ -60,6 +60,14 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
 
   useEffect(() => { load() }, [kind]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // HU-210 — búsqueda EN VIVO: al escribir en el buscador, recarga con un pequeño retraso (debounce).
+  const mounted = useRef(false)
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return }  // el efecto de `kind` ya hizo la carga inicial
+    const t = setTimeout(() => load(), 350)
+    return () => clearTimeout(t)
+  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const inp = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
 
   return (
@@ -69,7 +77,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
 
       {/* Búsqueda: número/emisor, rango de fecha, rango de total */}
       <div className="mt-3 flex flex-wrap items-end gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="N.º de factura, emisor o NIT…" className={`${inp} min-w-[200px] flex-1`} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="N.º de factura, proveedor, emisor o NIT…" className={`${inp} min-w-[200px] flex-1`} />
         <label className="flex flex-col text-[11px] text-slate-500">Desde<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Hasta<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Total mín.<input type="number" value={minTotal} onChange={(e) => setMin(e.target.value)} className={`${inp} w-28`} /></label>

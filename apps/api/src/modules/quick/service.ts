@@ -669,17 +669,24 @@ function invoiceNumberOf(fe: unknown): string | null {
  * factura / emisor / NIT (texto), rango de fecha y rango de total. RLS por tenant (proxy + filtro).
  */
 export async function listInvoices(tenantId: string, opts: {
-  kind: 'purchase' | 'sale'; q?: string; from?: string; to?: string; minTotal?: number; maxTotal?: number; page: number; limit: number
+  kind: 'purchase' | 'sale'; q?: string; from?: string; to?: string; minTotal?: number; maxTotal?: number
+  supplierId?: string; clientId?: string; page: number; limit: number
 }) {
   const conds: Prisma.Sql[] = [Prisma.sql`tenant_id = ${tenantId}`, Prisma.sql`kind = ${opts.kind}`]
   if (opts.from)             conds.push(Prisma.sql`invoice_date >= ${new Date(opts.from)}`)
   if (opts.to)               conds.push(Prisma.sql`invoice_date <= ${new Date(opts.to)}`)
   if (opts.minTotal != null) conds.push(Prisma.sql`total >= ${opts.minTotal}`)
   if (opts.maxTotal != null) conds.push(Prisma.sql`total <= ${opts.maxTotal}`)
+  if (opts.supplierId)       conds.push(Prisma.sql`supplier_id = ${opts.supplierId}`)  // HU-210 — facturas de un proveedor
+  if (opts.clientId)         conds.push(Prisma.sql`client_id = ${opts.clientId}`)
   if (opts.q?.trim()) {
     const like = `%${opts.q.trim()}%`
+    // HU-210 — también busca por el NOMBRE del proveedor/cliente registrado (no solo el emisor leído).
+    const cpMatch = opts.kind === 'purchase'
+      ? Prisma.sql`OR supplier_id IN (SELECT id FROM suppliers WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
+      : Prisma.sql`OR client_id IN (SELECT id FROM clients WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
     // Número de factura: columna dedicada (HU-195) + full_extraction (facturas viejas/otros datos).
-    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like})`)
+    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like} ${cpMatch})`)
   }
   const where  = Prisma.join(conds, ' AND ')
   const offset = (opts.page - 1) * opts.limit
