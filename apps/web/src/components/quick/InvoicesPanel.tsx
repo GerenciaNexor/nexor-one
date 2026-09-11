@@ -187,9 +187,9 @@ function ExportOptionsModal({ isSale, exporting, onClose, onConfirm }: {
 
           {/* Opciones */}
           <div className="mt-4 space-y-2">
-            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={includeTime} onChange={(e) => setIncludeTime(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
-              Mostrar la hora en &ldquo;Cargada el&rdquo;
+            <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={includeTime} onChange={(e) => setIncludeTime(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
+              <span>Incluir la hora (hora y minutos)<span className="block text-[11px] text-slate-400">Se agrega a la fecha de la columna &ldquo;Cargada el&rdquo;</span></span>
             </label>
             <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={docDigitsOnly} onChange={(e) => setDocDigits(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
