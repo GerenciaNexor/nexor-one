@@ -39,11 +39,14 @@ describe('HU-196 — export a Excel', () => {
     expect(sheet.getRow(1).getCell(11).value).toBe('Ingreso')
   })
 
-  it('invoicesToXlsx: genera un xlsx con las columnas de la factura', async () => {
-    const rows: InvoiceExportRow[] = [{ issuer: 'D1 SAS', nit: '900276962-1', invoiceNumber: 'GOZ5292464', date: new Date('2026-04-03'), total: 11250, hasImage: true, createdAt: new Date('2026-04-03') }]
+  it('invoicesToXlsx: genera un xlsx con las columnas de la factura (proveedor + emisor)', async () => {
+    const rows: InvoiceExportRow[] = [{ issuer: 'GRAN FRUVER', counterpartyName: 'D1 SAS', nit: '900276962-1', invoiceNumber: 'GOZ5292464', date: new Date('2026-04-03'), total: 11250, hasImage: true, createdAt: new Date('2026-04-03') }]
     const sheet = await readSheet(await invoicesToXlsx(rows, 'purchase'))
-    expect(sheet.getRow(1).getCell(4).value).toBe('N.º factura')
-    expect(sheet.getRow(2).getCell(3).value).toBe('900276962-1')
-    expect(sheet.getRow(2).getCell(5).value).toBe(11250)
+    expect(sheet.getRow(1).getCell(2).value).toBe('Proveedor')      // HU-210 — nueva columna
+    expect(sheet.getRow(1).getCell(5).value).toBe('N.º factura')
+    expect(sheet.getRow(2).getCell(2).value).toBe('D1 SAS')         // proveedor registrado
+    expect(sheet.getRow(2).getCell(3).value).toBe('GRAN FRUVER')    // emisor leído
+    expect(sheet.getRow(2).getCell(4).value).toBe('900276962-1')    // NIT
+    expect(sheet.getRow(2).getCell(6).value).toBe(11250)            // total
   })
 })

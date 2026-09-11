@@ -17,7 +17,7 @@ const money = (n: number | null) => (n == null ? '—' : `$${n.toLocaleString('e
 const fmtDate = (iso: string | null) => (iso ? fmtCalendarDate(iso) : '—')
 
 interface InvoiceRow {
-  id: string; issuer: string | null; nit: string | null; date: string | null
+  id: string; issuer: string | null; counterpartyName?: string | null; nit: string | null; date: string | null
   total: number | null; invoiceNumber: string | null; hasImage: boolean; createdAt: string
 }
 
@@ -90,7 +90,8 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
                 <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">N.º factura</th>
-                  <th className="px-4 py-3">{isSale ? 'Cliente' : 'Proveedor / Emisor'}</th>
+                  <th className="px-4 py-3">{isSale ? 'Cliente' : 'Proveedor'}</th>
+                  <th className="px-4 py-3">Emisor</th>
                   <th className="px-4 py-3">NIT</th>
                   <th className="px-4 py-3 text-right">Total</th>
                   <th className="px-4 py-3"></th>
@@ -101,7 +102,8 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
                   <tr key={r.id} onClick={() => setDetailId(r.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40">
                     <td className="px-4 py-3 text-slate-500">{fmtDate(r.date)}</td>
                     <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.invoiceNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.issuer ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.counterpartyName ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-500">{r.issuer ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{r.nit ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-100">{money(r.total)}</td>
                     <td className="px-4 py-3 text-right text-xs text-blue-600 dark:text-blue-400">Ver detalle →</td>

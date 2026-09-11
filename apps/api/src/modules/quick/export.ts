@@ -64,7 +64,7 @@ export async function registersToXlsx(rows: QuickRegisterRow[], kind: Kind): Pro
 }
 
 export interface InvoiceExportRow {
-  issuer: string | null; nit: string | null; invoiceNumber: string | null
+  issuer: string | null; counterpartyName?: string | null; nit: string | null; invoiceNumber: string | null
   date: Date | string | null; total: number | null; hasImage: boolean; createdAt: Date | string
 }
 
@@ -75,7 +75,8 @@ export async function invoicesToXlsx(rows: InvoiceExportRow[], kind: Kind): Prom
   const sheet = wb.addWorksheet('Facturas cargadas')
   sheet.columns = [
     { header: 'Fecha factura',                  key: 'date',          width: 16 },
-    { header: isSale ? 'Cliente' : 'Emisor',    key: 'issuer',        width: 32 },
+    { header: isSale ? 'Cliente' : 'Proveedor', key: 'counterparty',  width: 32 },
+    { header: 'Emisor (factura)',               key: 'issuer',        width: 32 },
     { header: 'NIT / documento',                key: 'nit',           width: 20 },
     { header: 'N.º factura',                     key: 'invoiceNumber', width: 20 },
     { header: 'Total',                           key: 'total',         width: 16 },
@@ -85,6 +86,7 @@ export async function invoicesToXlsx(rows: InvoiceExportRow[], kind: Kind): Prom
   for (const r of rows) {
     sheet.addRow({
       date:          fmtDate(r.date),
+      counterparty:  r.counterpartyName ?? '',
       issuer:        r.issuer ?? '',
       nit:           r.nit ?? '',
       invoiceNumber: r.invoiceNumber ?? '',

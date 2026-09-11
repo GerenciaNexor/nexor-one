@@ -685,20 +685,35 @@ export async function listInvoices(tenantId: string, opts: {
   const offset = (opts.page - 1) * opts.limit
 
   const rows = await prisma.$queryRaw<Array<{
-    id: string; kind: string; issuer: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
+    id: string; kind: string; issuer: string | null; supplier_id: string | null; client_id: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
     total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
   }>>(Prisma.sql`
-    SELECT id, kind, issuer, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
+    SELECT id, kind, issuer, supplier_id, client_id, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
     FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
   const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
   const total = Number(countRes[0]?.n ?? 0)
 
+  // HU-210 — nombre del proveedor/cliente REGISTRADO (distinto del emisor leído), resuelto en lote.
+  const cpIds = [...new Set(rows.map((r) => (opts.kind === 'purchase' ? r.supplier_id : r.client_id)).filter((x): x is string => !!x))]
+  const nameById = new Map<string, string>()
+  if (cpIds.length) {
+    const found = opts.kind === 'purchase'
+      ? await prisma.supplier.findMany({ where: { tenantId, id: { in: cpIds } }, select: { id: true, name: true } })
+      : await prisma.client.findMany({ where: { tenantId, id: { in: cpIds } }, select: { id: true, name: true } })
+    for (const f of found) nameById.set(f.id, f.name)
+  }
+
   return {
-    data: rows.map((r) => ({
-      id: r.id, kind: r.kind, issuer: r.issuer, nit: r.nit,
-      date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
-      invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
-    })),
+    data: rows.map((r) => {
+      const cpId = opts.kind === 'purchase' ? r.supplier_id : r.client_id
+      return {
+        id: r.id, kind: r.kind, issuer: r.issuer,
+        counterpartyName: cpId ? (nameById.get(cpId) ?? null) : null,
+        nit: r.nit,
+        date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
+        invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
+      }
+    }),
     total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
   }
 }
