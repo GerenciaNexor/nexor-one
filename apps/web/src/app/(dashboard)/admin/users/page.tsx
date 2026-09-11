@@ -19,6 +19,8 @@ interface User {
   id:          string
   email:       string
   name:        string
+  phone?:      string | null
+  whatsappOptIn?: boolean
   role:        UserRole
   module:      ModuleName | null
   isActive:    boolean
@@ -56,6 +58,8 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
   const [form, setForm] = useState({
     name:     user?.name             ?? '',
     email:    user?.email            ?? '',
+    phone:    user?.phone            ?? '',
+    whatsappOptIn: user?.whatsappOptIn ?? true,
     password: '',
     role:     (user?.role            ?? 'OPERATIVE') as UserRole,
     module:   (user?.module          ?? '') as ModuleName | '',
@@ -84,6 +88,8 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
     try {
       const body: Record<string, unknown> = {
         name:     form.name.trim(),
+        phone:    form.phone.trim() || null,
+        whatsappOptIn: form.whatsappOptIn,
         role:     form.role,
         module:   needsModule ? form.module || undefined : null,
         branchId: needsBranch && form.branchId ? form.branchId : null,
@@ -143,6 +149,26 @@ function UserModal({ user, branches, onClose, onSuccess }: UserModalProps) {
               />
             </div>
           )}
+
+          {/* HU-208 — teléfono/WhatsApp para recibir recordatorios */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Teléfono / WhatsApp</label>
+            <input
+              type="tel" value={form.phone} onChange={set('phone')}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              placeholder="+57 300 000 0000"
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Para recibir recordatorios por WhatsApp (opcional).</p>
+            {/* HU-209 — consentimiento de WhatsApp */}
+            <label className="mt-2 flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox" checked={form.whatsappOptIn}
+                onChange={(e) => setForm((prev) => ({ ...prev, whatsappOptIn: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600"
+              />
+              <span>Recibe notificaciones por WhatsApp. Si se desactiva, solo verá los avisos dentro de la app.</span>
+            </label>
+          </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">

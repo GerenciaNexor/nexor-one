@@ -8,7 +8,7 @@ import { validateProjectId } from '../proyectos/service'
 import { applyAssignment } from '../proyectos/budget'
 import { matchProductByName } from '../../lib/text-match'
 import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
-import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput } from './schema'
+import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput, UpdateInvoiceInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
 const numN = (v: unknown): number | null => (v === null || v === undefined ? null : num(v))
@@ -437,15 +437,18 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
 
     let counterpartyName: string
     let categoryId: string
+    // HU-210 — se guarda el tercero REGISTRADO (proveedor/cliente) en la factura, aparte del emisor leído.
+    let resolvedSupplierId: string | null = null
+    let resolvedClientId: string | null = null
     if (input.kind === 'purchase') {
-      const supplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
-      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { name: true } })
+      resolvedSupplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
+      const supplier = await tx.supplier.findFirst({ where: { id: resolvedSupplierId, tenantId }, select: { name: true } })
       if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
       counterpartyName = supplier.name
       categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
     } else {
-      const clientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
-      const client = await tx.client.findFirst({ where: { id: clientId, tenantId }, select: { name: true } })
+      resolvedClientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
+      const client = await tx.client.findFirst({ where: { id: resolvedClientId, tenantId }, select: { name: true } })
       if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
       counterpartyName = client.name
       categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
@@ -457,6 +460,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
+        supplierId: resolvedSupplierId, clientId: resolvedClientId,
         issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
@@ -510,11 +514,20 @@ export async function getInvoiceImage(tenantId: string, id: string) {
 export async function getInvoice(tenantId: string, id: string) {
   const inv = await prisma.quickInvoice.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, issuer: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
+    select: { id: true, kind: true, issuer: true, supplierId: true, clientId: true, nit: true, documentType: true, invoiceNumber: true, invoiceDate: true, total: true, imageMime: true, fullExtraction: true, createdAt: true, userId: true },
   })
   if (!inv) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
   // HU-194-C — quién la subió (para "Subido por X el Y" en el detalle).
   const author = inv.userId ? await prisma.user.findFirst({ where: { id: inv.userId, tenantId }, select: { name: true } }) : null
+  // HU-210 — proveedor/cliente REGISTRADO (distinto del emisor leído). Se resuelve su nombre actual.
+  let counterparty: { id: string; name: string } | null = null
+  if (inv.kind === 'purchase' && inv.supplierId) {
+    const s = await prisma.supplier.findFirst({ where: { id: inv.supplierId, tenantId }, select: { name: true } })
+    if (s) counterparty = { id: inv.supplierId, name: s.name }
+  } else if (inv.kind === 'sale' && inv.clientId) {
+    const c = await prisma.client.findFirst({ where: { id: inv.clientId, tenantId }, select: { name: true } })
+    if (c) counterparty = { id: inv.clientId, name: c.name }
+  }
   const fe = (inv.fullExtraction ?? {}) as {
     additionalFields?: { label: string; value: string }[]
     notes?: { value?: string }
@@ -527,13 +540,120 @@ export async function getInvoice(tenantId: string, id: string) {
   // Ítems registrados (con su transacción/efecto en stock o finanzas) — HU-194-A: liga con el efecto.
   const items = Array.isArray(fe._resolution) ? fe._resolution : []
   return {
-    id: inv.id, kind: inv.kind, issuer: inv.issuer, nit: inv.nit, documentType: inv.documentType,
+    id: inv.id, kind: inv.kind, issuer: inv.issuer, counterparty, nit: inv.nit, documentType: inv.documentType,
     // HU-195 — número/código de factura: columna dedicada, con fallback a facturas viejas (JSON).
     invoiceNumber: inv.invoiceNumber ?? invoiceNumberOf(inv.fullExtraction),
     date: inv.invoiceDate, total: inv.total != null ? Number(inv.total) : null,
     hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction,
     createdAt: inv.createdAt, createdByName: author?.name ?? null,
   }
+}
+
+/**
+ * HU-210 — Edita SOLO el encabezado (metadatos) de una factura cargada. No toca ítems, stock ni las
+ * transacciones ya registradas (inmutables — HU-128). Devuelve la factura ya actualizada.
+ */
+export async function updateInvoice(tenantId: string, id: string, input: UpdateInvoiceInput) {
+  const existing = await prisma.quickInvoice.findFirst({ where: { id, tenantId }, select: { id: true } })
+  if (!existing) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+
+  const data: Prisma.QuickInvoiceUpdateInput = {}
+  if (input.issuer        !== undefined) data.issuer        = input.issuer
+  if (input.nit           !== undefined) data.nit           = input.nit
+  if (input.documentType  !== undefined) data.documentType  = input.documentType
+  if (input.invoiceNumber !== undefined) data.invoiceNumber = input.invoiceNumber
+  if (input.total         !== undefined) data.total         = input.total
+  if (input.date          !== undefined) data.invoiceDate   = input.date ? new Date(input.date) : null
+  // HU-210 — proveedor/cliente registrado (metadato). Se valida que pertenezca al tenant.
+  if (input.supplierId !== undefined) {
+    if (input.supplierId) {
+      const s = await prisma.supplier.findFirst({ where: { id: input.supplierId, tenantId }, select: { id: true } })
+      if (!s) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+    }
+    data.supplierId = input.supplierId
+  }
+  if (input.clientId !== undefined) {
+    if (input.clientId) {
+      const c = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } })
+      if (!c) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+    }
+    data.clientId = input.clientId
+  }
+
+  // HU-202 — defensa en profundidad: el proxy `prisma` ya filtra por RLS; el id se validó por tenant arriba.
+  await prisma.quickInvoice.update({ where: { id }, data })
+  return getInvoice(tenantId, id)
+}
+
+/**
+ * HU-210 — Elimina una factura cargada con REVERSIÓN COMPLETA y auditable:
+ *  - borra las transacciones VERA de la factura (su `budget_approval` cae por cascade; el avance del
+ *    proyecto se recalcula solo porque se DERIVA de las transacciones);
+ *  - revierte el stock de cada ítem que lo movió con un movimiento de AJUSTE (el original queda intacto,
+ *    respetando la inmutabilidad de HU-128);
+ *  - si el stock ingresado por la factura ya fue usado/vendido, BLOQUEA el borrado (no deja negativos).
+ * Todo en una sola transacción: o se revierte completo, o no se toca nada.
+ */
+export async function deleteInvoice(tenantId: string, userId: string, id: string) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.quickInvoice.findFirst({ where: { id, tenantId }, select: { id: true } })
+    if (!invoice) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+
+    const txns = await tx.transaction.findMany({ where: { tenantId, quickInvoiceId: id }, select: { id: true } })
+    const txnIds = txns.map((t) => t.id)
+
+    let stockReversals = 0
+    if (txnIds.length) {
+      const movements = await tx.stockMovement.findMany({
+        where:  { tenantId, referenceType: { in: ['quick_purchase', 'quick_sale'] }, referenceId: { in: txnIds } },
+        select: { productId: true, branchId: true, type: true, quantity: true, costPriceFrozen: true, salePriceFrozen: true, product: { select: { name: true } } },
+      })
+      for (const m of movements) {
+        const qty = num(m.quantity)
+        if (qty <= 0) continue
+        const stock = await tx.stock.findUnique({
+          where:  { productId_branchId: { productId: m.productId, branchId: m.branchId } },
+          select: { quantity: true, rentedQuantity: true },
+        })
+        const current = stock ? num(stock.quantity) : 0
+        const rented  = stock ? num(stock.rentedQuantity) : 0
+
+        if (m.type === 'entrada') {
+          // Revertir una ENTRADA (compra) = quitar del stock; nunca dejar el disponible negativo.
+          const after = current - qty
+          if (after < rented) {
+            throw { statusCode: 409, code: 'STOCK_ALREADY_USED',
+              message: `No se puede eliminar: el stock que ingresó "${m.product.name}" con esta factura ya fue usado/vendido (disponible ${Math.max(0, current - rented)}, se requieren ${qty} para revertir).` }
+          }
+          await tx.stock.update({ where: { productId_branchId: { productId: m.productId, branchId: m.branchId } }, data: { quantity: after } })
+          await tx.stockMovement.create({ data: {
+            tenantId, productId: m.productId, branchId: m.branchId, userId, type: 'ajuste', reason: 'ajuste',
+            quantity: qty, quantityBefore: current, quantityAfter: after, costPriceFrozen: m.costPriceFrozen ?? null,
+            referenceType: 'quick_invoice_reversal', referenceId: id, notes: 'Reversa por eliminación de factura cargada',
+          } })
+          stockReversals++
+        } else if (m.type === 'salida') {
+          // Revertir una SALIDA (venta) = devolver al stock (nunca negativo).
+          const after = current + qty
+          await tx.stock.upsert({
+            where:  { productId_branchId: { productId: m.productId, branchId: m.branchId } },
+            create: { productId: m.productId, branchId: m.branchId, quantity: after },
+            update: { quantity: after },
+          })
+          await tx.stockMovement.create({ data: {
+            tenantId, productId: m.productId, branchId: m.branchId, userId, type: 'ajuste', reason: 'ajuste',
+            quantity: qty, quantityBefore: current, quantityAfter: after, salePriceFrozen: m.salePriceFrozen ?? null,
+            referenceType: 'quick_invoice_reversal', referenceId: id, notes: 'Reversa por eliminación de factura cargada',
+          } })
+          stockReversals++
+        }
+      }
+      await tx.transaction.deleteMany({ where: { tenantId, id: { in: txnIds } } })
+    }
+
+    await tx.quickInvoice.delete({ where: { id } })
+    return { id, deleted: true, transactionsRemoved: txnIds.length, stockReversals }
+  })
 }
 
 /** Etiqueta que parece "número de factura" dentro de la información adicional (para la lista/búsqueda). */
@@ -565,20 +685,35 @@ export async function listInvoices(tenantId: string, opts: {
   const offset = (opts.page - 1) * opts.limit
 
   const rows = await prisma.$queryRaw<Array<{
-    id: string; kind: string; issuer: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
+    id: string; kind: string; issuer: string | null; supplier_id: string | null; client_id: string | null; document_type: string | null; nit: string | null; invoice_number: string | null; invoice_date: Date | null
     total: Prisma.Decimal | null; image_mime: string | null; full_extraction: unknown; created_at: Date
   }>>(Prisma.sql`
-    SELECT id, kind, issuer, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
+    SELECT id, kind, issuer, supplier_id, client_id, document_type, nit, invoice_number, invoice_date, total, image_mime, full_extraction, created_at
     FROM quick_invoices WHERE ${where} ORDER BY created_at DESC LIMIT ${opts.limit} OFFSET ${offset}`)
   const countRes = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT count(*)::int AS n FROM quick_invoices WHERE ${where}`)
   const total = Number(countRes[0]?.n ?? 0)
 
+  // HU-210 — nombre del proveedor/cliente REGISTRADO (distinto del emisor leído), resuelto en lote.
+  const cpIds = [...new Set(rows.map((r) => (opts.kind === 'purchase' ? r.supplier_id : r.client_id)).filter((x): x is string => !!x))]
+  const nameById = new Map<string, string>()
+  if (cpIds.length) {
+    const found = opts.kind === 'purchase'
+      ? await prisma.supplier.findMany({ where: { tenantId, id: { in: cpIds } }, select: { id: true, name: true } })
+      : await prisma.client.findMany({ where: { tenantId, id: { in: cpIds } }, select: { id: true, name: true } })
+    for (const f of found) nameById.set(f.id, f.name)
+  }
+
   return {
-    data: rows.map((r) => ({
-      id: r.id, kind: r.kind, issuer: r.issuer, nit: r.nit,
-      date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
-      invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
-    })),
+    data: rows.map((r) => {
+      const cpId = opts.kind === 'purchase' ? r.supplier_id : r.client_id
+      return {
+        id: r.id, kind: r.kind, issuer: r.issuer,
+        counterpartyName: cpId ? (nameById.get(cpId) ?? null) : null,
+        documentType: r.document_type, nit: r.nit,
+        date: r.invoice_date, total: r.total != null ? Number(r.total) : null,
+        invoiceNumber: r.invoice_number ?? invoiceNumberOf(r.full_extraction), hasImage: !!r.image_mime, createdAt: r.created_at,
+      }
+    }),
     total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit),
   }
 }

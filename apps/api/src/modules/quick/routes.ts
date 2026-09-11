@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage } from './service'
+import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema, UpdateInvoiceSchema } from './schema'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice } from './service'
 import { registersToXlsx, invoicesToXlsx } from './export'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -187,15 +187,23 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
       querystring: { type: 'object', properties: {
         kind: { type: 'string', enum: ['purchase', 'sale'] }, q: { type: 'string' },
         from: { type: 'string' }, to: { type: 'string' }, minTotal: { type: 'string' }, maxTotal: { type: 'string' },
+        // HU-210 — opciones de formato del Excel (elegidas en el modal de descarga).
+        dateFormat: { type: 'string', enum: ['dmy', 'mdy', 'ymd'] }, includeTime: { type: 'string' },
+        columns: { type: 'string' }, docDigitsOnly: { type: 'string' },
       } } },
     preHandler: [requireRole('OPERATIVE')],
   }, async (request, reply) => {
-    const q = request.query as { kind?: string; q?: string; from?: string; to?: string; minTotal?: string; maxTotal?: string }
+    const q = request.query as { kind?: string; q?: string; from?: string; to?: string; minTotal?: string; maxTotal?: string; dateFormat?: string; includeTime?: string; columns?: string; docDigitsOnly?: string }
     const kind = q.kind === 'sale' ? 'sale' : 'purchase'
     const num = (v?: string) => { const n = v != null && v !== '' ? Number(v) : NaN; return Number.isFinite(n) ? n : undefined }
     try {
       const rows = await exportInvoices(request.user.tenantId, { kind, q: q.q, from: q.from, to: q.to, minTotal: num(q.minTotal), maxTotal: num(q.maxTotal) })
-      const buffer = await invoicesToXlsx(rows, kind)
+      const buffer = await invoicesToXlsx(rows, kind, {
+        dateFormat:    q.dateFormat === 'mdy' || q.dateFormat === 'ymd' ? q.dateFormat : 'dmy',
+        includeTime:   q.includeTime !== 'false',
+        columns:       q.columns ? q.columns.split(',').filter(Boolean) : undefined,
+        docDigitsOnly: q.docDigitsOnly === 'true',
+      })
       const fname = `facturas-${kind === 'sale' ? 'venta' : 'compra'}-${new Date().toISOString().slice(0, 10)}.xlsx`
       return reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         .header('Content-Disposition', `attachment; filename="${fname}"`).send(buffer)
@@ -209,6 +217,35 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     try {
       return reply.code(200).send({ success: true, data: await getInvoice(request.user.tenantId, (request.params as { id: string }).id) })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** PATCH /v1/quick/invoices/:id — HU-210: edita SOLO el encabezado (metadatos). Solo administradores
+   *  (mín. Jefe de área). No toca ítems/stock/transacciones. */
+  app.patch('/invoices/:id', {
+    schema: { tags: ['Quick'], summary: 'Editar encabezado de una factura cargada', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: z2j(UpdateInvoiceSchema), response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('AREA_MANAGER')],
+  }, async (request, reply) => {
+    const parsed = UpdateInvoiceSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const data = await updateInvoice(request.user.tenantId, (request.params as { id: string }).id, parsed.data)
+      return reply.code(200).send({ success: true, data })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** DELETE /v1/quick/invoices/:id — HU-210: elimina la factura con reversión completa auditable
+   *  (transacciones VERA + stock por ajuste + presupuesto). Solo administradores (mín. Jefe de área). */
+  app.delete('/invoices/:id', {
+    schema: { tags: ['Quick'], summary: 'Eliminar una factura cargada (reversión completa)', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('AREA_MANAGER')],
+  }, async (request, reply) => {
+    try {
+      const data = await deleteInvoice(request.user.tenantId, request.user.userId, (request.params as { id: string }).id)
+      return reply.code(200).send({ success: true, data })
     } catch (err) { return errReply(reply, err) }
   })
 

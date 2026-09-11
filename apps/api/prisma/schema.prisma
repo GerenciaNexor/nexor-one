@@ -111,6 +111,7 @@ model Tenant {
   availability          Availability[]
   appointments          Appointment[]
   appointmentAttendees  AppointmentAttendee[]
+  whatsappMessages      WhatsAppMessage[]
   blockedDates          BlockedDate[]
   cancelTokens          AppointmentCancelToken[]
   transactions          Transaction[]
@@ -178,6 +179,11 @@ model User {
   branchId     String?     @map("branch_id") @db.VarChar(30)
   email        String      @unique @db.VarChar(255)
   name         String      @db.VarChar(255)
+  phone        String?     @db.VarChar(30)   // HU-208 — WhatsApp del usuario para recordatorios
+  // HU-209 — consentimiento (opt-in) para recibir notificaciones por WhatsApp. Por defecto activo
+  // (mensajes de utilidad sobre la propia operación: recordatorios que el usuario mismo programó);
+  // se respeta SIEMPRE al desactivarlo — la notificación interna queda como respaldo.
+  whatsappOptIn Boolean    @default(true) @map("whatsapp_opt_in")
   passwordHash String      @map("password_hash") @db.VarChar(255)
   role         Role
   module       ModuleName?
@@ -354,6 +360,31 @@ model Integration {
   @@index([tenantId])
   @@index([channel, identifier])
   @@map("integrations")
+}
+
+/// HU-207 — Registro de notificaciones enviadas por WhatsApp Business (Cloud API, plantillas
+/// aprobadas). Trazabilidad y observabilidad de costo. token_encrypted vive en Integration; aquí
+/// NUNCA se guarda el token, solo el envío. RLS por tenant.
+model WhatsAppMessage {
+  id            String   @id @default(cuid()) @db.VarChar(30)
+  tenantId      String   @map("tenant_id") @db.VarChar(30)
+  toPhone       String   @map("to_phone") @db.VarChar(20)          // destino normalizado (E.164 sin '+')
+  templateName  String   @map("template_name") @db.VarChar(120)
+  languageCode  String   @default("es") @map("language_code") @db.VarChar(10)
+  variables     Json?    @db.JsonB                                  // variables del cuerpo de la plantilla
+  category      String?  @db.VarChar(20)                            // utility | marketing | authentication
+  status        String   @default("queued") @db.VarChar(20)        // queued|sent|delivered|read|failed|invalid_number
+  messageId     String?  @map("message_id") @db.VarChar(160)        // wamid devuelto por Meta
+  estimatedCost Decimal? @map("estimated_cost") @db.Decimal(10, 5)  // costo estimado (USD) del envío
+  errorCode     String?  @map("error_code") @db.VarChar(80)
+  errorDetail   String?  @map("error_detail") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@map("whatsapp_messages")
 }
 
 /// Notificaciones para el equipo de PLATAFORMA (SUPER_ADMIN) — la "campanita" de la consola.
@@ -542,6 +573,9 @@ model Client {
   email         String?  @db.VarChar(255)
   phone         String?  @db.VarChar(20)
   whatsappId    String?  @map("whatsapp_id") @db.VarChar(50)
+  /// HU-209 — consentimiento (opt-in) del cliente para notificaciones por WhatsApp (confirmación y
+  /// recordatorio de cita). Por defecto activo (utilidad sobre su propia cita); se respeta al desactivarlo.
+  whatsappOptIn Boolean  @default(true) @map("whatsapp_opt_in")
   company       String?  @db.VarChar(255)
   taxId         String?  @map("tax_id") @db.VarChar(50)
   address       String?  @db.VarChar(500)
@@ -923,7 +957,11 @@ model QuickInvoice {
   branchId       String?   @map("branch_id") @db.VarChar(30)
   userId         String?   @map("user_id") @db.VarChar(30)
   kind           String    @db.VarChar(20)                     // purchase | sale
-  issuer         String?   @db.VarChar(255)                    // emisor de la factura
+  issuer         String?   @db.VarChar(255)                    // emisor tal como aparece EN la factura
+  // HU-210 — proveedor/cliente REGISTRADO (tercero de la empresa), distinto del emisor leído: en
+  // Colombia un mismo NIT puede facturar bajo un nombre comercial diferente. Se guardan ambos.
+  supplierId     String?   @map("supplier_id") @db.VarChar(30)
+  clientId       String?   @map("client_id") @db.VarChar(30)
   nit            String?   @db.VarChar(50)
   documentType   String?   @map("document_type") @db.VarChar(10)    // HU-196 — tipo de documento (NIT, CC, …)
   invoiceNumber  String?   @map("invoice_number") @db.VarChar(100) // HU-195 — número/código de la factura

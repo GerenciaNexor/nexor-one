@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 
 interface Opt { id: string; name: string; type: 'objetivo' | 'limite'; status: string }
 
@@ -31,13 +32,16 @@ export function ProjectSelect({ value, onChange, className, label = 'Proyecto (o
 
   const sel = className ?? 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
 
+  // HU-210 — buscador por nombre (los proyectos pueden ser muchos). "Sin proyecto" siempre disponible.
+  const selectOptions = [
+    { value: '', label: 'Sin proyecto' },
+    ...visible.map((o) => ({ value: o.id, label: o.name, hint: o.type === 'limite' ? 'límite' : 'objetivo' })),
+  ]
+
   return (
     <div>
       {label && <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">{label}</label>}
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={sel} disabled={opts === null}>
-        <option value="">Sin proyecto</option>
-        {visible.map((o) => <option key={o.id} value={o.id}>{o.name} · {o.type === 'limite' ? 'límite' : 'objetivo'}</option>)}
-      </select>
+      <SearchableSelect value={value} onChange={onChange} options={selectOptions} className={sel} disabled={opts === null} placeholder="Sin proyecto" />
     </div>
   )
 }

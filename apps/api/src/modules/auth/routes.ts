@@ -85,6 +85,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           id: userData.userId,
           email: userData.email,
           name: userData.name,
+          phone: userData.phone ?? null,
+          whatsappOptIn: userData.whatsappOptIn,
           role: userData.role,
           module: userData.module ?? null,
           tenantId: userData.tenantId,

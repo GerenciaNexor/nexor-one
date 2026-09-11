@@ -42,6 +42,7 @@ const CLIENT_SELECT = {
   email:      true,
   phone:      true,
   whatsappId: true,
+  whatsappOptIn: true,  // HU-209
   company:    true,
   taxId:      true,
   address:    true,
@@ -173,6 +174,7 @@ export async function createClient(
       email:      input.email      ?? null,
       phone:      input.phone      ?? null,
       whatsappId: input.whatsappId ?? null,
+      ...(input.whatsappOptIn !== undefined && { whatsappOptIn: input.whatsappOptIn }),
       company:    input.company    ?? null,
       taxId:      input.taxId      ?? null,
       address:    input.address    ?? null,
@@ -209,6 +211,7 @@ export async function updateClient(
       ...(input.email      !== undefined && { email:      input.email      ?? null }),
       ...(input.phone      !== undefined && { phone:      input.phone      ?? null }),
       ...(input.whatsappId !== undefined && { whatsappId: input.whatsappId ?? null }),
+      ...(input.whatsappOptIn !== undefined && { whatsappOptIn: input.whatsappOptIn }),
       ...(input.company    !== undefined && { company:    input.company    ?? null }),
       ...(input.taxId      !== undefined && { taxId:      input.taxId      ?? null }),
       ...(input.address    !== undefined && { address:    input.address    ?? null }),
