@@ -4,6 +4,7 @@ import { prisma } from '../../../lib/prisma'
 import { assertDemoLimit } from '../../../lib/demo-limits'
 import { sendAppointmentConfirmation, sendEventInvitation } from '../../../lib/email'
 import { sendWhatsAppNotificationIfOptedIn } from '../../../lib/whatsapp'
+import { notifyUsers } from '../../../lib/user-notify'
 import { canAccessBranch } from '../../../lib/guards'
 import { assertBranchActive } from '../../branches/service'
 import type { CreateAppointment, UpdateEvent, ListAppointmentsQuery } from './schema'
@@ -333,23 +334,21 @@ export async function createAppointment(tenantId: string, data: CreateAppointmen
     }
   }
 
-  // ── 8. Notificación in-app si fue creada por el agente ─────────────────────
+  // ── 8. Notificación in-app + WhatsApp (HU-211) si fue creada por el agente ──
   if (data.createdByAgent) {
     const managers = await prisma.user.findMany({
       where:  { tenantId, role: 'AREA_MANAGER', module: 'AGENDA', isActive: true },
       select: { id: true },
     })
     if (managers.length > 0) {
-      await prisma.notification.createMany({
-        data: managers.map((m) => ({
-          tenantId,
-          userId:  m.id,
-          module:  'AGENDA' as const,
-          type:    'nueva_cita_agente',
-          title:   `Nueva cita — ${resolvedName}`,
-          message: `El agente agendó una cita de ${service.name} para el ${localDateStr}.`,
-          link:    `/agenda/appointments/${appointment.id}`,
-        })),
+      // La interna se mantiene; se extiende por WhatsApp al número del jefe de área (si lo registró).
+      await notifyUsers(prisma, {
+        tenantId, userIds: managers.map((m) => m.id), module: 'AGENDA',
+        type:    'nueva_cita_agente',
+        title:   `Nueva cita — ${resolvedName}`,
+        message: `El agente agendó una cita de ${service.name} para el ${localDateStr}.`,
+        link:    `/agenda/appointments/${appointment.id}`,
+        wa:      { subject: `Nueva cita — ${resolvedName} (${service.name})`, when: startAt },
       })
     }
   }
@@ -395,13 +394,14 @@ async function notifyEventAttendees(
 
   const internalIds = [...new Set(rows.filter((r) => r.userId).map((r) => r.userId as string))]
   if (internalIds.length) {
-    await prisma.notification.createMany({
-      data: internalIds.map((uid) => ({
-        tenantId, userId: uid, module: 'AGENDA' as const, type,
-        title: label,
-        message: action === 'cancelación' ? `El evento "${title}" (${when}) fue cancelado.` : `Evento "${title}" — ${when}.`,
-        link: '/agenda/appointments',
-      })),
+    // HU-211 — la interna se mantiene; para invitación/actualización se extiende por WhatsApp
+    // (recordatorio_general) al número de cada asistente interno. En cancelación solo interna.
+    await notifyUsers(prisma, {
+      tenantId, userIds: internalIds, module: 'AGENDA', type,
+      title: label,
+      message: action === 'cancelación' ? `El evento "${title}" (${when}) fue cancelado.` : `Evento "${title}" — ${when}.`,
+      link: '/agenda/appointments',
+      ...(action !== 'cancelación' ? { wa: { subject: label, when: new Date(appt.startAt) } } : {}),
     })
   }
 

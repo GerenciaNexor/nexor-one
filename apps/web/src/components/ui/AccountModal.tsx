@@ -94,7 +94,7 @@ export function AccountModal({ user, onClose }: { user: LoginUser; onClose: () =
 
             {/* HU-208/209 — teléfono/WhatsApp para recordatorios + consentimiento */}
             <div className="mt-4">
-              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Teléfono / WhatsApp (recordatorios)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Número de WhatsApp para notificaciones</label>
               <input
                 type="tel" value={phone}
                 onChange={(e) => { setPhone(e.target.value); setSaved(false) }}
