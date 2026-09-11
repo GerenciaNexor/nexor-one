@@ -65,7 +65,8 @@ por imagen/OCR del registro rápido; `appointment_attendees` desde HU-204 — as
 libre de AGENDA; y `whatsapp_messages` desde HU-207 — registro de notificaciones enviadas por WhatsApp).
 Además habilita RLS
 **deny-all** en las tablas de plataforma `platform_admins` (HU-134), `platform_audit_logs` (HU-136),
-`subscriptions` y `platform_notifications` (bandeja de la consola SUPER_ADMIN)
+`subscriptions`, `platform_notifications` (bandeja de la consola SUPER_ADMIN) y `notifier_senders`
+(HU-210 — remitente notificador global de WhatsApp; token cifrado)
 — sin política: `nexor_app` no las lee; solo `directPrisma`. `db:rls` es la **fuente única de verdad**
 del RLS: re-aplica todas las políticas tras un restore. `db:audit-rls` valida el aislamiento
 cross-tenant de las 36 tablas bajo el rol real `nexor_app` en una BD temporal.

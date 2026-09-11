@@ -120,7 +120,8 @@ async function setupRLS(): Promise<void> {
   //   platform_audit_logs (HU-136) — auditoría append-only de acciones de plataforma.
   //   subscriptions      (HU-138) — suscripción/monto por cliente (gestión de plataforma).
   //   platform_notifications — bandeja de la consola SUPER_ADMIN (sin tenant/usuario).
-  for (const t of ['platform_admins', 'platform_audit_logs', 'subscriptions', 'platform_notifications']) {
+  //   notifier_senders   (HU-210) — remitente notificador global de WhatsApp (token cifrado).
+  for (const t of ['platform_admins', 'platform_audit_logs', 'subscriptions', 'platform_notifications', 'notifier_senders']) {
     await prisma.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`)
     await prisma.$executeRawUnsafe(`DROP POLICY IF EXISTS tenant_isolation ON "${t}"`)
     console.log(`  🔒 ${t} (RLS deny-all para nexor_app)`)

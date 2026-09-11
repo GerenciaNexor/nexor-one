@@ -9,12 +9,16 @@
  *
  * Sobre esta base se apoyan las notificaciones concretas (HU-208, HU-209).
  *
- * Entorno: con el número de PRUEBA de Meta, los mensajes solo llegan a los ≤5 destinatarios registrados
- * en el panel de Meta; con el número de PRODUCCIÓN llegan a cualquiera. El número activo se define al
- * conectar la integración de WhatsApp del tenant (identifier = phone_number_id).
+ * HU-210 — El REMITENTE (número que envía) es el NOTIFICADOR: propio del tenant si lo tiene, si no el
+ * GLOBAL de NEXOR (ver `resolveNotifierSender`). NO es la integración del agente de atención (esa
+ * recibe/responde y queda intacta): son dos usos de WhatsApp distintos que conviven.
+ *
+ * Entorno: con el número de PRUEBA de Meta los mensajes solo llegan a los ≤5 destinatarios registrados
+ * en el panel de Meta; con el número de PRODUCCIÓN llegan a cualquiera.
  */
 import { directPrisma } from './prisma'
 import { decrypt } from './encryption'
+import { resolveNotifierSender } from './notifier'
 
 const GRAPH_VERSION = 'v19.0'
 /** Código de país por defecto para números locales sin indicativo (Colombia = 57). Configurable. */
@@ -55,7 +59,7 @@ export interface SendTemplateParams {
   category?:     WaCategory      // para el costo estimado (default 'utility')
 }
 
-export type WaSendStatus = 'sent' | 'failed' | 'invalid_number' | 'no_integration'
+export type WaSendStatus = 'sent' | 'failed' | 'invalid_number' | 'no_sender'
 export interface SendTemplateResult {
   status:     WaSendStatus
   messageId?: string
@@ -124,22 +128,20 @@ export async function sendWhatsAppTemplate(p: SendTemplateParams): Promise<SendT
     return { status: 'invalid_number', errorCode: 'INVALID_NUMBER', error: 'Número de destino inválido' }
   }
 
-  // ── 2. Integración de WhatsApp del tenant (phone_number_id + token cifrado) ─
-  const integ = await directPrisma.integration.findFirst({
-    where:  { tenantId: p.tenantId, channel: 'WHATSAPP' },
-    select: { identifier: true, tokenEncrypted: true },
-  })
-  if (!integ?.tokenEncrypted || !integ.identifier) {
-    await record('failed', { errorCode: 'NO_INTEGRATION', errorDetail: 'El tenant no tiene WhatsApp configurado' })
-    return { status: 'no_integration', errorCode: 'NO_INTEGRATION', error: 'Sin integración de WhatsApp' }
+  // ── 2. Remitente NOTIFICADOR (HU-210): propio del tenant → global de NEXOR. NO usa la integración
+  //       del agente de atención (esa recibe/responde y queda intacta). phone_number_id + token cifrado.
+  const sender = await resolveNotifierSender(p.tenantId)
+  if (!sender?.tokenEncrypted || !sender.phoneNumberId) {
+    await record('failed', { errorCode: 'NO_SENDER', errorDetail: 'No hay remitente notificador configurado (global ni del tenant)' })
+    return { status: 'no_sender', errorCode: 'NO_SENDER', error: 'Sin remitente notificador' }
   }
 
   let token: string
-  try { token = decrypt(integ.tokenEncrypted) }
+  try { token = decrypt(sender.tokenEncrypted) }
   catch { await record('failed', { errorCode: 'TOKEN_DECRYPT', errorDetail: 'No se pudo descifrar el token' }); return { status: 'failed', errorCode: 'TOKEN_DECRYPT', error: 'Token ilegible' } }
 
   // ── 3. Enviar por la Cloud API oficial con la plantilla ────────────────────
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${integ.identifier}/messages`
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${sender.phoneNumberId}/messages`
   const components = (p.bodyParams && p.bodyParams.length)
     ? [{ type: 'body', parameters: p.bodyParams.map((t) => ({ type: 'text', text: String(t) })) }]
     : undefined
