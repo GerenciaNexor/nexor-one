@@ -3,7 +3,7 @@
  * obligatoriedad de agregar en venta, y sucursal requerida cuando algún ítem afecta stock.
  */
 import { describe, it, expect } from 'vitest'
-import { RegisterInvoiceSchema } from './schema'
+import { RegisterInvoiceSchema, UpdateInvoiceSchema } from './schema'
 
 const base = { fullExtraction: {}, branchId: 'b1' }
 const okNewProduct = { sku: 'X-1', name: 'Nuevo', unit: 'unidad', salePrice: 100, isSellable: true }
@@ -50,5 +50,27 @@ describe('HU-191 — RegisterInvoiceSchema', () => {
     const r = RegisterInvoiceSchema.safeParse({ kind: 'purchase', fullExtraction: {}, items: [{ description: 'X', quantity: 1, unitValue: 10, productId: 'p1' }] })
     expect(r.success).toBe(false)
     if (!r.success) expect(r.error.issues.some((i) => i.path.includes('branchId'))).toBe(true)
+  })
+})
+
+describe('HU-210 — UpdateInvoiceSchema (editar encabezado)', () => {
+  it('acepta un subconjunto de campos del encabezado', () => {
+    const r = UpdateInvoiceSchema.safeParse({ issuer: 'ACME', total: 12000 })
+    expect(r.success).toBe(true)
+  })
+
+  it('permite limpiar campos con null (fecha/total/emisor)', () => {
+    const r = UpdateInvoiceSchema.safeParse({ date: null, total: null, issuer: null })
+    expect(r.success).toBe(true)
+  })
+
+  it('rechaza un cuerpo vacío (no hay cambios)', () => {
+    const r = UpdateInvoiceSchema.safeParse({})
+    expect(r.success).toBe(false)
+  })
+
+  it('rechaza total negativo y tipo de documento inválido', () => {
+    expect(UpdateInvoiceSchema.safeParse({ total: -5 }).success).toBe(false)
+    expect(UpdateInvoiceSchema.safeParse({ documentType: 'XX' }).success).toBe(false)
   })
 })

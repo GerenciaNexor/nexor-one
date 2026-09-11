@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage } from './service'
+import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema, UpdateInvoiceSchema } from './schema'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice } from './service'
 import { registersToXlsx, invoicesToXlsx } from './export'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -209,6 +209,35 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     try {
       return reply.code(200).send({ success: true, data: await getInvoice(request.user.tenantId, (request.params as { id: string }).id) })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** PATCH /v1/quick/invoices/:id — HU-210: edita SOLO el encabezado (metadatos). Solo administradores
+   *  (mín. Jefe de área). No toca ítems/stock/transacciones. */
+  app.patch('/invoices/:id', {
+    schema: { tags: ['Quick'], summary: 'Editar encabezado de una factura cargada', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      body: z2j(UpdateInvoiceSchema), response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('AREA_MANAGER')],
+  }, async (request, reply) => {
+    const parsed = UpdateInvoiceSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const data = await updateInvoice(request.user.tenantId, (request.params as { id: string }).id, parsed.data)
+      return reply.code(200).send({ success: true, data })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** DELETE /v1/quick/invoices/:id — HU-210: elimina la factura con reversión completa auditable
+   *  (transacciones VERA + stock por ajuste + presupuesto). Solo administradores (mín. Jefe de área). */
+  app.delete('/invoices/:id', {
+    schema: { tags: ['Quick'], summary: 'Eliminar una factura cargada (reversión completa)', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('AREA_MANAGER')],
+  }, async (request, reply) => {
+    try {
+      const data = await deleteInvoice(request.user.tenantId, request.user.userId, (request.params as { id: string }).id)
+      return reply.code(200).send({ success: true, data })
     } catch (err) { return errReply(reply, err) }
   })
 

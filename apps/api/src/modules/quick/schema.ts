@@ -148,3 +148,20 @@ export const RegisterInvoiceSchema = z.object({
 
 export type InvoiceItemInput     = z.infer<typeof InvoiceItemSchema>
 export type RegisterInvoiceInput = z.infer<typeof RegisterInvoiceSchema>
+
+/**
+ * HU-210 — Edición del ENCABEZADO de una factura cargada (solo metadatos: emisor, NIT, tipo de
+ * documento, número, fecha y total). NO toca los ítems, el stock ni las transacciones ya registradas
+ * (esos movimientos son inmutables — HU-128). Todos los campos son opcionales; se actualizan los que
+ * lleguen. `date` es la fecha de la factura (invoice_date).
+ */
+export const UpdateInvoiceSchema = z.object({
+  issuer:        z.string().max(255).nullable().optional(),
+  nit:           z.string().max(50).nullable().optional(),
+  documentType:  z.enum(DOCUMENT_TYPE_CODES as [string, ...string[]]).nullable().optional(),
+  invoiceNumber: z.string().max(100).nullable().optional(),
+  date:          z.string().nullable().optional(),   // ISO (yyyy-mm-dd) → invoice_date; null lo limpia
+  total:         z.number().nonnegative('El total no puede ser negativo').nullable().optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'No hay cambios para guardar' })
+
+export type UpdateInvoiceInput = z.infer<typeof UpdateInvoiceSchema>

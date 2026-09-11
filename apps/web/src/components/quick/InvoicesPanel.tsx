@@ -6,6 +6,11 @@ import { fmtCalendarDate, fmtDateTime } from '@/lib/format-date'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { downloadFile, toQuery } from '@/lib/download'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { DOCUMENT_TYPES } from '@nexor/shared'
+
+// HU-210 — editar/eliminar facturas cargadas: solo administradores (mín. Jefe de área).
+const MANAGER_ROLES = ['AREA_MANAGER', 'BRANCH_ADMIN', 'TENANT_ADMIN', 'SUPER_ADMIN']
 
 type Kind = 'purchase' | 'sale'
 const money = (n: number | null) => (n == null ? '—' : `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`)
@@ -108,7 +113,7 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
         </div>
       </div>
 
-      {detailId && <InvoiceDetailModal id={detailId} kind={kind} onClose={() => setDetailId(null)} />}
+      {detailId && <InvoiceDetailModal id={detailId} kind={kind} onClose={() => setDetailId(null)} onChanged={load} />}
     </div>
   )
 }
@@ -123,11 +128,21 @@ interface InvoiceDetail {
   fullExtraction?: { items?: Array<{ description?: { value?: string }; quantity?: { value?: number }; unitPrice?: { value?: number } }> }
 }
 
-export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Kind; onClose: () => void }) {
+export function InvoiceDetailModal({ id, kind, onClose, onChanged }: { id: string; kind: Kind; onClose: () => void; onChanged?: () => void }) {
   const isSale = kind === 'sale'
+  const role   = useAuthStore((s) => s.user?.role)
+  const canManage = !!role && MANAGER_ROLES.includes(role)   // HU-210 — editar/eliminar solo administradores
   const [inv, setInv] = useState<InvoiceDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [imgUrl, setImgUrl] = useState<string | null>(null)
+
+  // HU-210 — edición del encabezado + eliminación con reversión.
+  const [editing, setEditing]     = useState(false)
+  const [form, setForm]           = useState({ issuer: '', nit: '', documentType: '', invoiceNumber: '', date: '', total: '' })
+  const [saving, setSaving]       = useState(false)
+  const [confirmDel, setConfirm]  = useState(false)
+  const [deleting, setDeleting]   = useState(false)
+  const [actionErr, setActionErr] = useState<string | null>(null)
 
   useEffect(() => {
     let url: string | null = null
@@ -139,10 +154,55 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [id])
 
+  function startEdit() {
+    if (!inv) return
+    setActionErr(null)
+    setForm({
+      issuer:        inv.issuer ?? '',
+      nit:           inv.nit ?? '',
+      documentType:  inv.documentType ?? '',
+      invoiceNumber: inv.invoiceNumber ?? '',
+      date:          inv.date ? inv.date.slice(0, 10) : '',
+      total:         inv.total != null ? String(inv.total) : '',
+    })
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    setSaving(true); setActionErr(null)
+    try {
+      const r = await apiClient.patch<{ data: InvoiceDetail }>(`/v1/quick/invoices/${id}`, {
+        issuer:        form.issuer.trim() || null,
+        nit:           form.nit.trim() || null,
+        documentType:  form.documentType || null,
+        invoiceNumber: form.invoiceNumber.trim() || null,
+        date:          form.date || null,
+        total:         form.total === '' ? null : Number(form.total),
+      })
+      setInv(r.data); setEditing(false); onChanged?.()
+    } catch (e: unknown) {
+      setActionErr((e as { message?: string }).message ?? 'No se pudo guardar')
+    } finally { setSaving(false) }
+  }
+
+  async function doDelete() {
+    setDeleting(true); setActionErr(null)
+    try {
+      await apiClient.delete(`/v1/quick/invoices/${id}`)
+      onChanged?.(); onClose()
+    } catch (e: unknown) {
+      setActionErr((e as { message?: string }).message ?? 'No se pudo eliminar la factura')
+      setConfirm(false)
+    } finally { setDeleting(false) }
+  }
+
   // Ítems: los registrados (con efecto). Si no hay, cae a los leídos por OCR.
   const items = inv?.items?.length
     ? inv.items.map((it) => ({ description: it.description ?? '', quantity: it.quantity ?? null, unitValue: it.unitValue ?? null, productName: it.productName ?? null, affectsStock: it.affectsStock, transactionId: it.transactionId }))
     : (inv?.fullExtraction?.items ?? []).map((it) => ({ description: it.description?.value ?? '', quantity: it.quantity?.value ?? null, unitValue: it.unitPrice?.value ?? null, productName: null as string | null, affectsStock: undefined as boolean | undefined, transactionId: undefined as string | undefined }))
+
+  const dinp = 'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
+  const dlbl = 'mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400'
 
   return (
     <Portal>
@@ -160,9 +220,28 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
           {!inv && !err && <div className="mt-4 space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-700" />)}</div>}
 
           {inv && (
+            <>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               {/* Columna izquierda: datos */}
               <div className="space-y-4">
+                {editing ? (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                    <div className="col-span-2"><label className={dlbl}>{isSale ? 'Cliente / Emisor' : 'Proveedor / Emisor'}</label>
+                      <input value={form.issuer} onChange={(e) => setForm((f) => ({ ...f, issuer: e.target.value }))} className={dinp} placeholder="Nombre en la factura" /></div>
+                    <div><label className={dlbl}>Tipo de documento</label>
+                      <SearchableSelect value={form.documentType} onChange={(v) => setForm((f) => ({ ...f, documentType: v }))} className={dinp} placeholder="—"
+                        options={[{ value: '', label: '—' }, ...DOCUMENT_TYPES.map((d) => ({ value: d.code, label: `${d.code} — ${d.label}` }))]} /></div>
+                    <div><label className={dlbl}>NIT o documento</label>
+                      <input value={form.nit} onChange={(e) => setForm((f) => ({ ...f, nit: e.target.value }))} className={dinp} /></div>
+                    <div><label className={dlbl}>N.º de factura</label>
+                      <input value={form.invoiceNumber} onChange={(e) => setForm((f) => ({ ...f, invoiceNumber: e.target.value }))} className={dinp} /></div>
+                    <div><label className={dlbl}>Fecha</label>
+                      <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className={dinp} /></div>
+                    <div><label className={dlbl}>Total</label>
+                      <input type="number" value={form.total} onChange={(e) => setForm((f) => ({ ...f, total: e.target.value }))} className={dinp} /></div>
+                    <p className="col-span-2 text-[11px] text-slate-400">Solo corrige los datos de la factura. No cambia los ítems, el stock ni las transacciones ya registradas.</p>
+                  </div>
+                ) : (
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <div><dt className="text-xs text-slate-500">{isSale ? 'Cliente' : 'Proveedor / Emisor'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.issuer ?? '—'}</dd></div>
                   <div><dt className="text-xs text-slate-500">{inv.documentType ? inv.documentType : 'NIT'}</dt><dd className="text-slate-800 dark:text-slate-100">{inv.nit ?? '—'}</dd></div>
@@ -170,6 +249,7 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
                   <div><dt className="text-xs text-slate-500">Fecha</dt><dd className="text-slate-800 dark:text-slate-100">{fmtDate(inv.date)}</dd></div>
                   <div><dt className="text-xs text-slate-500">Total</dt><dd className="font-semibold text-slate-900 dark:text-slate-100">{money(inv.total)}</dd></div>
                 </dl>
+                )}
 
                 <div>
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Ítems ({items.length})</p>
@@ -222,6 +302,33 @@ export function InvoiceDetailModal({ id, kind, onClose }: { id: string; kind: Ki
                 )}
               </div>
             </div>
+
+            {/* HU-210 — acciones (solo administradores): editar encabezado / eliminar con reversión */}
+            {canManage && (
+              <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-700">
+                {editing ? (
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditing(false)} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
+                    <button onClick={() => void saveEdit()} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{saving ? 'Guardando…' : 'Guardar cambios'}</button>
+                  </div>
+                ) : confirmDel ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-300">¿Eliminar esta factura? Se revierten sus movimientos de stock y se borran sus transacciones.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setConfirm(false)} disabled={deleting} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
+                      <button onClick={() => void doDelete()} disabled={deleting} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setConfirm(true)} className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-900/20">Eliminar</button>
+                    <button onClick={startEdit} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Editar</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {actionErr && <p className="mt-2 text-right text-sm text-red-600 dark:text-red-400">{actionErr}</p>}
+            </>
           )}
         </div>
       </div>

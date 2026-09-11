@@ -8,7 +8,7 @@ import { validateProjectId } from '../proyectos/service'
 import { applyAssignment } from '../proyectos/budget'
 import { matchProductByName } from '../../lib/text-match'
 import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
-import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput } from './schema'
+import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput, UpdateInvoiceInput } from './schema'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
 const numN = (v: unknown): number | null => (v === null || v === undefined ? null : num(v))
@@ -534,6 +534,98 @@ export async function getInvoice(tenantId: string, id: string) {
     hasImage: !!inv.imageMime, additionalFields, items, fullExtraction: inv.fullExtraction,
     createdAt: inv.createdAt, createdByName: author?.name ?? null,
   }
+}
+
+/**
+ * HU-210 — Edita SOLO el encabezado (metadatos) de una factura cargada. No toca ítems, stock ni las
+ * transacciones ya registradas (inmutables — HU-128). Devuelve la factura ya actualizada.
+ */
+export async function updateInvoice(tenantId: string, id: string, input: UpdateInvoiceInput) {
+  const existing = await prisma.quickInvoice.findFirst({ where: { id, tenantId }, select: { id: true } })
+  if (!existing) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+
+  const data: Prisma.QuickInvoiceUpdateInput = {}
+  if (input.issuer        !== undefined) data.issuer        = input.issuer
+  if (input.nit           !== undefined) data.nit           = input.nit
+  if (input.documentType  !== undefined) data.documentType  = input.documentType
+  if (input.invoiceNumber !== undefined) data.invoiceNumber = input.invoiceNumber
+  if (input.total         !== undefined) data.total         = input.total
+  if (input.date          !== undefined) data.invoiceDate   = input.date ? new Date(input.date) : null
+
+  // HU-202 — defensa en profundidad: el proxy `prisma` ya filtra por RLS; el id se validó por tenant arriba.
+  await prisma.quickInvoice.update({ where: { id }, data })
+  return getInvoice(tenantId, id)
+}
+
+/**
+ * HU-210 — Elimina una factura cargada con REVERSIÓN COMPLETA y auditable:
+ *  - borra las transacciones VERA de la factura (su `budget_approval` cae por cascade; el avance del
+ *    proyecto se recalcula solo porque se DERIVA de las transacciones);
+ *  - revierte el stock de cada ítem que lo movió con un movimiento de AJUSTE (el original queda intacto,
+ *    respetando la inmutabilidad de HU-128);
+ *  - si el stock ingresado por la factura ya fue usado/vendido, BLOQUEA el borrado (no deja negativos).
+ * Todo en una sola transacción: o se revierte completo, o no se toca nada.
+ */
+export async function deleteInvoice(tenantId: string, userId: string, id: string) {
+  return prisma.$transaction(async (tx) => {
+    const invoice = await tx.quickInvoice.findFirst({ where: { id, tenantId }, select: { id: true } })
+    if (!invoice) throw { statusCode: 404, message: 'Factura no encontrada', code: 'NOT_FOUND' }
+
+    const txns = await tx.transaction.findMany({ where: { tenantId, quickInvoiceId: id }, select: { id: true } })
+    const txnIds = txns.map((t) => t.id)
+
+    let stockReversals = 0
+    if (txnIds.length) {
+      const movements = await tx.stockMovement.findMany({
+        where:  { tenantId, referenceType: { in: ['quick_purchase', 'quick_sale'] }, referenceId: { in: txnIds } },
+        select: { productId: true, branchId: true, type: true, quantity: true, costPriceFrozen: true, salePriceFrozen: true, product: { select: { name: true } } },
+      })
+      for (const m of movements) {
+        const qty = num(m.quantity)
+        if (qty <= 0) continue
+        const stock = await tx.stock.findUnique({
+          where:  { productId_branchId: { productId: m.productId, branchId: m.branchId } },
+          select: { quantity: true, rentedQuantity: true },
+        })
+        const current = stock ? num(stock.quantity) : 0
+        const rented  = stock ? num(stock.rentedQuantity) : 0
+
+        if (m.type === 'entrada') {
+          // Revertir una ENTRADA (compra) = quitar del stock; nunca dejar el disponible negativo.
+          const after = current - qty
+          if (after < rented) {
+            throw { statusCode: 409, code: 'STOCK_ALREADY_USED',
+              message: `No se puede eliminar: el stock que ingresó "${m.product.name}" con esta factura ya fue usado/vendido (disponible ${Math.max(0, current - rented)}, se requieren ${qty} para revertir).` }
+          }
+          await tx.stock.update({ where: { productId_branchId: { productId: m.productId, branchId: m.branchId } }, data: { quantity: after } })
+          await tx.stockMovement.create({ data: {
+            tenantId, productId: m.productId, branchId: m.branchId, userId, type: 'ajuste', reason: 'ajuste',
+            quantity: qty, quantityBefore: current, quantityAfter: after, costPriceFrozen: m.costPriceFrozen ?? null,
+            referenceType: 'quick_invoice_reversal', referenceId: id, notes: 'Reversa por eliminación de factura cargada',
+          } })
+          stockReversals++
+        } else if (m.type === 'salida') {
+          // Revertir una SALIDA (venta) = devolver al stock (nunca negativo).
+          const after = current + qty
+          await tx.stock.upsert({
+            where:  { productId_branchId: { productId: m.productId, branchId: m.branchId } },
+            create: { productId: m.productId, branchId: m.branchId, quantity: after },
+            update: { quantity: after },
+          })
+          await tx.stockMovement.create({ data: {
+            tenantId, productId: m.productId, branchId: m.branchId, userId, type: 'ajuste', reason: 'ajuste',
+            quantity: qty, quantityBefore: current, quantityAfter: after, salePriceFrozen: m.salePriceFrozen ?? null,
+            referenceType: 'quick_invoice_reversal', referenceId: id, notes: 'Reversa por eliminación de factura cargada',
+          } })
+          stockReversals++
+        }
+      }
+      await tx.transaction.deleteMany({ where: { tenantId, id: { in: txnIds } } })
+    }
+
+    await tx.quickInvoice.delete({ where: { id } })
+    return { id, deleted: true, transactionsRemoved: txnIds.length, stockReversals }
+  })
 }
 
 /** Etiqueta que parece "número de factura" dentro de la información adicional (para la lista/búsqueda). */

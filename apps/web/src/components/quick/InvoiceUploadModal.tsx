@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { DOCUMENT_TYPES } from '@nexor/shared'
 
 type Kind = 'purchase' | 'sale'
@@ -310,21 +311,24 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
                   sucursal) encojan y no corten la columna derecha en móvil (HU-198). */}
               <div className="grid grid-cols-2 gap-3 [&>div]:min-w-0">
                 <div><label className={lbl}>{isSale ? 'Cliente' : 'Proveedor / Emisor'}</label>
-                  <select value={cpId} onChange={(e) => selectCounterparty(e.target.value)} className={inp}>
-                    {counterparties.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isGeneric ? ' (genérico)' : ''}</option>)}
-                  </select></div>
+                  <SearchableSelect
+                    value={cpId} onChange={selectCounterparty} className={inp}
+                    placeholder={isSale ? 'Buscar cliente…' : 'Buscar proveedor…'}
+                    options={counterparties.map((o) => ({ value: o.id, label: `${o.name}${o.isGeneric ? ' (genérico)' : ''}`, hint: o.taxId ?? undefined }))}
+                  /></div>
                 {!isOperative && (
                   <div><label className={lbl}>Sucursal</label>
-                    <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={inp}>
-                      <option value="">Seleccionar…</option>
-                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select></div>
+                    <SearchableSelect
+                      value={branchId} onChange={setBranchId} className={inp} placeholder="Seleccionar…"
+                      options={branches.map((b) => ({ value: b.id, label: b.name }))}
+                    /></div>
                 )}
                 <div><label className={lbl}>{manual ? 'Emisor' : 'Emisor (leído)'}</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inp} placeholder={manual ? 'Nombre del proveedor/emisor' : 'Nombre en la factura'} /></div>
                 <div><label className={lbl}>Tipo de documento</label>
-                  <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} className={inp}>
-                    {DOCUMENT_TYPES.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
-                  </select></div>
+                  <SearchableSelect
+                    value={documentType} onChange={setDocumentType} className={inp}
+                    options={DOCUMENT_TYPES.map((d) => ({ value: d.code, label: `${d.code} — ${d.label}` }))}
+                  /></div>
                 <div><label className={lbl}>NIT o documento</label><input value={nit} onChange={(e) => setNit(e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>{manual ? 'N.º de factura' : 'N.º de factura (leído)'}</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={inp} placeholder="Ej: GOZ5292464" /></div>
                 <div><label className={lbl}>Fecha</label><input type="date" value={date?.slice(0, 10) ?? ''} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
