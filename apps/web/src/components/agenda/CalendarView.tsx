@@ -105,6 +105,43 @@ function apptHeightPx(startAt: string, endAt: string): number {
   return Math.max((ms / 60000) * HOUR_PX / 60, 24)
 }
 
+/** Posición horizontal calculada para no solapar: columna asignada y total de columnas del grupo. */
+interface Laid<T> { item: T; top: number; height: number; col: number; cols: number }
+
+/**
+ * Reparte en columnas lado a lado los ítems que se solapan en el tiempo (como Google Calendar): agrupa
+ * los que se cruzan y a cada uno le asigna una columna (la primera libre), para que ninguno quede encima
+ * de otro. Los que no se cruzan ocupan todo el ancho.
+ */
+function layoutColumns<T>(raw: { item: T; top: number; height: number }[]): Laid<T>[] {
+  const sorted = [...raw].sort((a, b) => a.top - b.top || (a.top + a.height) - (b.top + b.height))
+  const out: Laid<T>[] = []
+  let group: typeof sorted = []
+  let groupEnd = -Infinity
+
+  const flush = () => {
+    const colEnds: number[] = []                 // último "bottom" ocupado por cada columna
+    const placed: { g: typeof sorted[number]; col: number }[] = []
+    for (const g of group) {
+      let c = colEnds.findIndex((end) => g.top >= end - 0.001)
+      if (c === -1) { c = colEnds.length; colEnds.push(g.top + g.height) }
+      else colEnds[c] = g.top + g.height
+      placed.push({ g, col: c })
+    }
+    const cols = colEnds.length
+    for (const p of placed) out.push({ item: p.g.item, top: p.g.top, height: p.g.height, col: p.col, cols })
+    group = []
+  }
+
+  for (const it of sorted) {
+    if (group.length && it.top >= groupEnd) { flush(); groupEnd = -Infinity }
+    group.push(it)
+    groupEnd = Math.max(groupEnd, it.top + it.height)
+  }
+  if (group.length) flush()
+  return out
+}
+
 function getMonthGrid(year: number, month: number): Date[][] {
   const first = new Date(year, month, 1)
   const dow   = first.getDay()
@@ -136,9 +173,10 @@ function fmtTime(iso: string): string {
 // HU-204 — estilo propio del EVENTO LIBRE (violeta), distinto de las citas de servicio.
 const EVENT_BLOCK = 'border-l-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200'
 
-function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
-  const top    = apptTopPx(appt.startAt)
-  const height = apptHeightPx(appt.startAt, appt.endAt)
+interface BlockPos { top: number; height: number; left: string; width: string }
+
+function AppointmentBlock({ appt, pos, onClick }: { appt: Appointment; pos: BlockPos; onClick: () => void }) {
+  const height = pos.height
   const isEvent = appt.type === 'event'
   const style  = isEvent ? EVENT_BLOCK : (STATUS_BLOCK[appt.status] ?? STATUS_BLOCK.confirmed)
   const attendees = appt.attendees?.length ?? 0
@@ -147,8 +185,8 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
     <div
       data-appointment="true"
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      className={`absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded border-l-2 px-1 py-0.5 text-xs shadow-sm transition-all hover:brightness-95 ${style}`}
-      style={{ top: `${top}px`, height: `${height}px`, minHeight: '24px' }}
+      className={`absolute cursor-pointer overflow-hidden rounded border-l-2 px-1 py-0.5 text-xs shadow-sm transition-all hover:brightness-95 ${style}`}
+      style={{ top: `${pos.top}px`, height: `${height}px`, minHeight: '24px', left: pos.left, width: pos.width }}
     >
       <div className="truncate font-medium leading-tight">
         {isEvent ? <>📅 {appt.title ?? 'Evento'}</> : appt.clientName}
@@ -176,15 +214,14 @@ const REMINDER_STYLE: Record<string, string> = {
   critical: 'border-l-red-500 bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200',
 }
 
-function ReminderBlock({ rem }: { rem: Reminder }) {
-  const top = apptTopPx(rem.remindAt)
+function ReminderBlock({ rem, pos }: { rem: Reminder; pos: BlockPos }) {
   const style = REMINDER_STYLE[rem.alertLevel] ?? REMINDER_STYLE.normal
   return (
     <div
       data-appointment="true"
-      title={`Recordatorio: ${rem.title}`}
-      className={`absolute right-0.5 z-[5] flex w-1/2 items-center gap-1 overflow-hidden rounded border-l-2 border-dashed px-1 py-0.5 text-[10px] shadow-sm ${style} ${rem.status === 'done' ? 'opacity-50 line-through' : ''}`}
-      style={{ top: `${top}px`, minHeight: '20px' }}
+      title={`Recordatorio: ${rem.title} · ${fmtTime(rem.remindAt)}`}
+      className={`absolute z-[5] flex items-center gap-1 overflow-hidden rounded border-l-2 border-dashed px-1 py-0.5 text-[10px] shadow-sm ${style} ${rem.status === 'done' ? 'opacity-50 line-through' : ''}`}
+      style={{ top: `${pos.top}px`, height: `${pos.height}px`, minHeight: '20px', left: pos.left, width: pos.width }}
     >
       <span aria-hidden>🔔</span>
       <span className="truncate font-medium leading-tight">{rem.title}</span>
@@ -253,12 +290,28 @@ function DayColumn({
         </div>
       )}
 
-      {appointments.map((a) => (
-        <AppointmentBlock key={a.id} appt={a} onClick={() => onApptClick(a)} />
-      ))}
-      {reminders.map((r) => (
-        <ReminderBlock key={r.id} rem={r} />
-      ))}
+      {(() => {
+        // HU — citas y recordatorios se reparten en columnas lado a lado para no encimarse.
+        const REMINDER_H = 26
+        const GAP = 3
+        type DayItem = { kind: 'appt'; a: Appointment } | { kind: 'rem'; r: Reminder }
+        const items: { item: DayItem; top: number; height: number }[] = [
+          ...appointments.map((a) => ({ item: { kind: 'appt' as const, a }, top: apptTopPx(a.startAt), height: apptHeightPx(a.startAt, a.endAt) })),
+          ...reminders.map((r) => ({ item: { kind: 'rem' as const, r }, top: apptTopPx(r.remindAt), height: REMINDER_H })),
+        ]
+        return layoutColumns(items).map((l) => {
+          const pos: BlockPos = {
+            top:    l.top,
+            height: l.height,
+            left:   `calc(${(l.col / l.cols) * 100}% + 1px)`,
+            width:  `calc(${100 / l.cols}% - ${GAP}px)`,
+          }
+          const it = l.item
+          return it.kind === 'appt'
+            ? <AppointmentBlock key={it.a.id} appt={it.a} pos={pos} onClick={() => onApptClick(it.a)} />
+            : <ReminderBlock key={it.r.id} rem={it.r} pos={pos} />
+        })
+      })()}
     </div>
   )
 }
