@@ -11,6 +11,7 @@ import { startBudgetControlScheduler }        from './jobs/budget-control'
 import { startDashboardRollupScheduler }      from './jobs/dashboard-rollup'
 import { startDemoExpiryScheduler }           from './jobs/demo-expiry'
 import { startReminderScheduler }             from './jobs/reminder-fire'
+import { startAppointmentNotifyScheduler }    from './jobs/appointment-notify'
 
 // Sentry debe inicializarse antes que cualquier otro modulo
 initSentry()
@@ -244,6 +245,7 @@ const start = async (): Promise<void> => {
     startDashboardRollupScheduler()      // Rollup diario del Dashboard (HU-127) — corre cada 24 h
     startDemoExpiryScheduler()           // HU-142 — suspende demos vencidas cada 1 h (sin borrar)
     startReminderScheduler()             // HU-156 — dispara recordatorios cada 1 min → notificación
+    startAppointmentNotifyScheduler()    // HU-211 — avisa la cita 5 min antes y a la hora exacta (in-app + WhatsApp)
   } catch (err) {
     app.log.error(err)
     process.exit(1)
