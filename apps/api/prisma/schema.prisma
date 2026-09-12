@@ -1296,6 +1296,9 @@ model Appointment {
   notes          String?  @db.Text
   channel        String   @default("manual") @db.VarChar(50)
   reminderSent   Boolean  @default(false) @map("reminder_sent")
+  // HU-211 — avisos al equipo interno: uno faltando 5 min y otro a la hora exacta (una sola vez cada uno).
+  notified5MinAt DateTime? @map("notified_5min_at") @db.Timestamptz(6)
+  notifiedStartAt DateTime? @map("notified_start_at") @db.Timestamptz(6)
   createdByAgent Boolean  @default(false) @map("created_by_agent")
   // HU-205 — quién creó la cita/evento (userId, escalar sin relación). Para la visibilidad del evento
   // libre: lo ven su creador, sus asistentes y los admins transversales.

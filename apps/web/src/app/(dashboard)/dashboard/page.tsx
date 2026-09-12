@@ -105,7 +105,7 @@ function groupNotifications(list: NotificationItem[]): [string, NotificationItem
   }
   return [...map.entries()]
 }
-interface Appointment   { id: string; clientName: string | null; client: { name: string } | null; serviceType: { name: string } | null; startAt: string; status: string }
+interface Appointment   { id: string; type: string; title: string | null; clientName: string | null; client: { name: string } | null; serviceType: { name: string } | null; startAt: string; status: string }
 
 // ─── Componentes internos ─────────────────────────────────────────────────────
 
@@ -394,8 +394,8 @@ export default function InicioPage() {
                       return (
                         <Link key={a.id} href="/agenda/appointments" className="flex items-center justify-between gap-4 py-2.5 transition-opacity hover:opacity-75">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.clientName ?? a.client?.name ?? 'Cliente'}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.serviceType?.name ?? 'Servicio'}</p>
+                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.type === 'event' ? (a.title ?? 'Evento') : (a.clientName ?? a.client?.name ?? 'Cliente')}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.type === 'event' ? 'Evento' : (a.serviceType?.name ?? 'Servicio')}</p>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmtTime(a.startAt)}</p>
@@ -422,8 +422,8 @@ export default function InicioPage() {
                       return (
                         <Link key={a.id} href="/agenda/appointments" className="flex items-center justify-between gap-4 py-2.5 transition-opacity hover:opacity-75">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.clientName ?? a.client?.name ?? 'Cliente'}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.serviceType?.name ?? 'Servicio'}</p>
+                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{a.type === 'event' ? (a.title ?? 'Evento') : (a.clientName ?? a.client?.name ?? 'Cliente')}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{a.type === 'event' ? 'Evento' : (a.serviceType?.name ?? 'Servicio')}</p>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100"><span className="capitalize">{fmtShortDate(a.startAt)}</span> · {fmtTime(a.startAt)}</p>
