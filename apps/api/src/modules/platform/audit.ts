@@ -28,6 +28,7 @@ export type PlatformAction =
   | 'tenant.impersonate'
   | 'channel.connect'
   | 'channel.disconnect'
+  | 'notifier.configure'   // HU-210 — configura el remitente notificador global de NEXOR
 
 export interface PlatformAuditInput {
   platformAdminId: string

@@ -7,6 +7,7 @@ import { isPlatformAdminActive } from '../platform/service'
 import { logPlatformAction, listPlatformAuditLogs } from '../platform/audit'
 import { createTenantWithAdmin, getSubscription, setSubscriptionAmount, setDemoDuration, convertDemoToClient, extendDemoAiQuota, DEMO_MAX_DAYS } from '../platform/tenants'
 import { listTenantIntegrations, connectWhatsAppForTenant, connectGmailForTenant, testTenantIntegration, disconnectTenantIntegration } from '../platform/integrations'
+import { getGlobalNotifier, setGlobalNotifier, testGlobalNotifier } from '../platform/notifier'
 import { listPlatformNotifications, getPlatformUnreadCount, markPlatformRead, markAllPlatformRead } from '../platform/notifications'
 
 /**
@@ -91,6 +92,13 @@ const ConnectGmailSchema = z.object({
   reason: z.string().min(1, 'El motivo es obligatorio').max(500),
 })
 const DisconnectSchema = z.object({ reason: z.string().min(1, 'El motivo es obligatorio').max(500) })
+// HU-210 — remitente notificador GLOBAL de NEXOR (número que ENVÍA notificaciones).
+const NotifierSchema = z.object({
+  phoneNumberId: z.string().min(1, 'El Phone Number ID es obligatorio').max(50),
+  wabaId:        z.string().max(50).optional(),
+  accessToken:   z.string().min(1, 'El token es obligatorio'),
+  reason:        z.string().min(1, 'El motivo es obligatorio').max(500),
+})
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -301,6 +309,37 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     try {
       await disconnectTenantIntegration(id, integrationId, request.user.platformAdminId as string, parsed.data.reason, request.ip)
       return reply.code(200).send({ success: true })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  // ── HU-210 — Remitente NOTIFICADOR global de NEXOR (número que ENVÍA notificaciones) ────────────
+
+  /** GET /v1/admin/notifier — estado del remitente notificador global (SIN token). */
+  app.get('/notifier', {
+    schema: { tags: ['Admin'], summary: 'Remitente notificador global (WhatsApp)', description: 'Config del número que ENVÍA notificaciones (global de NEXOR). Nunca expone el token.', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (_request, reply) => {
+    return reply.code(200).send({ success: true, data: await getGlobalNotifier() })
+  })
+
+  /** PUT /v1/admin/notifier — configura/actualiza el remitente global. El token se cifra; auditado. */
+  app.put('/notifier', {
+    schema: { tags: ['Admin'], summary: 'Configurar el remitente notificador global', description: 'Guarda Phone Number ID, WABA y token permanente (cifrado con la ENCRYPTION_KEY del entorno). No toca el agente de atención.', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (request, reply) => {
+    const parsed = NotifierSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    try {
+      const r = await setGlobalNotifier(parsed.data, request.user.platformAdminId as string, parsed.data.reason, request.ip)
+      return reply.code(200).send({ success: true, data: r })
+    } catch (err) { return chanErr(reply, err) }
+  })
+
+  /** POST /v1/admin/notifier/test — verifica el token del remitente contra Meta (sin exponerlo). */
+  app.post('/notifier/test', {
+    schema: { tags: ['Admin'], summary: 'Verificar el remitente notificador global', security: bearerAuth, response: { 200: objRes, ...stdErrors } },
+  }, async (_request, reply) => {
+    try {
+      const r = await testGlobalNotifier()
+      return reply.code(200).send({ success: r.success, data: r })
     } catch (err) { return chanErr(reply, err) }
   })
 

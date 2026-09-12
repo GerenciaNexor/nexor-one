@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth'
 import { SupplierFormModal } from '@/components/nira/SupplierFormModal'
 import type { Supplier } from '@/components/nira/SupplierFormModal'
 import { Portal } from '@/components/ui/Portal'
+import { InvoiceDetailModal } from '@/components/quick/InvoicesPanel'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,15 @@ interface POSummary {
   total:            number
   expectedDelivery: string | null
   createdAt:        string
+}
+
+interface InvoiceSummary {
+  id:            string
+  invoiceNumber: string | null
+  issuer:        string | null
+  date:          string | null
+  total:         number | null
+  createdAt:     string
 }
 
 // ─── Auxiliares ───────────────────────────────────────────────────────────────
@@ -130,6 +140,8 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
   const [supplier,     setSupplier]     = useState<SupplierDetail | null>(null)
   const [recentPos,    setRecentPos]    = useState<POSummary[]>([])
+  const [recentInvoices, setRecentInvoices] = useState<InvoiceSummary[]>([])
+  const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState<string | null>(null)
   const [showEdit,     setShowEdit]     = useState(false)
@@ -140,10 +152,12 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
     Promise.all([
       apiClient.get<SupplierDetail>(`/v1/nira/suppliers/${id}`),
       apiClient.get<{ data: POSummary[] }>(`/v1/nira/purchase-orders?supplierId=${id}`),
+      apiClient.get<{ data: InvoiceSummary[] }>(`/v1/quick/invoices?kind=purchase&supplierId=${id}&limit=5`).catch(() => ({ data: [] as InvoiceSummary[] })),
     ])
-      .then(([sup, pos]) => {
+      .then(([sup, pos, invoices]) => {
         setSupplier(sup)
         setRecentPos(pos.data.slice(0, 5))
+        setRecentInvoices(invoices.data)
       })
       .catch((e: unknown) => {
         const err = e as { message?: string }
@@ -219,7 +233,10 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
               )}
             </div>
             {supplier.taxId && (
-              <p className="mt-0.5 font-mono text-xs text-slate-400">{supplier.taxId}</p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {supplier.documentType ? <span className="font-semibold text-slate-500">{supplier.documentType}</span> : null}{' '}
+                <span className="font-mono">{supplier.taxId}</span>
+              </p>
             )}
           </div>
         </div>
@@ -257,6 +274,8 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             </div>
             <div className="grid gap-x-8 gap-y-4 px-5 py-4 sm:grid-cols-2">
               {[
+                { label: 'Tipo de documento', value: supplier.documentType },
+                { label: 'N.º de documento',  value: supplier.taxId },
                 { label: 'Contacto',        value: supplier.contactName },
                 { label: 'Correo',          value: supplier.email },
                 { label: 'Teléfono',        value: supplier.phone },
@@ -321,6 +340,39 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                   ))}
                 </tbody>
               </table>
+              </div>
+            )}
+          </div>
+
+          {/* Últimas facturas cargadas (OCR) de este proveedor — HU-210 */}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-3">
+              <h2 className="text-sm font-semibold text-slate-700">Últimas facturas cargadas</h2>
+            </div>
+            {recentInvoices.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-slate-400">Sin facturas cargadas de este proveedor</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <th className="px-5 py-2.5">N.º factura</th>
+                      <th className="px-5 py-2.5">Emisor</th>
+                      <th className="px-5 py-2.5 text-right">Total</th>
+                      <th className="px-5 py-2.5">Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {recentInvoices.map((inv) => (
+                      <tr key={inv.id} onClick={() => setInvoiceDetailId(inv.id)} className="cursor-pointer transition-colors hover:bg-slate-50">
+                        <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-700">{inv.invoiceNumber ?? '—'}</td>
+                        <td className="px-5 py-3 text-slate-600">{inv.issuer ?? '—'}</td>
+                        <td className="px-5 py-3 text-right font-medium text-slate-900">{inv.total != null ? `$${inv.total.toLocaleString('es-CO', { minimumFractionDigits: 0 })}` : '—'}</td>
+                        <td className="px-5 py-3 text-slate-500">{inv.date ? new Date(inv.date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -407,6 +459,19 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
           onConfirm={confirmDeactivate}
           onCancel={() => setDeactivating(false)}
           loading={deactivateLoad}
+        />
+      )}
+
+      {/* ── Detalle de una factura cargada (HU-210) ──────────────────────── */}
+      {invoiceDetailId && (
+        <InvoiceDetailModal
+          id={invoiceDetailId}
+          kind="purchase"
+          onClose={() => setInvoiceDetailId(null)}
+          onChanged={() => {
+            apiClient.get<{ data: InvoiceSummary[] }>(`/v1/quick/invoices?kind=purchase&supplierId=${id}&limit=5`)
+              .then((r) => setRecentInvoices(r.data)).catch(() => {})
+          }}
         />
       )}
     </div>

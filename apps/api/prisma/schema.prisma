@@ -998,6 +998,25 @@ model AgentSetting {
   @@map("agent_settings")
 }
 
+/// HU-210 — Remitente NOTIFICADOR de WhatsApp (el número que ENVÍA notificaciones), configurado a
+/// nivel de PLATAFORMA. Es OTRA cosa que el agente de atención (tabla `integrations`, que recibe y
+/// responde): aquí solo se envía. `tenant_id` NULL = remitente GLOBAL de NEXOR (para todas las
+/// empresas); a futuro un tenant puede tener el suyo (tenant_id = su id). La resolución prefiere el
+/// del tenant y cae al global. Tabla de PLATAFORMA con RLS deny-all: el token cifrado solo lo lee
+/// directPrisma; jamás sale en respuestas ni logs.
+model NotifierSender {
+  id             String   @id @default(cuid()) @db.VarChar(30)
+  tenantId       String?  @unique @map("tenant_id") @db.VarChar(30)  // NULL = global de NEXOR
+  phoneNumberId  String   @map("phone_number_id") @db.VarChar(50)
+  wabaId         String?  @map("waba_id") @db.VarChar(50)
+  tokenEncrypted String   @map("token_encrypted") @db.Text
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("notifier_senders")
+}
+
 /// Historial INMUTABLE de cada cambio en el inventario.
 /// APPEND-ONLY: nunca se modifica ni elimina un movimiento.
 model StockMovement {
