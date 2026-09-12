@@ -2,7 +2,7 @@
  * HU-207 — Capa central de envío de notificaciones por WhatsApp Business (Cloud API oficial).
  *
  * Regla dura: SOLO la vía oficial (Graph API) con PLANTILLAS pre-aprobadas por Meta. Nunca un número
- * personal ni una librería no oficial. El token vive CIFRADO en `integrations` (por tenant) y jamás se
+ * personal ni una librería no oficial. El token del REMITENTE vive CIFRADO (ver HU-210) y jamás se
  * expone en logs ni respuestas. Cada envío se REGISTRA en `whatsapp_messages` (a quién, qué plantilla,
  * variables, estado y costo estimado). Los errores (número inválido, plantilla no aprobada/pausada,
  * límite, token vencido) se registran y NO tumban el flujo (esta función nunca lanza).
@@ -90,9 +90,9 @@ function mapMetaError(httpStatus: number, detail: string): string {
 }
 
 /**
- * Envía una notificación por WhatsApp usando una plantilla aprobada. Resuelve la integración del
- * tenant (phone_number_id + token cifrado), normaliza el destino, envía por la Cloud API y registra el
- * resultado. NUNCA lanza: cualquier fallo queda en `whatsapp_messages` y se devuelve en el resultado.
+ * Envía una notificación por WhatsApp usando una plantilla aprobada. Resuelve el REMITENTE notificador
+ * (HU-210: propio del tenant → global; phone_number_id + token cifrado), normaliza el destino, envía por
+ * la Cloud API y registra el resultado. NUNCA lanza: cualquier fallo queda en `whatsapp_messages`.
  */
 export async function sendWhatsAppTemplate(p: SendTemplateParams): Promise<SendTemplateResult> {
   const language = p.languageCode ?? 'es'
