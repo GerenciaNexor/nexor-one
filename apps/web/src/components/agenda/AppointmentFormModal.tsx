@@ -34,6 +34,32 @@ interface Props {
 const HOURS_OPT = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const MINS_OPT  = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55']
 
+/** Etiqueta 12 h ("09:00" → "9:00 a. m.") para mostrar la hora de forma legible en los <select>. */
+function hLabel(h: string): string {
+  const n = Number(h); const ap = n < 12 ? 'a. m.' : 'p. m.'; const h12 = n % 12 === 0 ? 12 : n % 12
+  return `${h12} ${ap}`
+}
+
+/**
+ * Selector de hora limpio y consistente en todos los navegadores: dos <select> (hora + minuto), en
+ * pasos de 5 min. Evita el picker nativo de `<input type="time">` (feo/inconsistente). value = "HH:mm".
+ */
+function TimeField({ value, onChange, cls }: { value: string; onChange: (v: string) => void; cls: string }) {
+  const [h, m] = (value || '09:00').split(':')
+  const min = MINS_OPT.includes(m ?? '') ? (m as string) : '00'
+  return (
+    <div className="flex items-center gap-1.5">
+      <select value={h ?? '09'} onChange={(e) => onChange(`${e.target.value}:${min}`)} className={cls} aria-label="Hora">
+        {HOURS_OPT.map((x) => <option key={x} value={x}>{hLabel(x)}</option>)}
+      </select>
+      <span className="text-slate-400">:</span>
+      <select value={min} onChange={(e) => onChange(`${h ?? '09'}:${e.target.value}`)} className={cls} aria-label="Minuto">
+        {MINS_OPT.map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+    </div>
+  )
+}
+
 export function AppointmentFormModal({
   initialDate,
   initialTime,
@@ -492,11 +518,11 @@ export function AppointmentFormModal({
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Inicio</label>
-                    <input type="time" value={evStart} onChange={(e) => setEvStart(e.target.value)} required className={inputCls} />
+                    <TimeField value={evStart} onChange={setEvStart} cls={inputCls} />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Fin</label>
-                    <input type="time" value={evEnd} onChange={(e) => setEvEnd(e.target.value)} required className={inputCls} />
+                    <TimeField value={evEnd} onChange={setEvEnd} cls={inputCls} />
                   </div>
                 </div>
                 <div>

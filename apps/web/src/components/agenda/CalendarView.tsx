@@ -5,6 +5,8 @@ import { apiClient } from '@/lib/api-client'
 import { useAuthStore } from '@/store/auth'
 import { AppointmentDetailModal } from './AppointmentDetailModal'
 import { AppointmentFormModal } from './AppointmentFormModal'
+import { ReminderDetailModal } from '@/components/reminders/ReminderDetailModal'
+import { ReminderFormModal, type Reminder } from '@/components/reminders/ReminderFormModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,14 +41,7 @@ export interface Appointment {
   attendees?:     Attendee[]            // HU-204
 }
 
-// Recordatorio (se muestra también en el calendario — el usuario los revisa aquí).
-export interface Reminder {
-  id:         string
-  title:      string
-  remindAt:   string
-  alertLevel: 'normal' | 'urgent' | 'critical'
-  status:     'pending' | 'done'
-}
+// Recordatorio: se reutiliza el tipo completo de ReminderFormModal para poder abrir su detalle/edición.
 
 type ViewMode  = 'week' | 'day' | 'month'
 interface Branch     { id: string; name: string; isActive?: boolean }
@@ -105,6 +100,43 @@ function apptHeightPx(startAt: string, endAt: string): number {
   return Math.max((ms / 60000) * HOUR_PX / 60, 24)
 }
 
+/** Posición horizontal calculada para no solapar: columna asignada y total de columnas del grupo. */
+interface Laid<T> { item: T; top: number; height: number; col: number; cols: number }
+
+/**
+ * Reparte en columnas lado a lado los ítems que se solapan en el tiempo (como Google Calendar): agrupa
+ * los que se cruzan y a cada uno le asigna una columna (la primera libre), para que ninguno quede encima
+ * de otro. Los que no se cruzan ocupan todo el ancho.
+ */
+function layoutColumns<T>(raw: { item: T; top: number; height: number }[]): Laid<T>[] {
+  const sorted = [...raw].sort((a, b) => a.top - b.top || (a.top + a.height) - (b.top + b.height))
+  const out: Laid<T>[] = []
+  let group: typeof sorted = []
+  let groupEnd = -Infinity
+
+  const flush = () => {
+    const colEnds: number[] = []                 // último "bottom" ocupado por cada columna
+    const placed: { g: typeof sorted[number]; col: number }[] = []
+    for (const g of group) {
+      let c = colEnds.findIndex((end) => g.top >= end - 0.001)
+      if (c === -1) { c = colEnds.length; colEnds.push(g.top + g.height) }
+      else colEnds[c] = g.top + g.height
+      placed.push({ g, col: c })
+    }
+    const cols = colEnds.length
+    for (const p of placed) out.push({ item: p.g.item, top: p.g.top, height: p.g.height, col: p.col, cols })
+    group = []
+  }
+
+  for (const it of sorted) {
+    if (group.length && it.top >= groupEnd) { flush(); groupEnd = -Infinity }
+    group.push(it)
+    groupEnd = Math.max(groupEnd, it.top + it.height)
+  }
+  if (group.length) flush()
+  return out
+}
+
 function getMonthGrid(year: number, month: number): Date[][] {
   const first = new Date(year, month, 1)
   const dow   = first.getDay()
@@ -136,9 +168,10 @@ function fmtTime(iso: string): string {
 // HU-204 — estilo propio del EVENTO LIBRE (violeta), distinto de las citas de servicio.
 const EVENT_BLOCK = 'border-l-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200'
 
-function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
-  const top    = apptTopPx(appt.startAt)
-  const height = apptHeightPx(appt.startAt, appt.endAt)
+interface BlockPos { top: number; height: number; left: string; width: string }
+
+function AppointmentBlock({ appt, pos, onClick }: { appt: Appointment; pos: BlockPos; onClick: () => void }) {
+  const height = pos.height
   const isEvent = appt.type === 'event'
   const style  = isEvent ? EVENT_BLOCK : (STATUS_BLOCK[appt.status] ?? STATUS_BLOCK.confirmed)
   const attendees = appt.attendees?.length ?? 0
@@ -147,8 +180,8 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
     <div
       data-appointment="true"
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      className={`absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded border-l-2 px-1 py-0.5 text-xs shadow-sm transition-all hover:brightness-95 ${style}`}
-      style={{ top: `${top}px`, height: `${height}px`, minHeight: '24px' }}
+      className={`absolute cursor-pointer overflow-hidden rounded border-l-2 px-1 py-0.5 text-xs shadow-sm transition-all hover:brightness-95 ${style}`}
+      style={{ top: `${pos.top}px`, height: `${height}px`, minHeight: '24px', left: pos.left, width: pos.width }}
     >
       <div className="truncate font-medium leading-tight">
         {isEvent ? <>📅 {appt.title ?? 'Evento'}</> : appt.clientName}
@@ -176,15 +209,15 @@ const REMINDER_STYLE: Record<string, string> = {
   critical: 'border-l-red-500 bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200',
 }
 
-function ReminderBlock({ rem }: { rem: Reminder }) {
-  const top = apptTopPx(rem.remindAt)
+function ReminderBlock({ rem, pos, onClick }: { rem: Reminder; pos: BlockPos; onClick: () => void }) {
   const style = REMINDER_STYLE[rem.alertLevel] ?? REMINDER_STYLE.normal
   return (
     <div
       data-appointment="true"
-      title={`Recordatorio: ${rem.title}`}
-      className={`absolute right-0.5 z-[5] flex w-1/2 items-center gap-1 overflow-hidden rounded border-l-2 border-dashed px-1 py-0.5 text-[10px] shadow-sm ${style} ${rem.status === 'done' ? 'opacity-50 line-through' : ''}`}
-      style={{ top: `${top}px`, minHeight: '20px' }}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      title={`Recordatorio: ${rem.title} · ${fmtTime(rem.remindAt)}`}
+      className={`absolute z-[5] flex cursor-pointer items-center gap-1 overflow-hidden rounded border-l-2 border-dashed px-1 py-0.5 text-[10px] shadow-sm transition-all hover:brightness-95 ${style} ${rem.status === 'done' ? 'opacity-50 line-through' : ''}`}
+      style={{ top: `${pos.top}px`, height: `${pos.height}px`, minHeight: '20px', left: pos.left, width: pos.width }}
     >
       <span aria-hidden>🔔</span>
       <span className="truncate font-medium leading-tight">{rem.title}</span>
@@ -200,14 +233,16 @@ function DayColumn({
   reminders,
   isToday,
   onApptClick,
+  onReminderClick,
   onSlotClick,
 }: {
-  day:          Date
-  appointments: Appointment[]
-  reminders:    Reminder[]
-  isToday:      boolean
-  onApptClick:  (a: Appointment) => void
-  onSlotClick:  (date: string, time: string) => void
+  day:            Date
+  appointments:   Appointment[]
+  reminders:      Reminder[]
+  isToday:        boolean
+  onApptClick:    (a: Appointment) => void
+  onReminderClick:(r: Reminder) => void
+  onSlotClick:    (date: string, time: string) => void
 }) {
   const totalH = (GRID_END - GRID_START) * HOUR_PX
   const now    = new Date()
@@ -253,12 +288,28 @@ function DayColumn({
         </div>
       )}
 
-      {appointments.map((a) => (
-        <AppointmentBlock key={a.id} appt={a} onClick={() => onApptClick(a)} />
-      ))}
-      {reminders.map((r) => (
-        <ReminderBlock key={r.id} rem={r} />
-      ))}
+      {(() => {
+        // HU — citas y recordatorios se reparten en columnas lado a lado para no encimarse.
+        const REMINDER_H = 26
+        const GAP = 3
+        type DayItem = { kind: 'appt'; a: Appointment } | { kind: 'rem'; r: Reminder }
+        const items: { item: DayItem; top: number; height: number }[] = [
+          ...appointments.map((a) => ({ item: { kind: 'appt' as const, a }, top: apptTopPx(a.startAt), height: apptHeightPx(a.startAt, a.endAt) })),
+          ...reminders.map((r) => ({ item: { kind: 'rem' as const, r }, top: apptTopPx(r.remindAt), height: REMINDER_H })),
+        ]
+        return layoutColumns(items).map((l) => {
+          const pos: BlockPos = {
+            top:    l.top,
+            height: l.height,
+            left:   `calc(${(l.col / l.cols) * 100}% + 1px)`,
+            width:  `calc(${100 / l.cols}% - ${GAP}px)`,
+          }
+          const it = l.item
+          return it.kind === 'appt'
+            ? <AppointmentBlock key={it.a.id} appt={it.a} pos={pos} onClick={() => onApptClick(it.a)} />
+            : <ReminderBlock key={it.r.id} rem={it.r} pos={pos} onClick={() => onReminderClick(it.r)} />
+        })
+      })()}
     </div>
   )
 }
@@ -270,13 +321,15 @@ function WeekView({
   appointments,
   reminders,
   onApptClick,
+  onReminderClick,
   onSlotClick,
 }: {
-  weekStart:    Date
-  appointments: Appointment[]
-  reminders:    Reminder[]
-  onApptClick:  (a: Appointment) => void
-  onSlotClick:  (date: string, time: string) => void
+  weekStart:      Date
+  appointments:   Appointment[]
+  reminders:      Reminder[]
+  onApptClick:    (a: Appointment) => void
+  onReminderClick:(r: Reminder) => void
+  onSlotClick:    (date: string, time: string) => void
 }) {
   const today = new Date()
   const days  = getWeekDays(weekStart)
@@ -323,6 +376,7 @@ function WeekView({
             reminders={reminders.filter((r) => isSameDay(new Date(r.remindAt), day))}
             isToday={isSameDay(day, today)}
             onApptClick={onApptClick}
+            onReminderClick={onReminderClick}
             onSlotClick={onSlotClick}
           />
         ))}
@@ -338,13 +392,15 @@ function DayView({
   appointments,
   reminders,
   onApptClick,
+  onReminderClick,
   onSlotClick,
 }: {
-  day:          Date
-  appointments: Appointment[]
-  reminders:    Reminder[]
-  onApptClick:  (a: Appointment) => void
-  onSlotClick:  (date: string, time: string) => void
+  day:            Date
+  appointments:   Appointment[]
+  reminders:      Reminder[]
+  onApptClick:    (a: Appointment) => void
+  onReminderClick:(r: Reminder) => void
+  onSlotClick:    (date: string, time: string) => void
 }) {
   const today = new Date()
   const label = day.toLocaleDateString('es', {
@@ -374,6 +430,7 @@ function DayView({
           reminders={reminders.filter((r) => isSameDay(new Date(r.remindAt), day))}
           isToday={isSameDay(day, today)}
           onApptClick={onApptClick}
+          onReminderClick={onReminderClick}
           onSlotClick={onSlotClick}
         />
       </div>
@@ -388,13 +445,15 @@ function MonthView({
   appointments,
   reminders,
   onApptClick,
+  onReminderClick,
   onDayClick,
 }: {
-  date:         Date
-  appointments: Appointment[]
-  reminders:    Reminder[]
-  onApptClick:  (a: Appointment) => void
-  onDayClick:   (day: Date) => void
+  date:           Date
+  appointments:   Appointment[]
+  reminders:      Reminder[]
+  onApptClick:    (a: Appointment) => void
+  onReminderClick:(r: Reminder) => void
+  onDayClick:     (day: Date) => void
 }) {
   const today = new Date()
   const grid  = getMonthGrid(date.getFullYear(), date.getMonth())
@@ -456,7 +515,8 @@ function MonthView({
                   )}
                   {dayRems.slice(0, 2).map((r) => (
                     <div key={r.id} title={`Recordatorio: ${r.title}`}
-                      className={`mb-0.5 truncate rounded border-l-2 border-dashed px-1 text-[9px] font-medium leading-4 ${REMINDER_STYLE[r.alertLevel] ?? REMINDER_STYLE.normal} ${r.status === 'done' ? 'opacity-50 line-through' : ''}`}>
+                      onClick={(e) => { e.stopPropagation(); onReminderClick(r) }}
+                      className={`mb-0.5 cursor-pointer truncate rounded border-l-2 border-dashed px-1 text-[9px] font-medium leading-4 ${REMINDER_STYLE[r.alertLevel] ?? REMINDER_STYLE.normal} ${r.status === 'done' ? 'opacity-50 line-through' : ''}`}>
                       🔔 {r.title}
                     </div>
                   ))}
@@ -487,6 +547,8 @@ export function CalendarView() {
   const [branchFilter, setBranchFilter] = useState('')
   const [profFilter,  setProfFilter]  = useState('')
   const [detailAppt,  setDetailAppt]  = useState<Appointment | null>(null)
+  const [detailReminder, setDetailReminder] = useState<Reminder | null>(null)  // detalle de recordatorio (tipo Google Calendar)
+  const [editReminder,   setEditReminder]   = useState<Reminder | null>(null)
   const [createSlot,  setCreateSlot]  = useState<CreateSlot | null>(null)
   const [createMode,  setCreateMode]  = useState<'service' | 'event'>('service') // HU-204
   const [editEvent,   setEditEvent]   = useState<Appointment | null>(null)       // HU-204
@@ -508,11 +570,12 @@ export function CalendarView() {
   }, [])
 
   // Load reminders (del usuario) para mostrarlos también en el calendario.
-  useEffect(() => {
+  const loadReminders = () => {
     apiClient.get<{ data: Reminder[] }>('/v1/reminders')
       .then((res) => setReminders(res.data ?? []))
       .catch(() => {})
-  }, [])
+  }
+  useEffect(() => { loadReminders() }, [])
 
   // Fetch appointments
   function fetchAppointments() {
@@ -688,6 +751,7 @@ export function CalendarView() {
             appointments={appointments}
             reminders={reminders}
             onApptClick={setDetailAppt}
+            onReminderClick={setDetailReminder}
             onSlotClick={(date, time) => openCreate(date, time)}
           />
         ) : view === 'day' ? (
@@ -696,6 +760,7 @@ export function CalendarView() {
             appointments={appointments}
             reminders={reminders}
             onApptClick={setDetailAppt}
+            onReminderClick={setDetailReminder}
             onSlotClick={(date, time) => openCreate(date, time)}
           />
         ) : (
@@ -704,6 +769,7 @@ export function CalendarView() {
             appointments={appointments}
             reminders={reminders}
             onApptClick={setDetailAppt}
+            onReminderClick={setDetailReminder}
             onDayClick={(day) => { setCurrentDate(day); setView('day') }}
           />
         )}
@@ -736,6 +802,23 @@ export function CalendarView() {
           branches={branches}
           onClose={() => setEditEvent(null)}
           onSuccess={handleApptUpdated}
+        />
+      )}
+
+      {/* Detalle / edición de recordatorio (clic sobre el recordatorio en el calendario) */}
+      {detailReminder && (
+        <ReminderDetailModal
+          reminder={detailReminder}
+          onClose={() => setDetailReminder(null)}
+          onEdit={() => { setEditReminder(detailReminder); setDetailReminder(null) }}
+          onChanged={() => { setDetailReminder(null); loadReminders() }}
+        />
+      )}
+      {editReminder && (
+        <ReminderFormModal
+          reminder={editReminder}
+          onClose={() => setEditReminder(null)}
+          onSaved={() => { setEditReminder(null); loadReminders() }}
         />
       )}
     </div>
