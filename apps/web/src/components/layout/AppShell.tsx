@@ -272,6 +272,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setUnreadCount(0)
   }
 
+  // Eliminar UNA notificación (la "x" al pasar el mouse). Optimista: la quita del panel al instante.
+  async function handleDeleteNotif(n: Notification) {
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id))
+    if (!n.isRead) setUnreadCount((c) => Math.max(0, c - 1))
+    await apiClient.delete(`/v1/notifications/${n.id}`).catch(() => {})
+  }
+
   async function handleLogout() {
     if (refreshToken) await logoutRequest(refreshToken)
     clearAuth()
@@ -576,15 +583,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <li
                           key={n.id}
                           onClick={() => handleNotifClick(n)}
-                          className="flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700"
+                          className="group relative flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700"
                         >
                           <ModuleIcon module={n.module} />
-                          <div className="min-w-0 flex-1">
+                          <div className="min-w-0 flex-1 pr-4">
                             <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{n.title}</p>
                             <p className="mt-0.5 text-xs text-slate-500 line-clamp-2 dark:text-slate-400">{n.message}</p>
                             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{relativeTime(n.createdAt)}</p>
                           </div>
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                          {/* Punto "no leído" (se desvanece al pasar el mouse) */}
+                          {!n.isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500 transition-opacity group-hover:opacity-0" />}
+                          {/* Botón eliminar — aparece al pasar el mouse por encima */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteNotif(n) }}
+                            aria-label="Eliminar notificación"
+                            title="Eliminar"
+                            className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-red-500 group-hover:flex dark:hover:bg-slate-600 dark:hover:text-red-400"
+                          >
+                            ✕
+                          </button>
                         </li>
                       ))}
                     </ul>

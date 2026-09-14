@@ -57,3 +57,16 @@ export async function markAllRead(userId: string, tenantId: string) {
     data: { isRead: true },
   })
 }
+
+/** Elimina UNA notificación del usuario (borrado individual desde la campana). */
+export async function deleteNotification(userId: string, tenantId: string, notificationId: string) {
+  const exists = await prisma.notification.findFirst({
+    where:  { id: notificationId, userId, tenantId },
+    select: { id: true },
+  })
+  if (!exists) {
+    throw { statusCode: 404, message: 'Notificacion no encontrada', code: 'NOT_FOUND' }
+  }
+  await prisma.notification.delete({ where: { id: notificationId } })
+  return { id: notificationId, deleted: true }
+}

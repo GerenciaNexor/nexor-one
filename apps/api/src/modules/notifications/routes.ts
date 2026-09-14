@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { getNotifications, getUnreadCount, markRead, markAllRead } from './service'
+import { getNotifications, getUnreadCount, markRead, markAllRead, deleteNotification } from './service'
 import { idParam, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
 
 export async function notificationsRoutes(app: FastifyInstance): Promise<void> {
@@ -59,6 +59,26 @@ export async function notificationsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const notification = await markRead(request.user.userId, request.user.tenantId, id)
       return reply.code(200).send(notification)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string; code?: string }
+      return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
+    }
+  })
+
+  /** DELETE /v1/notifications/:id — elimina una notificación (borrado individual). */
+  app.delete('/:id', {
+    schema: {
+      tags:     ['Notifications'],
+      summary:  'Eliminar una notificación',
+      security: bearerAuth,
+      params:   idParam,
+      response: { 200: objRes, ...stdErrors },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    try {
+      const r = await deleteNotification(request.user.userId, request.user.tenantId, id)
+      return reply.code(200).send({ success: true, data: r })
     } catch (err: unknown) {
       const e = err as { statusCode?: number; message?: string; code?: string }
       return reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'Error interno', code: e.code ?? 'INTERNAL_ERROR' })
