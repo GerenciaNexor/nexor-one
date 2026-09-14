@@ -29,6 +29,12 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
   }
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Eliminar directo (la "x" al pasar el mouse), sin abrir el detalle. Optimista.
+  async function handleDelete(r: Reminder) {
+    setItems((prev) => (prev ? prev.filter((x) => x.id !== r.id) : prev))
+    await apiClient.delete(`/v1/reminders/${r.id}`).catch(() => {})
+  }
+
   const pending = (items ?? []).filter((r) => r.status === 'pending')
   const done    = (items ?? []).filter((r) => r.status === 'done')
 
@@ -36,10 +42,10 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
     const a = ALERT_STYLE[r.alertLevel] ?? ALERT_STYLE.normal
     const isDone = r.status === 'done'
     return (
-      <li>
+      <li className="group relative">
         <button
           onClick={() => setDetail(r)}
-          className={`flex w-full items-start gap-2 rounded-lg border border-l-4 ${a.border} border-slate-100 bg-slate-50/60 p-2.5 text-left transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-700/60`}
+          className={`flex w-full items-start gap-2 rounded-lg border border-l-4 ${a.border} border-slate-100 bg-slate-50/60 p-2.5 pr-9 text-left transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-700/60`}
         >
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${isDone ? 'bg-emerald-500' : a.dot}`} />
           <div className="min-w-0 flex-1">
@@ -48,7 +54,17 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
               {fmtWhen(r.remindAt)}{r.recurrence !== 'none' ? ` · ${RECUR_LABEL[r.recurrence]}` : ''}
             </p>
           </div>
-          {isDone && <span className="mt-0.5 shrink-0 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">✓</span>}
+          {isDone && <span className="mt-0.5 shrink-0 text-[11px] font-medium text-emerald-600 group-hover:opacity-0 dark:text-emerald-400">✓</span>}
+        </button>
+        {/* Botón eliminar — aparece al pasar el mouse por encima */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handleDelete(r) }}
+          aria-label="Eliminar recordatorio"
+          title="Eliminar"
+          className="absolute right-2 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-red-500 group-hover:flex dark:hover:bg-slate-600 dark:hover:text-red-400"
+        >
+          ✕
         </button>
       </li>
     )
