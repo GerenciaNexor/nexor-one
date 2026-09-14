@@ -16,6 +16,10 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
   const [items, setItems] = useState<Reminder[] | null>(null)
   const [form, setForm]     = useState<{ open: boolean; edit: Reminder | null }>({ open: false, edit: null })
   const [detail, setDetail] = useState<Reminder | null>(null)
+  // "Hechos" colapsado por defecto y revelado de a poco (evita un scroll enorme con muchos recordatorios).
+  const DONE_STEP = 15
+  const [doneOpen,  setDoneOpen]  = useState(false)
+  const [doneShown, setDoneShown] = useState(DONE_STEP)
 
   function load() {
     // Inicio: solo pendientes (lo accionable). Agenda: todos (para gestionar y eliminar los hechos).
@@ -61,8 +65,28 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
       {pending.length > 0 && <ul className="space-y-2">{pending.map((r) => <Row key={r.id} r={r} />)}</ul>}
       {full && done.length > 0 && (
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Hechos</p>
-          <ul className="space-y-2">{done.map((r) => <Row key={r.id} r={r} />)}</ul>
+          <button
+            type="button"
+            onClick={() => setDoneOpen((o) => !o)}
+            className="mb-2 flex w-full items-center justify-between rounded-md py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+          >
+            <span>Hechos ({done.length})</span>
+            <span aria-hidden className="text-sm leading-none">{doneOpen ? '▾' : '▸'}</span>
+          </button>
+          {doneOpen && (
+            <>
+              <ul className="space-y-2">{done.slice(0, doneShown).map((r) => <Row key={r.id} r={r} />)}</ul>
+              {done.length > doneShown && (
+                <button
+                  type="button"
+                  onClick={() => setDoneShown((n) => n + DONE_STEP)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/60"
+                >
+                  Ver más ({done.length - doneShown} restantes)
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
