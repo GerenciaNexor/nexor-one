@@ -28,7 +28,8 @@ export const invoiceOcrQueue = new Queue<InvoiceOcrJob>(INVOICE_OCR_QUEUE, {
 
 /** Encola la lectura OCR de un ítem del lote. */
 export async function enqueueInvoiceOcr(job: InvoiceOcrJob): Promise<void> {
-  await invoiceOcrQueue.add('ocr', job, { jobId: `item:${job.itemId}` })
+  // BullMQ no admite ':' en un jobId personalizado; usamos '-' (idempotente por ítem).
+  await invoiceOcrQueue.add('ocr', job, { jobId: `item-${job.itemId}` })
 }
 
 export async function closeInvoiceOcrQueue(): Promise<void> {
