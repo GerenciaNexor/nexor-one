@@ -32,6 +32,8 @@ import type { ApiResponse } from '@nexor/shared'
 import { prisma, runInTenantTransaction } from './lib/prisma'
 import { closeQueues } from './lib/queue'
 import { startWorker, closeWorker } from './lib/worker'
+import { startInvoiceOcrWorker, closeInvoiceOcrWorker } from './jobs/invoice-ocr-worker'
+import { closeInvoiceOcrQueue } from './lib/invoice-queue'
 import { closeLoginLimiter } from './modules/auth/login-limiter'
 import { registerBullBoard } from './plugins/bull-board'
 import jwtPlugin from './plugins/jwt'
@@ -92,8 +94,8 @@ app.setSchemaController({ compilersFactory: { buildValidator: (() => () => () =>
 
 /** Cierra worker, colas y Prisma al apagar el servidor (en orden correcto). */
 app.addHook('onClose', async () => {
-  await closeWorker()                          // espera jobs en curso
-  await Promise.all([prisma.$disconnect(), closeQueues(), closeLoginLimiter()])
+  await Promise.all([closeWorker(), closeInvoiceOcrWorker()])   // espera jobs en curso
+  await Promise.all([prisma.$disconnect(), closeQueues(), closeInvoiceOcrQueue(), closeLoginLimiter()])
 })
 
 // ─── Documentación OpenAPI (solo dev/staging, antes de registrar rutas) ──────
@@ -233,6 +235,7 @@ const start = async (): Promise<void> => {
   try {
     await app.listen({ port, host })
     startWorker()                       // Worker BullMQ — procesa incoming-messages
+    startInvoiceOcrWorker()             // HU-212 — Worker BullMQ — OCR de lotes de facturas
     startAbcScheduler()
     startStockAlertsScheduler()
     startIntegrationHealthScheduler()   // Verifica tokens de WhatsApp y Gmail cada 7 días

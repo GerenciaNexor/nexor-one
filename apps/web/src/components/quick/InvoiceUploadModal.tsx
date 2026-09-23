@@ -22,7 +22,7 @@ const normName = (s?: string | null) =>
   (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 interface Prod { id: string; sku: string; name: string; unit: string; salePrice: number | null; costPrice: number | null }
 
-interface ExtractedItem {
+export interface ExtractedItem {
   description: string
   quantity:    number | null
   unitValue:   number | null
@@ -32,7 +32,7 @@ interface ExtractedItem {
   suggestedSalePrice: number | null
   confidence:  string
 }
-interface ExtractResult {
+export interface ExtractResult {
   canRead: boolean
   message?: string
   kind?: Kind
@@ -71,7 +71,7 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.readAsDataURL(blob)
   })
 }
-async function processFile(file: File): Promise<{ blob: Blob; base64: string; mime: string }> {
+export async function processFile(file: File): Promise<{ blob: Blob; base64: string; mime: string }> {
   // PDF u otros: se envían tal cual (no se comprimen por canvas).
   if (!file.type.startsWith('image/')) {
     return { blob: file, base64: await blobToBase64(file), mime: file.type || 'application/pdf' }
@@ -89,10 +89,14 @@ async function processFile(file: File): Promise<{ blob: Blob; base64: string; mi
   return { blob, base64: await blobToBase64(blob), mime: 'image/jpeg' }
 }
 
-export function InvoiceUploadModal({ kind, startManual = false, onClose, onSuccess }: {
+export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, onClose, onSuccess }: {
   kind: Kind
   /** Arranca en registro MANUAL (sin foto): misma interfaz de revisión, en blanco. */
   startManual?: boolean
+  /** HU-212 — revisar un ítem de un lote: siembra la propuesta ya leída y arranca en revisión. */
+  initialExtraction?: ExtractResult
+  batchItemId?: string
+  initialBranchId?: string
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -108,7 +112,8 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
     newSalePrice: '', mapQuery: '',
   })
 
-  const [phase, setPhase]   = useState<'upload' | 'review'>(startManual ? 'review' : 'upload')
+  const [phase, setPhase]   = useState<'upload' | 'review'>(startManual || initialExtraction ? 'review' : 'upload')
+  const seededRef = useRef(false)
   const [manual, setManual] = useState(startManual) // registro manual (sin foto) vs. lectura por imagen
   const [loading, setLoading] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -130,7 +135,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
   const readNit    = useRef('')
 
   const [cpId, setCpId]         = useState('')
-  const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
+  const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : (initialBranchId ?? ''))
   const [projectId, setProjectId] = useState('')
   const [items, setItems]       = useState<ItemState[]>(startManual ? [emptyItem()] : [])
 
@@ -145,6 +150,46 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
     apiClient.get<{ data: Opt[] }>('/v1/quick/branches').then((r) => { setBranches(r.data); if (r.data.length === 1 && !isOperative) setBranchId(r.data[0]!.id) }).catch(() => {})
     apiClient.get<{ data: Opt[] }>(isSale ? '/v1/quick/clients' : '/v1/quick/suppliers').then((r) => { setCP(r.data); setCpId(r.data.find((o) => o.isGeneric)?.id ?? '') }).catch(() => {})
   }, [isSale, isOperative])
+
+  // Siembra el formulario de revisión con una propuesta ya leída (del OCR directo o de un lote).
+  function seedFromExtraction(data: ExtractResult) {
+    setFull(data.fullExtraction ?? null)
+    setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
+    // HU — el NIT leído se limpia (sin puntos) para que coincida con el guardado en la plataforma.
+    const readI = data.issuer ?? '', readN = cleanNit(data.nit)
+    readIssuer.current = readI; readNit.current = readN
+    setIssuer(readI); setNit(readN); setInvoiceNumber(data.invoiceNumber ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
+
+    // Auto-selección de proveedor si el emisor/NIT leído coincide con uno existente (compra).
+    if (!isSale) {
+      const nId = normId(readN), nName = normName(readI)
+      const match = counterparties.find((o) => {
+        if (o.isGeneric) return false
+        const oName = normName(o.name)
+        const byId   = !!nId && normId(o.taxId) === nId
+        const byName = !!nName && !!oName && (
+          oName === nName || (nName.length >= 5 && oName.length >= 5 && (oName.includes(nName) || nName.includes(oName)))
+        )
+        return byId || byName
+      })
+      if (match) { setCpId(match.id); if (match.documentType) setDocumentType(match.documentType) }
+    }
+    setItems((data.items ?? []).map((it) => ({
+      description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',
+      unitValue: it.unitValue != null ? String(it.unitValue) : '', productId: it.productId, productName: it.productName,
+      inInventory: it.inInventory, confidence: it.confidence,
+      addToInventory: isSale, newSku: '', newUnit: 'unidad', newSalePrice: it.suggestedSalePrice != null ? String(it.suggestedSalePrice) : '',
+      mapQuery: '',
+    })))
+    setPhase('review')
+  }
+
+  // HU-212 — al revisar un ítem de un lote: siembra la propuesta cuando ya cargaron los catálogos.
+  useEffect(() => {
+    if (!initialExtraction || seededRef.current || counterparties.length === 0) return
+    seededRef.current = true
+    seedFromExtraction(initialExtraction)
+  }, [initialExtraction, counterparties]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -165,39 +210,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
       const { data } = await res.json() as { data: ExtractResult }
 
       if (!data.canRead) { setUnreadable(data.message ?? 'Lo siento, la imagen no se logró entender, ingresa los valores manualmente.'); return }
-
-      setFull(data.fullExtraction ?? null)
-      setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
-      // HU — el NIT leído se limpia (sin puntos) para que coincida con el guardado en la plataforma.
-      const readI = data.issuer ?? '', readN = cleanNit(data.nit)
-      readIssuer.current = readI; readNit.current = readN
-      setIssuer(readI); setNit(readN); setInvoiceNumber(data.invoiceNumber ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
-
-      // ── Auto-selección de proveedor si el emisor/NIT leído coincide con uno existente (compra). ──
-      // No tiene sentido volver a elegirlo a mano si la factura ya trae esos datos.
-      if (!isSale) {
-        const nId = normId(readN), nName = normName(readI)
-        const match = counterparties.find((o) => {
-          if (o.isGeneric) return false
-          const oName = normName(o.name)
-          const byId   = !!nId && normId(o.taxId) === nId
-          // Nombre: igualdad exacta, o contención en cualquier dirección (nombres largos) para tolerar
-          // sufijos/palabras de más ("Almacenes Éxito" vs "Almacenes Éxito S.A.").
-          const byName = !!nName && !!oName && (
-            oName === nName || (nName.length >= 5 && oName.length >= 5 && (oName.includes(nName) || nName.includes(oName)))
-          )
-          return byId || byName
-        })
-        if (match) { setCpId(match.id); if (match.documentType) setDocumentType(match.documentType) }  // ya existe → se selecciona solo
-      }
-      setItems((data.items ?? []).map((it) => ({
-        description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',
-        unitValue: it.unitValue != null ? String(it.unitValue) : '', productId: it.productId, productName: it.productName,
-        inInventory: it.inInventory, confidence: it.confidence,
-        addToInventory: isSale, newSku: '', newUnit: 'unidad', newSalePrice: it.suggestedSalePrice != null ? String(it.suggestedSalePrice) : '',
-        mapQuery: '',
-      })))
-      setPhase('review')
+      seedFromExtraction(data)
     } catch (e: unknown) {
       setErr((e as { message?: string }).message ?? 'No se pudo procesar la imagen. Intenta con una foto más nítida.')
     } finally { setLoading(false) }
@@ -265,6 +278,7 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
         issuer: issuer || null, nit: nit || null, documentType: documentType || null, invoiceNumber: invoiceNumber || null, total: total ? Number(total) : null,
         imageBase64: image?.base64, imageMime: image?.mime, fullExtraction: fullExtraction ?? {},
         items: payloadItems,
+        ...(batchItemId ? { batchItemId } : {}),   // HU-212 — marca el ítem del lote como registrado
       })
       onSuccess()
     } catch (e: unknown) {

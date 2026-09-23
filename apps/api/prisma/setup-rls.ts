@@ -82,6 +82,9 @@ const BUSINESS_TABLES = [
   'incoming_rentals',
   // HU-191 — facturas cargadas por imagen (OCR) en el registro rápido (tenant_id propio).
   'quick_invoices',
+  // HU-212 — carga masiva de facturas por OCR: lotes y sus ítems (tenant_id propio).
+  'quick_invoice_batches',
+  'quick_invoice_batch_items',
   // HU-196 — configuración del comportamiento del agente de IA por sucursal/tenant.
   'agent_settings',
   // HU-198 — proyectos: metas (objetivo) y presupuestos (límite) por línea de negocio.
