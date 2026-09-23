@@ -146,6 +146,7 @@ Reglas estrictas:
 - Si un campo opcional no aparece en el documento usa null directamente (no el objeto)
 - Si no hay descuento usa null, no 0
 - **PRECIOS — regla más importante**: Siempre extrae el precio real visible en el documento. NUNCA uses 0 como marcador. Si genuinamente no hay columna de precio visible para un ítem, devuelve unitPrice como null (el valor null directamente, no {"value": null}). Un 0 en la respuesta SOLO significa que el documento literalmente muestra "0" o "$0".
+- **TOTAL DE LA FACTURA (total)** — regla dura: es el valor A PAGAR de la compra. Toma la cifra rotulada como "Total", "Total factura", "Total a pagar", "Valor total", "Total neto" o "Total COP". NUNCA tomes como total el dinero con que se pagó ni el cambio: IGNORA por completo "Efectivo", "Recibido", "Pago con", "Entregado", "Medios de pago", "Cambio", "Vueltas" o "Devuelta" (con frecuencia son MAYORES que el total y NO son el total). Cuando haya varias cifras, el total correcto es el que concuerda con subtotal + impuestos y con la suma de los ítems (cantidad × precio), no el efectivo entregado. Si dudas entre dos, prefiere la rotulada explícitamente como "Total factura"/"Total a pagar".
 - PDFs de varias páginas: analiza solo la primera página
 
 CAPTURA TOTAL (regla dura — nada se pierde): además de los campos de arriba, extrae TODA otra
