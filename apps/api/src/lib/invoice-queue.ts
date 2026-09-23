@@ -19,8 +19,13 @@ export interface InvoiceOcrJob {
 export const invoiceOcrQueue = new Queue<InvoiceOcrJob>(INVOICE_OCR_QUEUE, {
   connection: redisConnection(),
   defaultJobOptions: {
-    attempts: 3,
-    backoff:  { type: 'exponential', delay: 3_000 },
+    // HU-213 — El backoff del rate limit (429/529) lo gestiona el SDK de Anthropic (respeta
+    // Retry-After). Por eso BullMQ solo reintenta 2 veces (1 reintento) como red de seguridad ante
+    // fallos transitorios de red/DB: así un error NO multiplica el costo de tokens en la cola.
+    // Los ítems ya finalizados (ready/duplicate/unreadable/registered) no se re-procesan (guarda en
+    // processBatchItem), así que un reintento nunca re-cobra un OCR ya resuelto.
+    attempts: 2,
+    backoff:  { type: 'exponential', delay: 5_000 },
     removeOnComplete: { count: 500 },
     removeOnFail: false,
   },

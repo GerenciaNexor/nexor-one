@@ -782,13 +782,17 @@ async function refreshBatch(batchId: string): Promise<void> {
   const done      = items.length > 0 && items.every((i) => BATCH_TERMINAL.includes(i.status))
   const batch = await directPrisma.quickInvoiceBatch.findUnique({
     where: { id: batchId },
-    select: { status: true, mode: true, tenantId: true, userId: true, kind: true, total: true, notifiedAt: true },
+    select: { status: true, mode: true, tenantId: true, userId: true, kind: true, total: true, notifiedAt: true, createdAt: true },
   })
   if (!batch) return
   await directPrisma.quickInvoiceBatch.update({
     where: { id: batchId },
     data:  { processed, failed, ...(done && batch.status === 'processing' ? { status: 'ready' } : {}) },
   })
+  // HU-213 — Tiempo total del lote (para verificar que N facturas tardan ~lo que tarda 1, no N×).
+  if (done && batch.status === 'processing') {
+    console.info(JSON.stringify({ event: 'invoice_ocr_batch_done', batchId, total: batch.total, failed, ms: Date.now() - batch.createdAt.getTime() }))
+  }
   if (done && batch.status === 'processing' && !batch.notifiedAt) {
     await directPrisma.quickInvoiceBatch.update({ where: { id: batchId }, data: { notifiedAt: new Date() } })
     if (batch.mode === 'background' && batch.userId) {
@@ -824,10 +828,13 @@ export async function processBatchItem(itemId: string): Promise<void> {
   if (!item.imageData) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: 'No se recibió la imagen.' }); return }
   const kind = item.batch.kind as 'purchase' | 'sale'
 
+  // HU-213 — Medición del OCR por ítem (para verificar la mejora del procesamiento en paralelo).
+  const t0 = Date.now()
   const result = await extractInvoice({
     tenantId: item.tenantId, kind,
     fileBuffer: Buffer.from(item.imageData), mimeType: item.imageMime ?? 'image/jpeg', fileName: item.fileName,
   })
+  console.info(JSON.stringify({ event: 'invoice_ocr_item_done', itemId, batchId: item.batchId, ms: Date.now() - t0, canRead: result.canRead }))
   if (!result.canRead) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: result.message ?? 'La imagen no se pudo leer.' }); return }
 
   let duplicateOf: string | null = null

@@ -1,7 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma } from '../../lib/prisma'
 
-const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
+// HU-213 — El SDK es el ÚNICO dueño del backoff de rate limit (429/529): reintenta respetando el
+// header Retry-After, con espera exponencial. Así, al procesar el lote en paralelo, la saturación de
+// la API se absorbe aquí (sin fallar la factura) y la cola (BullMQ) NO re-cobra tokens en paralelo.
+// `timeout` acotado: un request colgado no debe retener un slot de concurrencia del worker (default
+// del SDK: 10 min). Ambos configurables por env.
+const client = new Anthropic({
+  apiKey:     process.env['ANTHROPIC_API_KEY'],
+  maxRetries: Math.max(0, Number(process.env['OCR_MAX_RETRIES'] ?? 4)),
+  timeout:    Math.max(10_000, Number(process.env['OCR_TIMEOUT_MS'] ?? 90_000)),
+})
 
 // Usar Sonnet para OCR: más rápido y con excelente visión, reservamos Opus para el agente
 const OCR_MODEL = process.env['OCR_MODEL'] ?? 'claude-sonnet-4-6'
