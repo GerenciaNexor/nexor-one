@@ -28,8 +28,29 @@ export function redisConnection(): {
   password?: string
   db?:       number
   tls?:      object
+  // HU-214 — resiliencia de la conexión (ver notas abajo)
+  maxRetriesPerRequest: null
+  enableReadyCheck:     boolean
+  family:               number
+  keepAlive:            number
+  connectTimeout:       number
+  retryStrategy:        (times: number) => number
 } {
   const raw = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
+  // HU-214 — Ajustes de resiliencia (evitan que el worker pierda la conexión y deje jobs colgados):
+  // - maxRetriesPerRequest: null  → requerido por BullMQ para el cliente bloqueante del worker.
+  // - family: 0                   → DNS dual-stack: Railway resuelve `*.railway.internal` por IPv6;
+  //                                 con el default IPv4 la conexión daba `connect ETIMEDOUT`.
+  // - keepAlive / connectTimeout  → detecta y recicla conexiones muertas en vez de colgarse.
+  // - retryStrategy               → reconecta con backoff acotado (no se rinde y no martilla).
+  const resilience = {
+    maxRetriesPerRequest: null as null,
+    enableReadyCheck:     false,
+    family:               0,
+    keepAlive:            30_000,
+    connectTimeout:       15_000,
+    retryStrategy:        (times: number) => Math.min(times * 300, 5_000),
+  }
   try {
     const u = new URL(raw)
     return {
@@ -38,9 +59,10 @@ export function redisConnection(): {
       password: u.password || undefined,
       db:       u.pathname && u.pathname.length > 1 ? parseInt(u.pathname.slice(1), 10) : undefined,
       tls:      u.protocol === 'rediss:' ? {} : undefined,
+      ...resilience,
     }
   } catch {
-    return { host: 'localhost', port: 6379 }
+    return { host: 'localhost', port: 6379, ...resilience }
   }
 }
 

@@ -19,11 +19,28 @@ let sweeper: NodeJS.Timeout | null = null
  */
 const CONCURRENCY = Math.min(20, Math.max(1, Number(process.env['INVOICE_OCR_CONCURRENCY'] ?? 3)))
 
+/**
+ * HU-214 — Tope de tiempo de TODO el job (no solo del OCR). El abort de OCR_TOTAL_TIMEOUT_MS solo cubre
+ * la llamada HTTP a la IA; pero el job también hace consultas a la DB (leer imagen, catálogo, guardar) que
+ * pueden colgarse si la conexión falla (P1001/P1017). Este tope envuelve el job COMPLETO: pase lo que
+ * pase, la promesa se resuelve, se lanza error, BullMQ falla el intento y el slot de concurrencia se
+ * libera SIEMPRE. Se pone por encima del abort de OCR para que ese corte primero (cancelación limpia).
+ */
+const JOB_TIMEOUT_MS = Math.max(30_000, Number(process.env['INVOICE_OCR_JOB_TIMEOUT_MS'] ?? 120_000))
+
+/** Corta una promesa que exceda `ms` (garantiza que el job termina y libera el slot). */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Job timeout (${label}) tras ${ms}ms`)), ms)
+    p.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e as Error) })
+  })
+}
+
 export function startInvoiceOcrWorker(): Worker<InvoiceOcrJob> {
   if (worker) return worker
   worker = new Worker<InvoiceOcrJob>(
     INVOICE_OCR_QUEUE,
-    async (job) => { await processBatchItem(job.data.itemId) },
+    async (job) => { await withTimeout(processBatchItem(job.data.itemId), JOB_TIMEOUT_MS, `item ${job.data.itemId}`) },
     { connection: redisConnection(), concurrency: CONCURRENCY },
   )
   worker.on('failed', (job, err) => {
