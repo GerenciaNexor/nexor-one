@@ -16,7 +16,10 @@ interface Opt  { id: string; name: string; isGeneric?: boolean; taxId?: string |
 const normId = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
 // Limpia el NIT para MOSTRAR/GUARDAR: quita puntos y espacios (conserva dígitos y el "-DV").
 const cleanNit = (s?: string | null) => (s ?? '').replace(/[.\s]/g, '')
-const normName = (s?: string | null) => (s ?? '').trim().toLowerCase()
+// Normaliza el NOMBRE para comparar: sin acentos, minúsculas y sin puntuación/espacios, para que
+// "Almacenes Éxito S.A." ≈ "ALMACENES EXITO SA".
+const normName = (s?: string | null) =>
+  (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 interface Prod { id: string; sku: string; name: string; unit: string; salePrice: number | null; costPrice: number | null }
 
 interface ExtractedItem {
@@ -174,10 +177,17 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
       // No tiene sentido volver a elegirlo a mano si la factura ya trae esos datos.
       if (!isSale) {
         const nId = normId(readN), nName = normName(readI)
-        const match = counterparties.find((o) => !o.isGeneric && (
-          (nId && normId(o.taxId) === nId) ||
-          (nName && (normName(o.name) === nName || (nName.length > 3 && normName(o.name).includes(nName))))
-        ))
+        const match = counterparties.find((o) => {
+          if (o.isGeneric) return false
+          const oName = normName(o.name)
+          const byId   = !!nId && normId(o.taxId) === nId
+          // Nombre: igualdad exacta, o contención en cualquier dirección (nombres largos) para tolerar
+          // sufijos/palabras de más ("Almacenes Éxito" vs "Almacenes Éxito S.A.").
+          const byName = !!nName && !!oName && (
+            oName === nName || (nName.length >= 5 && oName.length >= 5 && (oName.includes(nName) || nName.includes(oName)))
+          )
+          return byId || byName
+        })
         if (match) { setCpId(match.id); if (match.documentType) setDocumentType(match.documentType) }  // ya existe → se selecciona solo
       }
       setItems((data.items ?? []).map((it) => ({
