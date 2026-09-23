@@ -16,6 +16,10 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
   const [items, setItems] = useState<Reminder[] | null>(null)
   const [form, setForm]     = useState<{ open: boolean; edit: Reminder | null }>({ open: false, edit: null })
   const [detail, setDetail] = useState<Reminder | null>(null)
+  // "Hechos" colapsado por defecto y revelado de a poco (evita un scroll enorme con muchos recordatorios).
+  const DONE_STEP = 15
+  const [doneOpen,  setDoneOpen]  = useState(false)
+  const [doneShown, setDoneShown] = useState(DONE_STEP)
 
   function load() {
     // Inicio: solo pendientes (lo accionable). Agenda: todos (para gestionar y eliminar los hechos).
@@ -25,6 +29,12 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
   }
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Eliminar directo (la "x" al pasar el mouse), sin abrir el detalle. Optimista.
+  async function handleDelete(r: Reminder) {
+    setItems((prev) => (prev ? prev.filter((x) => x.id !== r.id) : prev))
+    await apiClient.delete(`/v1/reminders/${r.id}`).catch(() => {})
+  }
+
   const pending = (items ?? []).filter((r) => r.status === 'pending')
   const done    = (items ?? []).filter((r) => r.status === 'done')
 
@@ -32,10 +42,10 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
     const a = ALERT_STYLE[r.alertLevel] ?? ALERT_STYLE.normal
     const isDone = r.status === 'done'
     return (
-      <li>
+      <li className="group relative">
         <button
           onClick={() => setDetail(r)}
-          className={`flex w-full items-start gap-2 rounded-lg border border-l-4 ${a.border} border-slate-100 bg-slate-50/60 p-2.5 text-left transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-700/60`}
+          className={`flex w-full items-start gap-2 rounded-lg border border-l-4 ${a.border} border-slate-100 bg-slate-50/60 p-2.5 pr-9 text-left transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-700/60`}
         >
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${isDone ? 'bg-emerald-500' : a.dot}`} />
           <div className="min-w-0 flex-1">
@@ -44,7 +54,17 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
               {fmtWhen(r.remindAt)}{r.recurrence !== 'none' ? ` · ${RECUR_LABEL[r.recurrence]}` : ''}
             </p>
           </div>
-          {isDone && <span className="mt-0.5 shrink-0 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">✓</span>}
+          {isDone && <span className="mt-0.5 shrink-0 text-[11px] font-medium text-emerald-600 group-hover:opacity-0 dark:text-emerald-400">✓</span>}
+        </button>
+        {/* Botón eliminar — aparece al pasar el mouse por encima */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handleDelete(r) }}
+          aria-label="Eliminar recordatorio"
+          title="Eliminar"
+          className="absolute right-2 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-red-500 group-hover:flex dark:hover:bg-slate-600 dark:hover:text-red-400"
+        >
+          ✕
         </button>
       </li>
     )
@@ -61,8 +81,28 @@ export function RemindersPanel({ variant = 'compact' }: { variant?: 'compact' | 
       {pending.length > 0 && <ul className="space-y-2">{pending.map((r) => <Row key={r.id} r={r} />)}</ul>}
       {full && done.length > 0 && (
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Hechos</p>
-          <ul className="space-y-2">{done.map((r) => <Row key={r.id} r={r} />)}</ul>
+          <button
+            type="button"
+            onClick={() => setDoneOpen((o) => !o)}
+            className="mb-2 flex w-full items-center justify-between rounded-md py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+          >
+            <span>Hechos ({done.length})</span>
+            <span aria-hidden className="text-sm leading-none">{doneOpen ? '▾' : '▸'}</span>
+          </button>
+          {doneOpen && (
+            <>
+              <ul className="space-y-2">{done.slice(0, doneShown).map((r) => <Row key={r.id} r={r} />)}</ul>
+              {done.length > doneShown && (
+                <button
+                  type="button"
+                  onClick={() => setDoneShown((n) => n + DONE_STEP)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/60"
+                >
+                  Ver más ({done.length - doneShown} restantes)
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

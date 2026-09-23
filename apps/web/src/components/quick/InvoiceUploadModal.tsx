@@ -11,8 +11,11 @@ import { DOCUMENT_TYPES } from '@nexor/shared'
 type Kind = 'purchase' | 'sale'
 interface Opt  { id: string; name: string; isGeneric?: boolean; taxId?: string | null; documentType?: string | null }
 
-// Normaliza NIT/documento para comparar (solo dígitos): "900.276.9662-1" ≈ "9002769662-1".
-const normId = (s?: string | null) => (s ?? '').replace(/\D/g, '')
+// Normaliza NIT/documento para COMPARAR: solo el número base, SIN puntos/espacios y SIN el dígito de
+// verificación (lo que va después del "-"). Así "800.244.387-4" ≈ "800244387" ≈ "800244387-4".
+const normId = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
+// Limpia el NIT para MOSTRAR/GUARDAR: quita puntos y espacios (conserva dígitos y el "-DV").
+const cleanNit = (s?: string | null) => (s ?? '').replace(/[.\s]/g, '')
 const normName = (s?: string | null) => (s ?? '').trim().toLowerCase()
 interface Prod { id: string; sku: string; name: string; unit: string; salePrice: number | null; costPrice: number | null }
 
@@ -162,7 +165,8 @@ export function InvoiceUploadModal({ kind, startManual = false, onClose, onSucce
 
       setFull(data.fullExtraction ?? null)
       setAdditional((data.additionalFields ?? []).filter((f) => f?.label && f?.value))
-      const readI = data.issuer ?? '', readN = data.nit ?? ''
+      // HU — el NIT leído se limpia (sin puntos) para que coincida con el guardado en la plataforma.
+      const readI = data.issuer ?? '', readN = cleanNit(data.nit)
       readIssuer.current = readI; readNit.current = readN
       setIssuer(readI); setNit(readN); setInvoiceNumber(data.invoiceNumber ?? ''); setDate(data.date ?? ''); setTotal(data.total != null ? String(data.total) : '')
 

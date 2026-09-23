@@ -45,7 +45,17 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Sele
   const filtered = useMemo(() => {
     const q = norm(query.trim())
     if (!q) return options
-    return options.filter((o) => norm(o.label).includes(q) || (o.hint ? norm(o.hint).includes(q) : false))
+    // Tolerancia para NIT/documento (en `hint`): compara solo dígitos e ignora el dígito de verificación,
+    // así "800.244.387", "800244387" y "800244387-4" encuentran al mismo tercero.
+    const qDigits = query.replace(/\D/g, '')
+    return options.filter((o) => {
+      if (norm(o.label).includes(q) || (o.hint ? norm(o.hint).includes(q) : false)) return true
+      if (qDigits.length >= 5 && o.hint) {
+        const hDigits = o.hint.replace(/\D/g, '')
+        if (hDigits && (hDigits.includes(qDigits) || qDigits.includes(hDigits))) return true
+      }
+      return false
+    })
   }, [query, options])
 
   const base = className ?? 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
