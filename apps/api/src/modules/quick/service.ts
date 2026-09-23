@@ -861,6 +861,31 @@ export async function finalizeFailedItem(itemId: string): Promise<void> {
   await refreshBatch(it.batchId)
 }
 
+/**
+ * HU-214 — Red de seguridad: el lote SIEMPRE debe llegar a estado final. Si un ítem quedó atascado en
+ * `pending`/`processing` más allá de un tope razonable (job perdido, proceso caído sin disparar el
+ * abort, etc.), se marca `failed` (timeout) y se recalcula el lote para que se cierre. Idempotente y por
+ * tenant (cada ítem lleva su tenantId). Lo llama el worker periódicamente. Nunca toca ítems terminales,
+ * así que no re-cobra ni pisa resultados buenos.
+ */
+const STUCK_ITEM_MS = Math.max(120_000, Number(process.env['OCR_STUCK_ITEM_MS'] ?? 300_000))
+export async function sweepStuckInvoiceBatches(): Promise<number> {
+  const cutoff = new Date(Date.now() - STUCK_ITEM_MS)
+  const stuck = await directPrisma.quickInvoiceBatchItem.findMany({
+    where: { status: { in: ['pending', 'processing'] }, updatedAt: { lt: cutoff }, batch: { status: 'processing' } },
+    select: { id: true, batchId: true },
+  })
+  if (stuck.length === 0) return 0
+  await directPrisma.quickInvoiceBatchItem.updateMany({
+    where: { id: { in: stuck.map((s) => s.id) } },
+    data:  { status: 'failed', error: 'Tiempo de espera agotado (la lectura no respondió a tiempo).' },
+  })
+  const batchIds = [...new Set(stuck.map((s) => s.batchId))]
+  for (const bid of batchIds) await refreshBatch(bid)
+  console.warn(JSON.stringify({ event: 'invoice_ocr_swept_stuck', items: stuck.length, batches: batchIds.length, cutoffMs: STUCK_ITEM_MS }))
+  return stuck.length
+}
+
 /** Detalle del lote (para esperar/revisar): encabezado + ítems con su propuesta. Sin bytes de imagen. */
 export async function getInvoiceBatch(tenantId: string, id: string) {
   const batch = await prisma.quickInvoiceBatch.findFirst({
