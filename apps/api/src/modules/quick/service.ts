@@ -782,13 +782,17 @@ async function refreshBatch(batchId: string): Promise<void> {
   const done      = items.length > 0 && items.every((i) => BATCH_TERMINAL.includes(i.status))
   const batch = await directPrisma.quickInvoiceBatch.findUnique({
     where: { id: batchId },
-    select: { status: true, mode: true, tenantId: true, userId: true, kind: true, total: true, notifiedAt: true },
+    select: { status: true, mode: true, tenantId: true, userId: true, kind: true, total: true, notifiedAt: true, createdAt: true },
   })
   if (!batch) return
   await directPrisma.quickInvoiceBatch.update({
     where: { id: batchId },
     data:  { processed, failed, ...(done && batch.status === 'processing' ? { status: 'ready' } : {}) },
   })
+  // HU-213 — Tiempo total del lote (para verificar que N facturas tardan ~lo que tarda 1, no N×).
+  if (done && batch.status === 'processing') {
+    console.info(JSON.stringify({ event: 'invoice_ocr_batch_done', batchId, total: batch.total, failed, ms: Date.now() - batch.createdAt.getTime() }))
+  }
   if (done && batch.status === 'processing' && !batch.notifiedAt) {
     await directPrisma.quickInvoiceBatch.update({ where: { id: batchId }, data: { notifiedAt: new Date() } })
     if (batch.mode === 'background' && batch.userId) {
@@ -824,10 +828,13 @@ export async function processBatchItem(itemId: string): Promise<void> {
   if (!item.imageData) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: 'No se recibió la imagen.' }); return }
   const kind = item.batch.kind as 'purchase' | 'sale'
 
+  // HU-213 — Medición del OCR por ítem (para verificar la mejora del procesamiento en paralelo).
+  const t0 = Date.now()
   const result = await extractInvoice({
     tenantId: item.tenantId, kind,
     fileBuffer: Buffer.from(item.imageData), mimeType: item.imageMime ?? 'image/jpeg', fileName: item.fileName,
   })
+  console.info(JSON.stringify({ event: 'invoice_ocr_item_done', itemId, batchId: item.batchId, ms: Date.now() - t0, canRead: result.canRead }))
   if (!result.canRead) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: result.message ?? 'La imagen no se pudo leer.' }); return }
 
   let duplicateOf: string | null = null
@@ -852,6 +859,31 @@ export async function finalizeFailedItem(itemId: string): Promise<void> {
   if (!it || BATCH_TERMINAL.includes(it.status)) return
   await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'failed', error: 'No se pudo procesar tras varios intentos.' } })
   await refreshBatch(it.batchId)
+}
+
+/**
+ * HU-214 — Red de seguridad: el lote SIEMPRE debe llegar a estado final. Si un ítem quedó atascado en
+ * `pending`/`processing` más allá de un tope razonable (job perdido, proceso caído sin disparar el
+ * abort, etc.), se marca `failed` (timeout) y se recalcula el lote para que se cierre. Idempotente y por
+ * tenant (cada ítem lleva su tenantId). Lo llama el worker periódicamente. Nunca toca ítems terminales,
+ * así que no re-cobra ni pisa resultados buenos.
+ */
+const STUCK_ITEM_MS = Math.max(120_000, Number(process.env['OCR_STUCK_ITEM_MS'] ?? 300_000))
+export async function sweepStuckInvoiceBatches(): Promise<number> {
+  const cutoff = new Date(Date.now() - STUCK_ITEM_MS)
+  const stuck = await directPrisma.quickInvoiceBatchItem.findMany({
+    where: { status: { in: ['pending', 'processing'] }, updatedAt: { lt: cutoff }, batch: { status: 'processing' } },
+    select: { id: true, batchId: true },
+  })
+  if (stuck.length === 0) return 0
+  await directPrisma.quickInvoiceBatchItem.updateMany({
+    where: { id: { in: stuck.map((s) => s.id) } },
+    data:  { status: 'failed', error: 'Tiempo de espera agotado (la lectura no respondió a tiempo).' },
+  })
+  const batchIds = [...new Set(stuck.map((s) => s.batchId))]
+  for (const bid of batchIds) await refreshBatch(bid)
+  console.warn(JSON.stringify({ event: 'invoice_ocr_swept_stuck', items: stuck.length, batches: batchIds.length, cutoffMs: STUCK_ITEM_MS }))
+  return stuck.length
 }
 
 /** Detalle del lote (para esperar/revisar): encabezado + ítems con su propuesta. Sin bytes de imagen. */

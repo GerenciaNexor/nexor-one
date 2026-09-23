@@ -1,7 +1,21 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { directPrisma } from '../../lib/prisma'
 
-const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
+// HU-213/214 — El SDK gestiona el backoff de rate limit (429/529) respetando Retry-After. PERO ojo
+// (HU-214): `timeout` acota cada request HTTP INDIVIDUAL, NO la espera de backoff entre reintentos.
+// Con muchos reintentos y un Retry-After alto, un ítem podía "dormir" varios minutos reteniendo su
+// slot. Por eso: (a) `maxRetries` BAJO (2) para acotar el backoff total, y (b) un tope de tiempo
+// TOTAL por llamada vía AbortController (ver withHardTimeout) que corta pase lo que pase. Configurable.
+const client = new Anthropic({
+  apiKey:     process.env['ANTHROPIC_API_KEY'],
+  maxRetries: Math.max(0, Number(process.env['OCR_MAX_RETRIES'] ?? 2)),
+  timeout:    Math.max(10_000, Number(process.env['OCR_TIMEOUT_MS'] ?? 60_000)),
+})
+
+// HU-214 — Tope de tiempo TOTAL por llamada al OCR (incluye reintentos y esperas de backoff del SDK).
+// Aborta con AbortController: el SDK deja de reintentar y libera el request, de modo que el slot de
+// concurrencia del worker SIEMPRE se libera y el lote nunca queda colgado sin fin. Configurable.
+const OCR_TOTAL_TIMEOUT_MS = Math.max(20_000, Number(process.env['OCR_TOTAL_TIMEOUT_MS'] ?? 90_000))
 
 // Usar Sonnet para OCR: más rápido y con excelente visión, reservamos Opus para el agente
 const OCR_MODEL = process.env['OCR_MODEL'] ?? 'claude-sonnet-4-6'
@@ -264,21 +278,30 @@ export async function extractDocument(params: {
 
   // Prompt caching (HU-192): las INSTRUCCIONES (estables por tipo de documento) van en el bloque
   // `system` con cache_control → se cachean entre facturas; solo la imagen (variable) va en el user.
-  const response = await client.messages.create({
-    model,
-    max_tokens:  2048,
-    temperature: 0,
-    system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
-    messages: [
-      {
-        role:    'user',
-        content: [
-          fileBlock,
-          { type: 'text', text: 'Extrae los datos de este documento siguiendo las instrucciones y responde solo con el JSON.' },
-        ],
-      },
-    ],
-  })
+  // HU-214 — `signal` con tope TOTAL: si la llamada (incluidas esperas de backoff) excede el límite,
+  // se aborta, el SDK deja de reintentar y el slot del worker se libera; el ítem se marca fallido.
+  const abort   = new AbortController()
+  const abortAt = setTimeout(() => abort.abort(), OCR_TOTAL_TIMEOUT_MS)
+  let response
+  try {
+    response = await client.messages.create({
+      model,
+      max_tokens:  2048,
+      temperature: 0,
+      system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role:    'user',
+          content: [
+            fileBlock,
+            { type: 'text', text: 'Extrae los datos de este documento siguiendo las instrucciones y responde solo con el JSON.' },
+          ],
+        },
+      ],
+    }, { signal: abort.signal })
+  } finally {
+    clearTimeout(abortAt)
+  }
 
   // Observabilidad de costo por documento (HU-191/192): tokens y cache.
   const u = response.usage
