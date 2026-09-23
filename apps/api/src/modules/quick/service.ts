@@ -8,7 +8,9 @@ import { validateProjectId } from '../proyectos/service'
 import { applyAssignment } from '../proyectos/budget'
 import { matchProductByName } from '../../lib/text-match'
 import { extractDocument, INVOICE_OCR_MODEL, type DocumentType, type OrderExtraction, type QuoteExtraction } from '../ocr/service'
-import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput, UpdateInvoiceInput } from './schema'
+import type { QuickPurchaseInput, QuickSaleInput, NewProductInputT, RegisterInvoiceInput, UpdateInvoiceInput, CreateBatchInput, InvoiceItemInput } from './schema'
+import { enqueueInvoiceOcr } from '../../lib/invoice-queue'
+import { notifyUsers } from '../../lib/user-notify'
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return isNaN(n) ? 0 : n }
 const numN = (v: unknown): number | null => (v === null || v === undefined ? null : num(v))
@@ -456,7 +458,13 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
 
     // HU-194-C — la factura se crea PRIMERO para ligar sus transacciones (quickInvoiceId = origen
     // factura). Luego se actualiza con la resolución por-ítem.
-    const image = input.imageBase64 ? Buffer.from(input.imageBase64, 'base64') : null
+    let image = input.imageBase64 ? Buffer.from(input.imageBase64, 'base64') : null
+    let imageMime = image ? (input.imageMime ?? 'image/jpeg') : null
+    // HU-212 — si viene de un lote y no se mandó imagen, se conserva la del ítem del lote.
+    if (!image && input.batchItemId) {
+      const bi = await tx.quickInvoiceBatchItem.findFirst({ where: { id: input.batchItemId, tenantId }, select: { imageData: true, imageMime: true } })
+      if (bi?.imageData) { image = Buffer.from(bi.imageData); imageMime = bi.imageMime ?? 'image/jpeg' }
+    }
     const invoice = await tx.quickInvoice.create({
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
@@ -464,7 +472,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
         issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
-        imageData: image, imageMime: image ? (input.imageMime ?? 'image/jpeg') : null,
+        imageData: image, imageMime,
       },
       select: { id: true },
     })
@@ -495,6 +503,14 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
       where: { id: invoice.id },
       data:  { fullExtraction: { ...input.fullExtraction, _resolution: resolution } as Prisma.InputJsonValue },
     })
+
+    // HU-212 — si esta factura viene de revisar un ítem de un lote, se marca registrado.
+    if (input.batchItemId) {
+      await tx.quickInvoiceBatchItem.updateMany({
+        where: { id: input.batchItemId, tenantId },
+        data:  { status: 'registered', registeredInvoiceId: invoice.id },
+      })
+    }
 
     return { invoiceId: invoice.id, kind: input.kind, itemsRegistered: resolution.length, items: resolution }
   })
@@ -731,4 +747,217 @@ export async function exportInvoices(tenantId: string, opts: {
 }) {
   const { data } = await listInvoices(tenantId, { ...opts, page: 1, limit: 100000 })
   return data
+}
+
+// ─── HU-212 — Carga masiva de facturas por OCR (lote) ──────────────────────────
+
+const BATCH_TERMINAL = ['ready', 'unreadable', 'duplicate', 'failed', 'registered']
+type ProposalItem = { description?: string; quantity?: number | null; unitValue?: number | null; productId?: string | null }
+const normCompactName = (s?: string | null) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const nitBase = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
+
+/** Crea el lote + sus ítems (imágenes comprimidas) y encola el OCR de cada uno (segundo plano). */
+export async function createInvoiceBatch(tenantId: string, userId: string, branchId: string | null, input: CreateBatchInput) {
+  const batch = await prisma.quickInvoiceBatch.create({
+    data: {
+      tenantId, userId, kind: input.kind, mode: input.mode,
+      branchId: branchId ?? input.branchId ?? null,
+      total: input.images.length, status: 'processing',
+      items: { create: input.images.map((img) => ({
+        tenantId, fileName: img.fileName || 'factura',
+        imageData: Buffer.from(img.base64, 'base64'), imageMime: img.mime || 'image/jpeg',
+      })) },
+    },
+    select: { id: true, items: { select: { id: true } } },
+  })
+  for (const it of batch.items) await enqueueInvoiceOcr({ itemId: it.id, tenantId })
+  return { batchId: batch.id, total: batch.items.length }
+}
+
+/** Recalcula el progreso del lote a partir de sus ítems; al terminar, lo marca listo y (background) avisa. */
+async function refreshBatch(batchId: string): Promise<void> {
+  const items = await directPrisma.quickInvoiceBatchItem.findMany({ where: { batchId }, select: { status: true } })
+  const processed = items.filter((i) => BATCH_TERMINAL.includes(i.status)).length
+  const failed    = items.filter((i) => i.status === 'failed').length
+  const done      = items.length > 0 && items.every((i) => BATCH_TERMINAL.includes(i.status))
+  const batch = await directPrisma.quickInvoiceBatch.findUnique({
+    where: { id: batchId },
+    select: { status: true, mode: true, tenantId: true, userId: true, kind: true, total: true, notifiedAt: true },
+  })
+  if (!batch) return
+  await directPrisma.quickInvoiceBatch.update({
+    where: { id: batchId },
+    data:  { processed, failed, ...(done && batch.status === 'processing' ? { status: 'ready' } : {}) },
+  })
+  if (done && batch.status === 'processing' && !batch.notifiedAt) {
+    await directPrisma.quickInvoiceBatch.update({ where: { id: batchId }, data: { notifiedAt: new Date() } })
+    if (batch.mode === 'background' && batch.userId) {
+      const ready = items.filter((i) => i.status === 'ready').length
+      const label = batch.kind === 'purchase' ? 'compra' : 'venta'
+      await notifyUsers(directPrisma, {
+        tenantId: batch.tenantId, userIds: [batch.userId], module: null, type: 'lote_facturas',
+        title:   `Lote de facturas listo (${label})`,
+        message: `Tu lote de ${batch.total} factura(s) terminó de procesarse: ${ready} lista(s) para revisar.`,
+        link:    batch.kind === 'purchase' ? '/nira/quick-purchases' : '/ari/quick-sales',
+        wa:      { subject: `Lote de facturas listo: ${ready} de ${batch.total} para revisar` },
+      })
+    }
+  }
+}
+
+async function finalizeItem(itemId: string, batchId: string, status: string, patch: Prisma.QuickInvoiceBatchItemUpdateInput): Promise<void> {
+  await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status, ...patch } })
+  await refreshBatch(batchId)
+}
+
+/** Worker: lee una imagen del lote con OCR y guarda la propuesta / duplicado / ilegible. Puede lanzar
+ *  (error de API/red) para que BullMQ reintente; al agotar intentos se llama a `finalizeFailedItem`. */
+export async function processBatchItem(itemId: string): Promise<void> {
+  const item = await directPrisma.quickInvoiceBatchItem.findUnique({
+    where:  { id: itemId },
+    select: { id: true, tenantId: true, fileName: true, imageData: true, imageMime: true, status: true, batchId: true, batch: { select: { kind: true } } },
+  })
+  if (!item || !item.batch) return
+  if (BATCH_TERMINAL.includes(item.status)) { await refreshBatch(item.batchId); return }
+  await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'processing' } })
+
+  if (!item.imageData) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: 'No se recibió la imagen.' }); return }
+  const kind = item.batch.kind as 'purchase' | 'sale'
+
+  const result = await extractInvoice({
+    tenantId: item.tenantId, kind,
+    fileBuffer: Buffer.from(item.imageData), mimeType: item.imageMime ?? 'image/jpeg', fileName: item.fileName,
+  })
+  if (!result.canRead) { await finalizeItem(itemId, item.batchId, 'unreadable', { error: result.message ?? 'La imagen no se pudo leer.' }); return }
+
+  let duplicateOf: string | null = null
+  if (result.invoiceNumber) {
+    const dup = await directPrisma.quickInvoice.findFirst({ where: { tenantId: item.tenantId, kind, invoiceNumber: result.invoiceNumber }, select: { id: true } })
+    if (dup) duplicateOf = result.invoiceNumber
+  }
+  await finalizeItem(itemId, item.batchId, duplicateOf ? 'duplicate' : 'ready', {
+    issuer:        result.issuer ?? null,
+    nit:           result.nit ? result.nit.replace(/[.\s]/g, '') : null,   // sin puntos, para casar con el guardado
+    invoiceNumber: result.invoiceNumber ?? null,
+    invoiceDate:   result.date ? new Date(result.date) : null,
+    total:         result.total ?? null,
+    proposal:      { items: result.items, additionalFields: result.additionalFields, fullExtraction: result.fullExtraction } as Prisma.InputJsonValue,
+    duplicateOf,
+  })
+}
+
+/** Worker (tras agotar reintentos): marca el ítem como fallido y recalcula el lote. */
+export async function finalizeFailedItem(itemId: string): Promise<void> {
+  const it = await directPrisma.quickInvoiceBatchItem.findUnique({ where: { id: itemId }, select: { batchId: true, status: true } })
+  if (!it || BATCH_TERMINAL.includes(it.status)) return
+  await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'failed', error: 'No se pudo procesar tras varios intentos.' } })
+  await refreshBatch(it.batchId)
+}
+
+/** Detalle del lote (para esperar/revisar): encabezado + ítems con su propuesta. Sin bytes de imagen. */
+export async function getInvoiceBatch(tenantId: string, id: string) {
+  const batch = await prisma.quickInvoiceBatch.findFirst({
+    where:  { id, tenantId },
+    select: {
+      id: true, kind: true, mode: true, status: true, total: true, processed: true, failed: true, branchId: true, createdAt: true,
+      items: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, fileName: true, status: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, error: true, duplicateOf: true, registeredInvoiceId: true, imageMime: true, proposal: true },
+      },
+    },
+  })
+  if (!batch) throw { statusCode: 404, message: 'Lote no encontrado', code: 'NOT_FOUND' }
+  return {
+    ...batch,
+    items: batch.items.map((it) => ({
+      ...it, total: it.total != null ? Number(it.total) : null, hasImage: !!it.imageMime,
+    })),
+  }
+}
+
+/** Imagen de un ítem del lote (trazabilidad / revisión). */
+export async function getBatchItemImage(tenantId: string, itemId: string) {
+  const it = await prisma.quickInvoiceBatchItem.findFirst({ where: { id: itemId, tenantId }, select: { imageData: true, imageMime: true } })
+  if (!it?.imageData) throw { statusCode: 404, message: 'Imagen no encontrada', code: 'NOT_FOUND' }
+  return { data: Buffer.from(it.imageData), mime: it.imageMime ?? 'image/jpeg' }
+}
+
+/** Lista de lotes recientes (para la pestaña "Lotes"), con conteos por estado. */
+export async function listInvoiceBatches(tenantId: string, kind: 'purchase' | 'sale') {
+  const rows = await prisma.quickInvoiceBatch.findMany({
+    where: { tenantId, kind }, orderBy: { createdAt: 'desc' }, take: 50,
+    select: { id: true, status: true, total: true, processed: true, failed: true, createdAt: true, items: { select: { status: true } } },
+  })
+  return {
+    data: rows.map((b) => {
+      const c = (s: string) => b.items.filter((i) => i.status === s).length
+      return { id: b.id, status: b.status, total: b.total, processed: b.processed, failed: b.failed, createdAt: b.createdAt,
+        ready: c('ready'), duplicate: c('duplicate'), unreadable: c('unreadable'), failedItems: c('failed'), registered: c('registered') }
+    }),
+    total: rows.length,
+  }
+}
+
+/** Empareja el proveedor/cliente por NIT (número base) o nombre; genérico si no hay coincidencia. */
+async function matchCounterparty(tenantId: string, kind: 'purchase' | 'sale', nit: string | null, name: string | null): Promise<string | null> {
+  const base = nitBase(nit)
+  const nName = normCompactName(name)
+  if (kind === 'purchase') {
+    const sups = await prisma.supplier.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, taxId: true } })
+    const m = sups.find((s) => (!!base && nitBase(s.taxId) === base) || (nName.length >= 5 && normCompactName(s.name) === nName))
+    return m?.id ?? null
+  }
+  const cls = await prisma.client.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true } })
+  const m = cls.find((c) => nName.length >= 5 && normCompactName(c.name) === nName)
+  return m?.id ?? null
+}
+
+/**
+ * HU-212 — "Aceptar todo": registra los ítems `ready` con su propuesta. Afecta stock solo si el OCR
+ * reconoció un producto y hay sucursal; el resto queda como gasto/ingreso (sin tocar inventario).
+ */
+export async function acceptInvoiceBatch(tenantId: string, userId: string, id: string) {
+  const batch = await prisma.quickInvoiceBatch.findFirst({
+    where:  { id, tenantId },
+    select: { id: true, kind: true, branchId: true, items: { where: { status: 'ready' }, select: { id: true, issuer: true, nit: true, invoiceNumber: true, total: true, proposal: true } } },
+  })
+  if (!batch) throw { statusCode: 404, message: 'Lote no encontrado', code: 'NOT_FOUND' }
+  const kind = batch.kind as 'purchase' | 'sale'
+  const branchId = batch.branchId ?? null
+
+  let registered = 0
+  const errors: { itemId: string; error: string }[] = []
+  for (const it of batch.items) {
+    try {
+      const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
+      const raw = Array.isArray(proposal.items) ? proposal.items : []
+      const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
+      const payloadItems: InvoiceItemInput[] = raw.map((pi) => {
+        const qty  = Number(pi.quantity) > 0 ? Number(pi.quantity) : 1
+        const val  = Number(pi.unitValue) >= 0 ? Number(pi.unitValue) : 0
+        const desc = String(pi.description ?? 'Ítem')
+        return (pi.productId && branchId)
+          ? { description: desc, quantity: qty, unitValue: val, productId: pi.productId }
+          : { description: desc, quantity: qty, unitValue: val, addToInventory: false }
+      })
+      if (payloadItems.length === 0) {
+        payloadItems.push({ description: it.issuer ?? 'Factura', quantity: 1, unitValue: it.total != null ? Number(it.total) : 0, addToInventory: false })
+      }
+      await registerInvoice(tenantId, userId, branchId, {
+        kind,
+        ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
+        branchId: branchId ?? undefined,
+        issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
+        total: it.total != null ? Number(it.total) : null,
+        fullExtraction: proposal.fullExtraction ?? {},
+        items: payloadItems,
+        batchItemId: it.id,
+      })
+      registered++
+    } catch (e) {
+      errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  await prisma.quickInvoiceBatch.update({ where: { id }, data: { status: 'done' } })
+  return { registered, skipped: batch.items.length - registered, errors }
 }

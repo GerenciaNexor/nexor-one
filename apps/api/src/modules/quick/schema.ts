@@ -130,6 +130,7 @@ export const RegisterInvoiceSchema = z.object({
   imageMime:      z.string().max(50).optional(),
   fullExtraction: z.record(z.any()),
   items:          z.array(InvoiceItemSchema).min(1, 'La factura debe tener al menos un ítem'),
+  batchItemId:    z.string().min(1).optional(),  // HU-212 — si viene de revisar un ítem del lote, se marca registrado
 }).superRefine((d, ctx) => {
   d.items.forEach((it, i) => {
     // Venta: un ítem con productId afecta stock; sin productId es una venta de servicio (solo ingreso) — permitido.
@@ -148,6 +149,23 @@ export const RegisterInvoiceSchema = z.object({
 
 export type InvoiceItemInput     = z.infer<typeof InvoiceItemSchema>
 export type RegisterInvoiceInput = z.infer<typeof RegisterInvoiceSchema>
+
+// ─── HU-212 — Carga masiva de facturas por OCR (lote) ──────────────────────────
+
+/** Máximo de facturas por lote (configurable; demo por defecto 10). */
+export const QUICK_BATCH_MAX = (() => { const v = Number(process.env['QUICK_BATCH_MAX']); return Number.isFinite(v) && v >= 1 ? Math.min(v, 50) : 10 })()
+
+export const CreateBatchSchema = z.object({
+  kind:     z.enum(['purchase', 'sale']),
+  mode:     z.enum(['wait', 'background']),        // esperar en pantalla | segundo plano + aviso
+  branchId: z.string().min(1).nullish(),
+  images:   z.array(z.object({
+    fileName: z.string().max(255).default('factura'),
+    base64:   z.string().min(1, 'Imagen vacía'),
+    mime:     z.string().max(50).default('image/jpeg'),
+  })).min(1, 'Sube al menos una imagen').max(QUICK_BATCH_MAX, `Máximo ${QUICK_BATCH_MAX} facturas por lote`),
+})
+export type CreateBatchInput = z.infer<typeof CreateBatchSchema>
 
 /**
  * HU-210 — Edición del ENCABEZADO de una factura cargada (solo metadatos: emisor, NIT, tipo de

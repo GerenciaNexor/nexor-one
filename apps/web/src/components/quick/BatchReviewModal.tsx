@@ -1,0 +1,195 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { apiClient } from '@/lib/api-client'
+import { Portal } from '@/components/ui/Portal'
+import { InvoiceUploadModal, type ExtractResult, type ExtractedItem } from './InvoiceUploadModal'
+
+type Kind = 'purchase' | 'sale'
+
+interface BatchItem {
+  id: string
+  fileName: string
+  status: 'pending' | 'processing' | 'ready' | 'unreadable' | 'duplicate' | 'failed' | 'registered'
+  issuer: string | null
+  nit: string | null
+  invoiceNumber: string | null
+  invoiceDate: string | null
+  total: number | null
+  error: string | null
+  duplicateOf: string | null
+  registeredInvoiceId: string | null
+  hasImage: boolean
+  proposal: { items?: ExtractedItem[]; additionalFields?: { label: string; value: string }[]; fullExtraction?: unknown } | null
+}
+interface Batch {
+  id: string; kind: Kind; mode: string; status: string
+  total: number; processed: number; failed: number; branchId: string | null; createdAt: string
+  items: BatchItem[]
+}
+
+const LABEL: Record<BatchItem['status'], { text: string; cls: string }> = {
+  pending:    { text: 'En cola',      cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+  processing: { text: 'Leyendo…',     cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  ready:      { text: 'Lista',        cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  registered: { text: 'Registrada',   cls: 'bg-emerald-600 text-white' },
+  duplicate:  { text: 'Duplicada',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  unreadable: { text: 'No legible',   cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+  failed:     { text: 'Error',        cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+}
+
+/**
+ * HU-212 — Revisión de un lote ya leído. Muestra el resumen (listas / duplicadas / no legibles) y
+ * exige la decisión: "Revisar una por una" (abre cada factura con lo propuesto) o "Aceptar todas".
+ */
+export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string; onClose: () => void; onDone: () => void }) {
+  const [batch, setBatch]   = useState<Batch | null>(null)
+  const [loading, setLoad]  = useState(true)
+  const [accepting, setAcc] = useState(false)
+  const [confirmAll, setConfirmAll] = useState(false)
+  const [err, setErr]       = useState<string | null>(null)
+  const [reviewIdx, setReviewIdx] = useState<number | null>(null)  // ítem abierto para revisión 1×1
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiClient.get<{ data: Batch }>(`/v1/quick/invoices/batch/${batchId}`)
+      setBatch(r.data)
+      if (r.data.status === 'processing') setTimeout(() => { void load() }, 2500)
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudo cargar el lote.')
+    } finally { setLoad(false) }
+  }, [batchId])
+
+  useEffect(() => { void load() }, [load])
+
+  const isSale = batch?.kind === 'sale'
+  const readyItems = batch?.items.filter((i) => i.status === 'ready') ?? []
+
+  async function acceptAll() {
+    if (!batch) return
+    setAcc(true); setErr(null)
+    try {
+      await apiClient.post(`/v1/quick/invoices/batch/${batch.id}/accept`, {})
+      onDone()
+    } catch (e: unknown) {
+      setErr((e as { message?: string }).message ?? 'No se pudieron registrar las facturas.')
+      setAcc(false)
+    }
+  }
+
+  // Reconstruye lo que InvoiceUploadModal espera a partir de la propuesta guardada del ítem.
+  function extractionFor(it: BatchItem): ExtractResult {
+    return {
+      canRead: true, kind: batch!.kind,
+      issuer: it.issuer, nit: it.nit, invoiceNumber: it.invoiceNumber,
+      date: it.invoiceDate, total: it.total,
+      items: it.proposal?.items ?? [],
+      additionalFields: it.proposal?.additionalFields ?? [],
+      fullExtraction: it.proposal?.fullExtraction,
+    }
+  }
+
+  // Abrir un ítem "ready" concreto para revisión una-por-una.
+  const reviewItem = reviewIdx != null ? readyItems[reviewIdx] : null
+  if (reviewItem && batch) {
+    return (
+      <InvoiceUploadModal
+        kind={batch.kind}
+        initialExtraction={extractionFor(reviewItem)}
+        batchItemId={reviewItem.id}
+        initialBranchId={batch.branchId ?? undefined}
+        onClose={() => setReviewIdx(null)}
+        onSuccess={() => {
+          const next = reviewIdx! + 1
+          void load()
+          // Al terminar una, saltar a la siguiente pendiente de revisión; si no hay, cerrar la revisión.
+          if (next < readyItems.length) setReviewIdx(next); else setReviewIdx(null)
+        }}
+      />
+    )
+  }
+
+  const accent = isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+        <div className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Revisión del lote — {isSale ? 'Ventas' : 'Compras'} rápidas</h3>
+              {batch && <p className="mt-0.5 text-xs text-slate-500">{batch.processed} de {batch.total} procesadas · {readyItems.length} lista{readyItems.length === 1 ? '' : 's'} para registrar</p>}
+            </div>
+            <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {loading && <p className="py-10 text-center text-sm text-slate-400">Cargando lote…</p>}
+            {err && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{err}</p>}
+
+            {batch?.status === 'processing' && (
+              <p className="mb-3 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" /> Aún se están leyendo facturas…
+              </p>
+            )}
+
+            {batch && (
+              <ul className="space-y-2">
+                {batch.items.map((it) => {
+                  const l = LABEL[it.status]
+                  return (
+                    <li key={it.id} className="rounded-xl border border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{it.issuer || it.fileName}</p>
+                          <p className="truncate text-xs text-slate-500">
+                            {it.invoiceNumber ? `Nº ${it.invoiceNumber}` : 'Sin número'}
+                            {it.total != null && ` · $${it.total.toLocaleString('es-CO')}`}
+                            {it.nit && ` · NIT ${it.nit}`}
+                          </p>
+                          {it.status === 'duplicate' && <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">Ya existe una factura con el número {it.duplicateOf}.</p>}
+                          {(it.status === 'unreadable' || it.status === 'failed') && <p className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">{it.error || 'No se pudo leer — vuelve a cargarla manualmente.'}</p>}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${l.cls}`}>{l.text}</span>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+
+          {batch && batch.status !== 'processing' && (
+            <div className="border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+              {readyItems.length === 0 ? (
+                <p className="text-center text-sm text-slate-500">No hay facturas listas para registrar en este lote.</p>
+              ) : !confirmAll ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <button onClick={() => setReviewIdx(0)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                    Revisar una por una ({readyItems.length})
+                  </button>
+                  <button onClick={() => setConfirmAll(true)} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${accent}`}>
+                    Aceptar todas ({readyItems.length})
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-amber-50 p-3 dark:bg-amber-900/20">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Se registrarán <b>{readyItems.length}</b> factura{readyItems.length === 1 ? '' : 's'} tal como las leyó la IA, sin revisión individual.
+                    El inventario solo se afecta cuando el producto fue reconocido{batch.branchId ? '' : ' y hay sucursal'}; el resto queda como {isSale ? 'ingreso' : 'gasto'}.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button onClick={() => setConfirmAll(false)} disabled={accepting} className="rounded-lg border border-amber-300 px-4 py-2 text-sm text-amber-800 disabled:opacity-50 dark:border-amber-700 dark:text-amber-200">Cancelar</button>
+                    <button onClick={() => void acceptAll()} disabled={accepting} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${accent}`}>
+                      {accepting ? 'Registrando…' : 'Sí, registrar todas'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Portal>
+  )
+}

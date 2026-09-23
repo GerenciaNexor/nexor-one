@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema, UpdateInvoiceSchema } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice } from './service'
+import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema, UpdateInvoiceSchema, CreateBatchSchema, QUICK_BATCH_MAX } from './schema'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice, createInvoiceBatch, getInvoiceBatch, listInvoiceBatches, acceptInvoiceBatch, getBatchItemImage } from './service'
 import { registersToXlsx, invoicesToXlsx } from './export'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -258,6 +258,69 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     try {
       const { data, mime } = await getInvoiceImage(request.user.tenantId, (request.params as { id: string }).id)
+      return reply.header('Content-Type', mime).header('Cache-Control', 'private, max-age=3600').send(data)
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  // ── HU-212 — Carga masiva de facturas por OCR (lote, hasta N) ──────────────────
+
+  /** POST /v1/quick/invoices/batch — crea un lote (imágenes en base64) y encola el OCR (segundo plano). */
+  app.post('/invoices/batch', {
+    bodyLimit: 30 * 1024 * 1024,   // hasta 10 imágenes comprimidas en base64
+    schema: { tags: ['Quick'], summary: `Cargar lote de facturas por foto (máx ${QUICK_BATCH_MAX})`, security: bearerAuth, body: z2j(CreateBatchSchema), response: { 201: objRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    const parsed = CreateBatchSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos', code: 'VALIDATION_ERROR' })
+    const branchId = request.user.role === 'OPERATIVE' ? (request.user.branchId ?? parsed.data.branchId ?? null) : (parsed.data.branchId ?? null)
+    try {
+      const data = await createInvoiceBatch(request.user.tenantId, request.user.userId, branchId, parsed.data)
+      return reply.code(201).send({ success: true, data })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices/batch — lotes recientes (pestaña "Lotes"), por tipo. */
+  app.get('/invoices/batch', {
+    schema: { tags: ['Quick'], summary: 'Listar lotes de facturas', security: bearerAuth,
+      querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['purchase', 'sale'] } } },
+      response: { 200: listRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    const kind = (request.query as { kind?: string }).kind === 'sale' ? 'sale' : 'purchase'
+    try {
+      return reply.code(200).send(await listInvoiceBatches(request.user.tenantId, kind))
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices/batch/:id — detalle del lote (progreso + propuestas por ítem). */
+  app.get('/invoices/batch/:id', {
+    schema: { tags: ['Quick'], summary: 'Detalle de un lote', security: bearerAuth, params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    try {
+      return reply.code(200).send({ success: true, data: await getInvoiceBatch(request.user.tenantId, (request.params as { id: string }).id) })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** POST /v1/quick/invoices/batch/:id/accept — registra todo el lote (ítems legibles). */
+  app.post('/invoices/batch/:id/accept', {
+    schema: { tags: ['Quick'], summary: 'Aceptar y registrar todo el lote', security: bearerAuth, params: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, response: { 200: objRes, ...stdErrors } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    try {
+      const data = await acceptInvoiceBatch(request.user.tenantId, request.user.userId, (request.params as { id: string }).id)
+      return reply.code(200).send({ success: true, data })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** GET /v1/quick/invoices/batch/:id/items/:itemId/image — imagen de un ítem del lote. */
+  app.get('/invoices/batch/:id/items/:itemId/image', {
+    schema: { tags: ['Quick'], summary: 'Imagen de un ítem del lote', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' }, itemId: { type: 'string' } }, required: ['id', 'itemId'] } },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    try {
+      const { data, mime } = await getBatchItemImage(request.user.tenantId, (request.params as { itemId: string }).itemId)
       return reply.header('Content-Type', mime).header('Cache-Control', 'private, max-age=3600').send(data)
     } catch (err) { return errReply(reply, err) }
   })

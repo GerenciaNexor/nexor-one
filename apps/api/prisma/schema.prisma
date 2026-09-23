@@ -125,6 +125,7 @@ model Tenant {
   conversationMessages  ConversationMessage[]
   dashboardRollups      DashboardDailyRollup[]
   quickInvoices         QuickInvoice[]
+  quickInvoiceBatches   QuickInvoiceBatch[]
   agentSettings         AgentSetting[]
   proyectos             Proyecto[]
   budgetApprovals       BudgetApproval[] // HU-200
@@ -976,6 +977,60 @@ model QuickInvoice {
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@map("quick_invoices")
+}
+
+/// HU-212 — Lote de carga masiva de facturas por OCR (hasta 10). Se procesa en segundo plano (cola);
+/// el usuario espera en pantalla o recibe aviso al terminar. La revisión sigue siendo obligatoria.
+model QuickInvoiceBatch {
+  id         String   @id @default(cuid()) @db.VarChar(30)
+  tenantId   String   @map("tenant_id") @db.VarChar(30)
+  userId     String?  @map("user_id") @db.VarChar(30)
+  kind       String   @db.VarChar(20)                       // purchase | sale
+  branchId   String?  @map("branch_id") @db.VarChar(30)
+  mode       String   @db.VarChar(20)                       // wait | background
+  status     String   @default("processing") @db.VarChar(20) // processing | ready | done
+  total      Int                                            // cuántas imágenes
+  processed  Int      @default(0)
+  failed     Int      @default(0)
+  notifiedAt DateTime? @map("notified_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  QuickInvoiceBatchItem[]
+
+  @@index([tenantId, kind, createdAt(sort: Desc)])
+  @@map("quick_invoice_batches")
+}
+
+/// HU-212 — Una imagen del lote: guarda la imagen comprimida y la PROPUESTA leída por OCR hasta que el
+/// usuario la registra (revisando una por una o aceptando todo). Aislada por tenant (RLS).
+model QuickInvoiceBatchItem {
+  id            String    @id @default(cuid()) @db.VarChar(30)
+  batchId       String    @map("batch_id") @db.VarChar(30)
+  tenantId      String    @map("tenant_id") @db.VarChar(30)
+  fileName      String    @map("file_name") @db.VarChar(255)
+  imageData     Bytes?    @map("image_data")
+  imageMime     String?   @map("image_mime") @db.VarChar(50)
+  // pending | processing | ready | unreadable | duplicate | failed | registered
+  status        String    @default("pending") @db.VarChar(20)
+  issuer        String?   @db.VarChar(255)
+  nit           String?   @db.VarChar(50)
+  invoiceNumber String?   @map("invoice_number") @db.VarChar(100)
+  invoiceDate   DateTime? @map("invoice_date") @db.Date
+  total         Decimal?  @db.Decimal(15, 2)
+  proposal      Json?                                        // ítems + adicionales + fullExtraction leídos
+  error         String?   @db.Text
+  duplicateOf   String?   @map("duplicate_of") @db.VarChar(100)
+  registeredInvoiceId String? @map("registered_invoice_id") @db.VarChar(30)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  batch QuickInvoiceBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([tenantId])
+  @@map("quick_invoice_batch_items")
 }
 
 /**
