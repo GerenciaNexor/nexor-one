@@ -89,7 +89,7 @@ export async function processFile(file: File): Promise<{ blob: Blob; base64: str
   return { blob, base64: await blobToBase64(blob), mime: 'image/jpeg' }
 }
 
-export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, batchProgress, onClose, onSuccess }: {
+export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, batchProgress, onReject, onClose, onSuccess }: {
   kind: Kind
   /** Arranca en registro MANUAL (sin foto): misma interfaz de revisión, en blanco. */
   startManual?: boolean
@@ -99,6 +99,8 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
   initialBranchId?: string
   /** HU — revisión 1×1 de un lote: posición actual/total para mostrar el progreso al usuario. */
   batchProgress?: { current: number; total: number }
+  /** HU — revisión 1×1: rechazar esta factura (no se registra). Solo en modo lote. */
+  onReject?: () => void | Promise<void>
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -146,6 +148,7 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
   const [branches, setBranches] = useState<Opt[]>([])
   const [products, setProducts] = useState<Prod[]>([])
   const [saving, setSaving]     = useState(false)
+  const [rejecting, setRejecting] = useState(false)
 
   useEffect(() => {
     apiClient.get<{ data: Prod[] }>('/v1/quick/products').then((r) => setProducts(r.data)).catch(() => {})
@@ -473,9 +476,18 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
           )}
 
           {phase === 'review' && (
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={onClose} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
-              <button onClick={confirm} disabled={saving} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              {/* HU — Rechazar (solo en revisión de lote): no registra esta factura y pasa a la siguiente. */}
+              {onReject && (
+                <button
+                  onClick={async () => { setRejecting(true); try { await onReject() } finally { setRejecting(false) } }}
+                  disabled={saving || rejecting}
+                  className="mr-auto rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-900/20">
+                  {rejecting ? 'Rechazando…' : 'Rechazar'}
+                </button>
+              )}
+              <button onClick={onClose} disabled={saving || rejecting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
+              <button onClick={confirm} disabled={saving || rejecting} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                 {saving
                   ? (batchProgress ? `Guardando ${batchProgress.current} de ${batchProgress.total}…` : 'Registrando…')
                   : (batchProgress

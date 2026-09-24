@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
+import { useAuthStore } from '@/store/auth'
 import { Portal } from '@/components/ui/Portal'
 import { InvoiceUploadModal, type ExtractResult, type ExtractedItem } from './InvoiceUploadModal'
 
@@ -10,7 +11,7 @@ type Kind = 'purchase' | 'sale'
 interface BatchItem {
   id: string
   fileName: string
-  status: 'pending' | 'processing' | 'ready' | 'unreadable' | 'duplicate' | 'failed' | 'registered'
+  status: 'pending' | 'processing' | 'ready' | 'unreadable' | 'duplicate' | 'failed' | 'registered' | 'rejected'
   issuer: string | null
   nit: string | null
   invoiceNumber: string | null
@@ -36,6 +37,7 @@ const LABEL: Record<BatchItem['status'], { text: string; cls: string }> = {
   duplicate:  { text: 'Duplicada',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
   unreadable: { text: 'No legible',   cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
   failed:     { text: 'Error',        cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+  rejected:   { text: 'Rechazada',    cls: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
 }
 
 /**
@@ -50,6 +52,22 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   const [err, setErr]       = useState<string | null>(null)
   const [reviewing, setReviewing]   = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
   const [reviewTotal, setReviewTotal] = useState(0)    // cuántas había al iniciar la revisión (para "X / N")
+  const [viewer, setViewer] = useState<{ url: string; loading: boolean } | null>(null)  // visor de imagen
+
+  // Abre la imagen de un ítem del lote (con auth) en un visor. La imagen se conserva aunque el ítem
+  // esté registrado/duplicado (el ítem del lote guarda su copia).
+  async function viewImage(itemId: string) {
+    setViewer({ url: '', loading: true })
+    try {
+      const token  = useAuthStore.getState().token
+      const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
+      const res = await fetch(`${apiUrl}/v1/quick/invoices/batch/${batchId}/items/${itemId}/image`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      if (!res.ok) throw new Error('no image')
+      const url = URL.createObjectURL(await res.blob())
+      setViewer({ url, loading: false })
+    } catch { setViewer(null); setErr('No se pudo abrir la imagen.') }
+  }
+  function closeViewer() { setViewer((v) => { if (v?.url) URL.revokeObjectURL(v.url); return null }) }
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +122,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
         batchItemId={reviewItem.id}
         initialBranchId={batch.branchId ?? undefined}
         batchProgress={{ current: Math.min(reviewTotal, reviewTotal - readyItems.length + 1), total: reviewTotal }}
+        onReject={async () => { await apiClient.post(`/v1/quick/invoices/batch/${batch.id}/items/${reviewItem.id}/reject`, {}); await load() }}
         onClose={() => setReviewing(false)}
         onSuccess={() => { void load() }}  // recarga: el registrado sale de "ready"; el próximo pasa a [0]
       />
@@ -152,7 +171,14 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                           {it.status === 'duplicate' && <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">Ya existe una factura con el número {it.duplicateOf}.</p>}
                           {(it.status === 'unreadable' || it.status === 'failed') && <p className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">{it.error || 'No se pudo leer — vuelve a cargarla manualmente.'}</p>}
                         </div>
-                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${l.cls}`}>{l.text}</span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {it.hasImage && (
+                            <button onClick={() => void viewImage(it.id)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
+                              Ver imagen
+                            </button>
+                          )}
+                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${l.cls}`}>{l.text}</span>
+                        </div>
                       </div>
                     </li>
                   )
@@ -192,6 +218,16 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
           )}
         </div>
       </div>
+
+      {/* Visor de imagen de la factura (registrada / duplicada / lista / rechazada) */}
+      {viewer && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 p-4" onClick={closeViewer}>
+          <button onClick={closeViewer} aria-label="Cerrar" className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1 text-lg text-white hover:bg-white/20">✕</button>
+          {viewer.loading
+            ? <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            : <img src={viewer.url} alt="Factura" className="max-h-[90vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" onClick={(e) => e.stopPropagation()} />}
+        </div>
+      )}
     </Portal>
   )
 }

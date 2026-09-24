@@ -751,7 +751,7 @@ export async function exportInvoices(tenantId: string, opts: {
 
 // ─── HU-212 — Carga masiva de facturas por OCR (lote) ──────────────────────────
 
-const BATCH_TERMINAL = ['ready', 'unreadable', 'duplicate', 'failed', 'registered']
+const BATCH_TERMINAL = ['ready', 'unreadable', 'duplicate', 'failed', 'registered', 'rejected']
 type ProposalItem = { description?: string; quantity?: number | null; unitValue?: number | null; productId?: string | null }
 const normCompactName = (s?: string | null) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const nitBase = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
@@ -915,6 +915,16 @@ export async function getInvoiceBatch(tenantId: string, id: string) {
       ...it, total: it.total != null ? Number(it.total) : null, hasImage: !!it.imageMime,
     })),
   }
+}
+
+/** HU — Rechazar un ítem "ready" del lote: no se registra, queda como 'rejected' (terminal). */
+export async function rejectBatchItem(tenantId: string, itemId: string) {
+  const it = await directPrisma.quickInvoiceBatchItem.findFirst({ where: { id: itemId, tenantId }, select: { id: true, batchId: true, status: true } })
+  if (!it) throw { statusCode: 404, message: 'Ítem no encontrado', code: 'NOT_FOUND' }
+  if (it.status === 'registered') throw { statusCode: 409, message: 'La factura ya fue registrada; no se puede rechazar.', code: 'ALREADY_REGISTERED' }
+  await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'rejected' } })
+  await refreshBatch(it.batchId)
+  return { id: itemId, status: 'rejected' }
 }
 
 /** Imagen de un ítem del lote (trazabilidad / revisión). */
