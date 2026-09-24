@@ -33,7 +33,10 @@ export type Confidence   = 'high' | 'medium' | 'low'
 
 export interface FieldValue<T = string> {
   value:      T
-  confidence: Confidence
+  // HU-215 — opcional en la RESPUESTA del modelo (se omite cuando es "high" para acortar la salida y
+  // acelerar la lectura); tras el parseo se normaliza a "high" por defecto, así los consumidores
+  // siempre reciben un valor válido. Ver normalizeConfidence().
+  confidence?: Confidence
 }
 
 export interface LineItem {
@@ -105,52 +108,41 @@ Para tipo "quote":
 {
   "documentType": "quote",
   "canRead": true,
-  "readabilityIssues": null,
-  "confidence": "high|medium|low",
-  "client":    { "value": "nombre del cliente o empresa", "confidence": "high|medium|low" },
-  "clientNit": { "value": "NIT o CC/identificación del cliente", "confidence": "high|medium|low" },
-  "invoiceNumber": { "value": "número o código de la factura", "confidence": "high|medium|low" },
-  "date": { "value": "YYYY-MM-DD", "confidence": "high|medium|low" },
+  "confidence": "high",
+  "client":    { "value": "nombre del cliente o empresa" },
+  "clientNit": { "value": "NIT o CC/identificación del cliente" },
+  "invoiceNumber": { "value": "número o código de la factura" },
+  "date": { "value": "YYYY-MM-DD" },
   "items": [
-    {
-      "description": { "value": "descripción del producto o servicio", "confidence": "high|medium|low" },
-      "quantity":    { "value": 2, "confidence": "high|medium|low" },
-      "unitPrice":   { "value": 45900.00, "confidence": "high|medium|low" },
-      "discount":    null
-    }
+    { "description": { "value": "descripción del producto o servicio" }, "quantity": { "value": 2 }, "unitPrice": { "value": 45900.00 }, "discount": null }
   ],
-  "total": { "value": 91800.00, "confidence": "high|medium|low" },
-  "notes": { "value": "condiciones o notas adicionales", "confidence": "high|medium|low" }
+  "total": { "value": 91800.00 },
+  "notes": { "value": "condiciones o notas adicionales" }
 }
 
 Para tipo "order":
 {
   "documentType": "order",
   "canRead": true,
-  "readabilityIssues": null,
-  "confidence": "high|medium|low",
-  "supplier":     { "value": "nombre del proveedor", "confidence": "high|medium|low" },
-  "supplierNit":  { "value": "NIT o identificación tributaria", "confidence": "high|medium|low" },
-  "invoiceNumber": { "value": "número o código de la factura", "confidence": "high|medium|low" },
-  "date":         { "value": "YYYY-MM-DD", "confidence": "high|medium|low" },
+  "confidence": "high",
+  "supplier":     { "value": "nombre del proveedor" },
+  "supplierNit":  { "value": "NIT o identificación tributaria" },
+  "invoiceNumber": { "value": "número o código de la factura" },
+  "date":         { "value": "YYYY-MM-DD" },
   "items": [
-    {
-      "description": { "value": "descripción del producto", "confidence": "high|medium|low" },
-      "quantity":    { "value": 3, "confidence": "high|medium|low" },
-      "unitPrice":   { "value": 12500.00, "confidence": "high|medium|low" },
-      "discount":    null
-    }
+    { "description": { "value": "descripción del producto" }, "quantity": { "value": 3 }, "unitPrice": { "value": 12500.00 }, "discount": null }
   ],
-  "total":        { "value": 37500.00, "confidence": "high|medium|low" },
-  "paymentTerms": { "value": "condiciones de pago", "confidence": "high|medium|low" },
-  "notes":        { "value": "notas adicionales", "confidence": "high|medium|low" }
+  "total":        { "value": 37500.00 },
+  "paymentTerms": { "value": "condiciones de pago" },
+  "notes":        { "value": "notas adicionales" }
 }
 
 Reglas estrictas:
 - Si no puedes leer el documento: pon "canRead": false y describe el problema en "readabilityIssues" con sugerencias concretas
-- confidence "high": claramente visible y sin ambigüedad
-- confidence "medium": legible pero podría tener errores menores de lectura
-- confidence "low": apenas legible, estimado o inferido del contexto
+- RESPUESTA CORTA (importante para la velocidad): cada campo es un objeto { "value": ... }. El atributo
+  "confidence" es OPCIONAL y por defecto se asume "high": inclúyelo ("medium" o "low") SOLO cuando el dato
+  sea dudoso o poco legible; si el dato es claro, OMITE "confidence" por completo. Emite un JSON compacto,
+  sin espacios ni saltos de línea innecesarios.
 - quantity, unitPrice, total y discount son SIEMPRE números JavaScript, nunca strings
 - Los precios NO incluyen el símbolo de moneda en el JSON
 - Separadores numéricos: en Colombia el punto es separador de miles y la coma es decimal. Ejemplo: "1.234,56" → 1234.56; "45.000" → 45000
@@ -168,10 +160,12 @@ información que aparezca en la factura y NO tenga un campo propio, en el arregl
 como pares { "label": "...", "value": "..." }. Incluye (solo si aparecen, nunca inventes): cliente y
 su NIT/CC/identificación, vendedor/cajero, forma de pago, subtotal, IVA/impuestos y su base,
 descuentos, retenciones, puntos/fidelización, resolución DIAN y su rango, dirección,
-teléfono/contacto, correo, moneda, términos, observaciones, código QR/CUFE, etc. Usa el mismo
+teléfono/contacto, correo, moneda, términos, observaciones, etc. Usa el mismo
 nombre/etiqueta que muestra la factura ("Vendedor", "CC", "Puntos"…). Si un dato YA está en un campo
 propio (emisor, NIT del emisor, número de factura, fecha, total, ítems) NO lo repitas aquí. Si la
-factura no trae datos adicionales, devuelve "additionalFields": [].`
+factura no trae datos adicionales, devuelve "additionalFields": [].
+- HU-215 (salida corta): en additionalFields NO incluyas CUFE, CUDE, códigos QR, URLs, ni cadenas de más
+  de ~50 caracteres (no aportan al registro contable y alargan la respuesta). Máximo ~12 pares.`
 }
 
 // ─── Prompt de matching semántico ─────────────────────────────────────────────
@@ -204,6 +198,25 @@ Usa coincidencia semántica difusa: "Papel Bond A4" coincide con "Papel carta bo
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * HU-215 — El modelo omite `confidence` cuando es "high" (respuesta más corta → lectura más rápida).
+ * Aquí se rellena a "high" por defecto para que los consumidores (badges de OC, mapeo de facturas)
+ * siempre reciban un valor válido. Defensivo: nunca lanza.
+ */
+function normalizeConfidence(parsed: ExtractionResult): void {
+  const fix = (f: unknown): void => {
+    if (f && typeof f === 'object' && 'value' in (f as Record<string, unknown>) && !(f as FieldValue).confidence) {
+      (f as FieldValue).confidence = 'high'
+    }
+  }
+  if (!parsed.confidence) parsed.confidence = 'high'
+  const p = parsed as unknown as Record<string, unknown>
+  for (const k of ['invoiceNumber', 'date', 'total', 'notes', 'client', 'clientNit', 'supplier', 'supplierNit', 'paymentTerms']) fix(p[k])
+  if (Array.isArray(parsed.items)) {
+    for (const it of parsed.items) { fix(it.description); fix(it.quantity); fix(it.unitPrice); fix(it.discount) }
+  }
+}
 
 function resolveMediaType(mimeType: string, fileName: string): string {
   if (mimeType && mimeType !== 'application/octet-stream') return mimeType
@@ -283,6 +296,7 @@ export async function extractDocument(params: {
   const abort   = new AbortController()
   const abortAt = setTimeout(() => abort.abort(), OCR_TOTAL_TIMEOUT_MS)
   let response
+  const modelStart = Date.now()   // HU-215 — cronometrar la llamada al modelo (el grueso del tiempo)
   try {
     response = await client.messages.create({
       model,
@@ -302,11 +316,13 @@ export async function extractDocument(params: {
   } finally {
     clearTimeout(abortAt)
   }
+  const modelMs = Date.now() - modelStart
 
-  // Observabilidad de costo por documento (HU-191/192): tokens y cache.
+  // HU-215 — Desglose de tiempo + costo por documento (diagnóstico de velocidad; tokens y cache).
+  // La generación de tokens de SALIDA es serial y domina la latencia: menos salida = más rápido.
   const u = response.usage
   console.info('[OCR] cost', JSON.stringify({
-    model, inputTokens: u.input_tokens, outputTokens: u.output_tokens,
+    model, modelMs, inputTokens: u.input_tokens, outputTokens: u.output_tokens,
     cacheWrite: u.cache_creation_input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0,
   }))
 
@@ -322,6 +338,7 @@ export async function extractDocument(params: {
   let parsed: ExtractionResult
   try {
     parsed = JSON.parse(jsonStr) as ExtractionResult
+    normalizeConfidence(parsed)   // HU-215 — el modelo omite confidence cuando es "high"; rellenar aquí
   } catch {
     throw {
       statusCode: 422,

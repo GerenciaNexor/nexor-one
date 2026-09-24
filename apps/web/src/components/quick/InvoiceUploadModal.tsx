@@ -79,7 +79,7 @@ export async function processFile(file: File): Promise<{ blob: Blob; base64: str
   const img = await new Promise<HTMLImageElement>((res, rej) => {
     const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file)
   })
-  const maxDim = 1600
+  const maxDim = 1568 // HU-215 — Anthropic re-escala el lado largo a 1568px; enviar más no mejora la lectura y solo pesa
   const scale  = Math.min(1, maxDim / Math.max(img.width, img.height))
   const w = Math.round(img.width * scale), h = Math.round(img.height * scale)
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
