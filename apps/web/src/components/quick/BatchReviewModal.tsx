@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { useAuthStore } from '@/store/auth'
 import { Portal } from '@/components/ui/Portal'
 import { InvoiceUploadModal, type ExtractResult, type ExtractedItem } from './InvoiceUploadModal'
+import { BatchItemDetailModal } from './BatchItemDetailModal'
+import { InvoiceDetailModal } from './InvoicesPanel'
 
 type Kind = 'purchase' | 'sale'
 
@@ -52,22 +53,8 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   const [err, setErr]       = useState<string | null>(null)
   const [reviewing, setReviewing]   = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
   const [reviewTotal, setReviewTotal] = useState(0)    // cuántas había al iniciar la revisión (para "X / N")
-  const [viewer, setViewer] = useState<{ url: string; loading: boolean } | null>(null)  // visor de imagen
-
-  // Abre la imagen de un ítem del lote (con auth) en un visor. La imagen se conserva aunque el ítem
-  // esté registrado/duplicado (el ítem del lote guarda su copia).
-  async function viewImage(itemId: string) {
-    setViewer({ url: '', loading: true })
-    try {
-      const token  = useAuthStore.getState().token
-      const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
-      const res = await fetch(`${apiUrl}/v1/quick/invoices/batch/${batchId}/items/${itemId}/image`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      if (!res.ok) throw new Error('no image')
-      const url = URL.createObjectURL(await res.blob())
-      setViewer({ url, loading: false })
-    } catch { setViewer(null); setErr('No se pudo abrir la imagen.') }
-  }
-  function closeViewer() { setViewer((v) => { if (v?.url) URL.revokeObjectURL(v.url); return null }) }
+  const [detailItem, setDetailItem]   = useState<BatchItem | null>(null)  // ítem abierto en el detalle
+  const [registeredId, setRegisteredId] = useState<string | null>(null)   // factura registrada a abrir
 
   const load = useCallback(async () => {
     try {
@@ -159,8 +146,10 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                 {batch.items.map((it) => {
                   const l = LABEL[it.status]
                   return (
-                    <li key={it.id} className="rounded-xl border border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
+                    <li key={it.id}>
+                      <button
+                        onClick={() => setDetailItem(it)}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 px-3.5 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-slate-600 dark:hover:bg-slate-800/50">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{it.issuer || it.fileName}</p>
                           <p className="truncate text-xs text-slate-500">
@@ -172,14 +161,10 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                           {(it.status === 'unreadable' || it.status === 'failed') && <p className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">{it.error || 'No se pudo leer — vuelve a cargarla manualmente.'}</p>}
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          {it.hasImage && (
-                            <button onClick={() => void viewImage(it.id)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
-                              Ver imagen
-                            </button>
-                          )}
                           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${l.cls}`}>{l.text}</span>
+                          <span className="text-xs text-slate-400">Ver ›</span>
                         </div>
-                      </div>
+                      </button>
                     </li>
                   )
                 })}
@@ -219,14 +204,21 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
         </div>
       </div>
 
-      {/* Visor de imagen de la factura (registrada / duplicada / lista / rechazada) */}
-      {viewer && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 p-4" onClick={closeViewer}>
-          <button onClick={closeViewer} aria-label="Cerrar" className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1 text-lg text-white hover:bg-white/20">✕</button>
-          {viewer.loading
-            ? <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            : <img src={viewer.url} alt="Factura" className="max-h-[90vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" onClick={(e) => e.stopPropagation()} />}
-        </div>
+      {/* Detalle de un ítem del lote: propuesta + imagen + aprobar/rechazar */}
+      {detailItem && batch && (
+        <BatchItemDetailModal
+          item={detailItem}
+          batchId={batch.id}
+          kind={batch.kind}
+          onClose={() => setDetailItem(null)}
+          onChanged={() => { void load() }}
+          onOpenRegistered={(invId) => { setDetailItem(null); setRegisteredId(invId) }}
+        />
+      )}
+
+      {/* Factura ya registrada (reusa el detalle de "Facturas cargadas") */}
+      {registeredId && batch && (
+        <InvoiceDetailModal id={registeredId} kind={batch.kind} onClose={() => setRegisteredId(null)} onChanged={() => { void load() }} />
       )}
     </Portal>
   )

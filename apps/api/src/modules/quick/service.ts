@@ -964,6 +964,37 @@ async function matchCounterparty(tenantId: string, kind: 'purchase' | 'sale', ni
   return m?.id ?? null
 }
 
+type ReadyItem = { id: string; issuer: string | null; nit: string | null; invoiceNumber: string | null; total: Prisma.Decimal | null; proposal: Prisma.JsonValue }
+
+/** Registra UN ítem `ready` con su propuesta. Afecta stock solo si el OCR reconoció un producto y hay
+ *  sucursal; el resto queda como gasto/ingreso. Usado por "Aceptar todo" y por la aprobación individual. */
+async function registerReadyItem(tenantId: string, userId: string, kind: 'purchase' | 'sale', branchId: string | null, it: ReadyItem): Promise<void> {
+  const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
+  const raw = Array.isArray(proposal.items) ? proposal.items : []
+  const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
+  const payloadItems: InvoiceItemInput[] = raw.map((pi) => {
+    const qty  = Number(pi.quantity) > 0 ? Number(pi.quantity) : 1
+    const val  = Number(pi.unitValue) >= 0 ? Number(pi.unitValue) : 0
+    const desc = String(pi.description ?? 'Ítem')
+    return (pi.productId && branchId)
+      ? { description: desc, quantity: qty, unitValue: val, productId: pi.productId }
+      : { description: desc, quantity: qty, unitValue: val, addToInventory: false }
+  })
+  if (payloadItems.length === 0) {
+    payloadItems.push({ description: it.issuer ?? 'Factura', quantity: 1, unitValue: it.total != null ? Number(it.total) : 0, addToInventory: false })
+  }
+  await registerInvoice(tenantId, userId, branchId, {
+    kind,
+    ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
+    branchId: branchId ?? undefined,
+    issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
+    total: it.total != null ? Number(it.total) : null,
+    fullExtraction: proposal.fullExtraction ?? {},
+    items: payloadItems,
+    batchItemId: it.id,
+  })
+}
+
 /**
  * HU-212 — "Aceptar todo": registra los ítems `ready` con su propuesta. Afecta stock solo si el OCR
  * reconoció un producto y hay sucursal; el resto queda como gasto/ingreso (sin tocar inventario).
@@ -980,36 +1011,22 @@ export async function acceptInvoiceBatch(tenantId: string, userId: string, id: s
   let registered = 0
   const errors: { itemId: string; error: string }[] = []
   for (const it of batch.items) {
-    try {
-      const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
-      const raw = Array.isArray(proposal.items) ? proposal.items : []
-      const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
-      const payloadItems: InvoiceItemInput[] = raw.map((pi) => {
-        const qty  = Number(pi.quantity) > 0 ? Number(pi.quantity) : 1
-        const val  = Number(pi.unitValue) >= 0 ? Number(pi.unitValue) : 0
-        const desc = String(pi.description ?? 'Ítem')
-        return (pi.productId && branchId)
-          ? { description: desc, quantity: qty, unitValue: val, productId: pi.productId }
-          : { description: desc, quantity: qty, unitValue: val, addToInventory: false }
-      })
-      if (payloadItems.length === 0) {
-        payloadItems.push({ description: it.issuer ?? 'Factura', quantity: 1, unitValue: it.total != null ? Number(it.total) : 0, addToInventory: false })
-      }
-      await registerInvoice(tenantId, userId, branchId, {
-        kind,
-        ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
-        branchId: branchId ?? undefined,
-        issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
-        total: it.total != null ? Number(it.total) : null,
-        fullExtraction: proposal.fullExtraction ?? {},
-        items: payloadItems,
-        batchItemId: it.id,
-      })
-      registered++
-    } catch (e) {
-      errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) })
-    }
+    try { await registerReadyItem(tenantId, userId, kind, branchId, it); registered++ }
+    catch (e) { errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) }) }
   }
   await prisma.quickInvoiceBatch.update({ where: { id }, data: { status: 'done' } })
   return { registered, skipped: batch.items.length - registered, errors }
+}
+
+/** HU — Aprobar UN ítem `ready` del lote (registrarlo) desde el detalle. */
+export async function acceptBatchItem(tenantId: string, userId: string, itemId: string) {
+  const it = await prisma.quickInvoiceBatchItem.findFirst({
+    where:  { id: itemId, tenantId },
+    select: { id: true, status: true, issuer: true, nit: true, invoiceNumber: true, total: true, proposal: true, batch: { select: { kind: true, branchId: true } } },
+  })
+  if (!it || !it.batch) throw { statusCode: 404, message: 'Ítem no encontrado', code: 'NOT_FOUND' }
+  if (it.status === 'registered') throw { statusCode: 409, message: 'La factura ya fue registrada.', code: 'ALREADY_REGISTERED' }
+  if (it.status !== 'ready' && it.status !== 'duplicate') throw { statusCode: 409, message: 'Solo se pueden aprobar facturas leídas correctamente.', code: 'NOT_APPROVABLE' }
+  await registerReadyItem(tenantId, userId, it.batch.kind as 'purchase' | 'sale', it.batch.branchId ?? null, it)
+  return { id: itemId, status: 'registered' }
 }
