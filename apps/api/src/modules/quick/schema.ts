@@ -156,9 +156,10 @@ export type RegisterInvoiceInput = z.infer<typeof RegisterInvoiceSchema>
 export const QUICK_BATCH_MAX = (() => { const v = Number(process.env['QUICK_BATCH_MAX']); return Number.isFinite(v) && v >= 1 ? Math.min(v, 50) : 10 })()
 
 export const CreateBatchSchema = z.object({
-  kind:     z.enum(['purchase', 'sale']),
-  mode:     z.enum(['wait', 'background']),        // esperar en pantalla | segundo plano + aviso
-  branchId: z.string().min(1).nullish(),
+  kind:      z.enum(['purchase', 'sale']),
+  mode:      z.enum(['wait', 'background']),        // esperar en pantalla | segundo plano + aviso
+  branchId:  z.string().min(1).nullish(),
+  projectId: z.string().min(1).nullish(),           // proyecto por defecto para todo el lote (opcional)
   images:   z.array(z.object({
     fileName: z.string().max(255).default('factura'),
     base64:   z.string().min(1, 'Imagen vacía'),

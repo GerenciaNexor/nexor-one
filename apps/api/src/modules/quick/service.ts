@@ -769,6 +769,7 @@ export async function createInvoiceBatch(tenantId: string, userId: string, branc
     data: {
       tenantId, userId, kind: input.kind, mode: input.mode,
       branchId: branchId ?? input.branchId ?? null,
+      projectId: input.projectId ?? null,   // proyecto por defecto del lote (se aplica a cada factura)
       total: input.images.length, status: 'processing',
       items: { create: input.images.map((img) => ({
         tenantId, fileName: img.fileName || 'factura',
@@ -901,7 +902,7 @@ export async function getInvoiceBatch(tenantId: string, id: string) {
   const batch = await prisma.quickInvoiceBatch.findFirst({
     where:  { id, tenantId },
     select: {
-      id: true, kind: true, mode: true, status: true, total: true, processed: true, failed: true, branchId: true, createdAt: true,
+      id: true, kind: true, mode: true, status: true, total: true, processed: true, failed: true, branchId: true, projectId: true, createdAt: true,
       items: {
         orderBy: { createdAt: 'asc' },
         select: { id: true, fileName: true, status: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, error: true, duplicateOf: true, registeredInvoiceId: true, imageMime: true, proposal: true },
@@ -968,7 +969,7 @@ type ReadyItem = { id: string; issuer: string | null; nit: string | null; invoic
 
 /** Registra UN ítem `ready` con su propuesta. Afecta stock solo si el OCR reconoció un producto y hay
  *  sucursal; el resto queda como gasto/ingreso. Usado por "Aceptar todo" y por la aprobación individual. */
-async function registerReadyItem(tenantId: string, userId: string, kind: 'purchase' | 'sale', branchId: string | null, it: ReadyItem): Promise<void> {
+async function registerReadyItem(tenantId: string, userId: string, kind: 'purchase' | 'sale', branchId: string | null, projectId: string | null, it: ReadyItem): Promise<void> {
   const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
   const raw = Array.isArray(proposal.items) ? proposal.items : []
   const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
@@ -987,6 +988,7 @@ async function registerReadyItem(tenantId: string, userId: string, kind: 'purcha
     kind,
     ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
     branchId: branchId ?? undefined,
+    ...(projectId ? { projectId } : {}),   // proyecto por defecto del lote
     issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
     total: it.total != null ? Number(it.total) : null,
     fullExtraction: proposal.fullExtraction ?? {},
@@ -1002,7 +1004,7 @@ async function registerReadyItem(tenantId: string, userId: string, kind: 'purcha
 export async function acceptInvoiceBatch(tenantId: string, userId: string, id: string) {
   const batch = await prisma.quickInvoiceBatch.findFirst({
     where:  { id, tenantId },
-    select: { id: true, kind: true, branchId: true, items: { where: { status: 'ready' }, select: { id: true, issuer: true, nit: true, invoiceNumber: true, total: true, proposal: true } } },
+    select: { id: true, kind: true, branchId: true, projectId: true, items: { where: { status: 'ready' }, select: { id: true, issuer: true, nit: true, invoiceNumber: true, total: true, proposal: true } } },
   })
   if (!batch) throw { statusCode: 404, message: 'Lote no encontrado', code: 'NOT_FOUND' }
   const kind = batch.kind as 'purchase' | 'sale'
@@ -1011,7 +1013,7 @@ export async function acceptInvoiceBatch(tenantId: string, userId: string, id: s
   let registered = 0
   const errors: { itemId: string; error: string }[] = []
   for (const it of batch.items) {
-    try { await registerReadyItem(tenantId, userId, kind, branchId, it); registered++ }
+    try { await registerReadyItem(tenantId, userId, kind, branchId, batch.projectId ?? null, it); registered++ }
     catch (e) { errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) }) }
   }
   await prisma.quickInvoiceBatch.update({ where: { id }, data: { status: 'done' } })

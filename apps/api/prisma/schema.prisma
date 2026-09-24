@@ -989,6 +989,7 @@ model QuickInvoiceBatch {
   branchId   String?  @map("branch_id") @db.VarChar(30)
   mode       String   @db.VarChar(20)                       // wait | background
   status     String   @default("processing") @db.VarChar(20) // processing | ready | done
+  projectId  String?  @map("project_id") @db.VarChar(30)    // proyecto por defecto para todas las facturas del lote
   total      Int                                            // cuántas imágenes
   processed  Int      @default(0)
   failed     Int      @default(0)

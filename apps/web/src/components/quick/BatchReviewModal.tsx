@@ -25,7 +25,7 @@ interface BatchItem {
 }
 interface Batch {
   id: string; kind: Kind; mode: string; status: string
-  total: number; processed: number; failed: number; branchId: string | null; createdAt: string
+  total: number; processed: number; failed: number; branchId: string | null; projectId: string | null; createdAt: string
   items: BatchItem[]
 }
 
@@ -107,6 +107,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
         initialExtraction={extractionFor(reviewItem)}
         batchItemId={reviewItem.id}
         initialBranchId={batch.branchId ?? undefined}
+        initialProjectId={batch.projectId ?? undefined}
         batchProgress={{ current: Math.min(reviewTotal, reviewTotal - readyItems.length + 1), total: reviewTotal }}
         onReject={async () => { await apiClient.post(`/v1/quick/invoices/batch/${batch.id}/items/${reviewItem.id}/reject`, {}); await load() }}
         onClose={() => setReviewing(false)}
@@ -127,6 +128,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
         initialExtraction={extractionFor(singleItem)}
         batchItemId={singleItem.id}
         initialBranchId={batch.branchId ?? undefined}
+        initialProjectId={batch.projectId ?? undefined}
         onReject={async () => { await apiClient.post(`/v1/quick/invoices/batch/${batch.id}/items/${singleItem.id}/reject`, {}); await load(); setSingleReviewId(null) }}
         onClose={() => setSingleReviewId(null)}
         onSuccess={() => { void load(); setSingleReviewId(null) }}
