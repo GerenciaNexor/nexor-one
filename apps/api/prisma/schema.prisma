@@ -989,6 +989,7 @@ model QuickInvoiceBatch {
   branchId   String?  @map("branch_id") @db.VarChar(30)
   mode       String   @db.VarChar(20)                       // wait | background
   status     String   @default("processing") @db.VarChar(20) // processing | ready | done
+  projectId  String?  @map("project_id") @db.VarChar(30)    // proyecto por defecto para todas las facturas del lote
   total      Int                                            // cuántas imágenes
   processed  Int      @default(0)
   failed     Int      @default(0)
@@ -1009,6 +1010,7 @@ model QuickInvoiceBatchItem {
   id            String    @id @default(cuid()) @db.VarChar(30)
   batchId       String    @map("batch_id") @db.VarChar(30)
   tenantId      String    @map("tenant_id") @db.VarChar(30)
+  position      Int       @default(0)                          // orden de carga (para mostrar en el mismo orden)
   fileName      String    @map("file_name") @db.VarChar(255)
   imageData     Bytes?    @map("image_data")
   imageMime     String?   @map("image_mime") @db.VarChar(50)

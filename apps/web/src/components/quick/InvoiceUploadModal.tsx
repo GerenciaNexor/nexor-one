@@ -89,7 +89,7 @@ export async function processFile(file: File): Promise<{ blob: Blob; base64: str
   return { blob, base64: await blobToBase64(blob), mime: 'image/jpeg' }
 }
 
-export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, batchProgress, onReject, onClose, onSuccess }: {
+export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, initialProjectId, batchProgress, onReject, onClose, onSuccess }: {
   kind: Kind
   /** Arranca en registro MANUAL (sin foto): misma interfaz de revisión, en blanco. */
   startManual?: boolean
@@ -97,6 +97,8 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
   initialExtraction?: ExtractResult
   batchItemId?: string
   initialBranchId?: string
+  /** Proyecto por defecto (del lote) para asignar la factura. */
+  initialProjectId?: string
   /** HU — revisión 1×1 de un lote: posición actual/total para mostrar el progreso al usuario. */
   batchProgress?: { current: number; total: number }
   /** HU — revisión 1×1: rechazar esta factura (no se registra). Solo en modo lote. */
@@ -140,7 +142,7 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
 
   const [cpId, setCpId]         = useState('')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : (initialBranchId ?? ''))
-  const [projectId, setProjectId] = useState('')
+  const [projectId, setProjectId] = useState(initialProjectId ?? '')
   const [items, setItems]       = useState<ItemState[]>(startManual ? [emptyItem()] : [])
 
   const [additional, setAdditional] = useState<{ label: string; value: string }[]>([])

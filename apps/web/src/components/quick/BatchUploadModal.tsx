@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { ProjectSelect } from '@/components/proyectos/ProjectSelect'
 import { processFile } from './InvoiceUploadModal'
 
 type Kind = 'purchase' | 'sale'
@@ -30,6 +31,7 @@ export function BatchUploadModal({ kind, onClose, onReady, onBackground }: {
   const [files, setFiles]     = useState<File[]>([])
   const [mode, setMode]       = useState<'wait' | 'background'>('wait')
   const [branchId, setBranchId] = useState(isOperative ? (user?.branchId ?? '') : '')
+  const [projectId, setProjectId] = useState('')
   const [branches, setBranches] = useState<Branch[]>([])
   const [busy, setBusy]       = useState(false)
   const [err, setErr]         = useState<string | null>(null)
@@ -42,7 +44,11 @@ export function BatchUploadModal({ kind, onClose, onReady, onBackground }: {
   function addFiles(list: FileList | null) {
     if (!list) return
     const incoming = Array.from(list)
-    setFiles((prev) => [...prev, ...incoming].slice(0, MAX_BATCH))
+    // El selector del sistema devuelve los archivos en orden arbitrario; ordenamos por nombre (numérico)
+    // para que el lote respete el orden natural (1, 2, 3… y no 1, 3, 2, 10).
+    setFiles((prev) => [...prev, ...incoming]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+      .slice(0, MAX_BATCH))
     if (inputRef.current) inputRef.current.value = ''
   }
   const removeFile = (i: number) => setFiles((prev) => prev.filter((_, idx) => idx !== i))
@@ -56,7 +62,7 @@ export function BatchUploadModal({ kind, onClose, onReady, onBackground }: {
         return { fileName: f.name, base64: proc.base64, mime: proc.mime }
       }))
       const res = await apiClient.post<{ data: { batchId: string; total: number } }>('/v1/quick/invoices/batch', {
-        kind, mode, branchId: branchId || undefined, images,
+        kind, mode, branchId: branchId || undefined, projectId: projectId || undefined, images,
       })
       const batchId = res.data.batchId
       if (mode === 'background') { onBackground(); return }
@@ -127,6 +133,11 @@ export function BatchUploadModal({ kind, onClose, onReady, onBackground }: {
                     options={[{ value: '', label: 'Sin sucursal' }, ...branches.map((b) => ({ value: b.id, label: b.name }))]} />
                 </div>
               )}
+
+              {/* Proyecto por defecto para todo el lote (opcional): cae en cada factura al registrarla */}
+              <div className="mt-3">
+                <ProjectSelect value={projectId} onChange={setProjectId} className={inp} label="Proyecto por defecto del lote (opcional)" />
+              </div>
 
               {/* Modo */}
               <div className="mt-4">
