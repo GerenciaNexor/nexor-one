@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Portal } from '@/components/ui/Portal'
 import { InvoiceUploadModal, type ExtractResult, type ExtractedItem } from './InvoiceUploadModal'
-import { BatchItemDetailModal } from './BatchItemDetailModal'
 import { InvoiceDetailModal } from './InvoicesPanel'
 
 type Kind = 'purchase' | 'sale'
@@ -53,7 +52,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   const [err, setErr]       = useState<string | null>(null)
   const [reviewing, setReviewing]   = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
   const [reviewTotal, setReviewTotal] = useState(0)    // cuántas había al iniciar la revisión (para "X / N")
-  const [detailItem, setDetailItem]   = useState<BatchItem | null>(null)  // ítem abierto en el detalle
+  const [singleReviewId, setSingleReviewId] = useState<string | null>(null) // ítem abierto para revisar/editar
   const [registeredId, setRegisteredId] = useState<string | null>(null)   // factura registrada a abrir
 
   const load = useCallback(async () => {
@@ -117,6 +116,24 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   }
   // Si `reviewing` sigue activo pero ya no quedan ítems "ready", reviewItem es null y cae al resumen.
 
+  // Revisión INDIVIDUAL (clic en una factura del listado): abre el MISMO modal editable, para modificar,
+  // aprobar (guardar) o rechazar. Al terminar vuelve al listado del lote (no avanza en secuencia).
+  const singleItem = singleReviewId && batch ? (batch.items.find((i) => i.id === singleReviewId) ?? null) : null
+  if (singleItem && batch) {
+    return (
+      <InvoiceUploadModal
+        key={singleItem.id}
+        kind={batch.kind}
+        initialExtraction={extractionFor(singleItem)}
+        batchItemId={singleItem.id}
+        initialBranchId={batch.branchId ?? undefined}
+        onReject={async () => { await apiClient.post(`/v1/quick/invoices/batch/${batch.id}/items/${singleItem.id}/reject`, {}); await load(); setSingleReviewId(null) }}
+        onClose={() => setSingleReviewId(null)}
+        onSuccess={() => { void load(); setSingleReviewId(null) }}
+      />
+    )
+  }
+
   const accent = isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
 
   return (
@@ -145,11 +162,18 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
               <ul className="space-y-2">
                 {batch.items.map((it) => {
                   const l = LABEL[it.status]
+                  // Registrada → detalle de la factura real; lista/duplicada → modal editable (revisar);
+                  // el resto (no legible / error / rechazada) no es accionable.
+                  const clickable = it.status === 'registered' || it.status === 'ready' || it.status === 'duplicate'
+                  const open = () => {
+                    if (it.status === 'registered' && it.registeredInvoiceId) setRegisteredId(it.registeredInvoiceId)
+                    else if (it.status === 'ready' || it.status === 'duplicate') setSingleReviewId(it.id)
+                  }
                   return (
                     <li key={it.id}>
                       <button
-                        onClick={() => setDetailItem(it)}
-                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 px-3.5 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-slate-600 dark:hover:bg-slate-800/50">
+                        onClick={open} disabled={!clickable}
+                        className={`flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 px-3.5 py-2.5 text-left transition-colors dark:border-slate-800 ${clickable ? 'hover:border-slate-300 hover:bg-slate-50 dark:hover:border-slate-600 dark:hover:bg-slate-800/50' : 'cursor-default'}`}>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{it.issuer || it.fileName}</p>
                           <p className="truncate text-xs text-slate-500">
@@ -162,7 +186,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${l.cls}`}>{l.text}</span>
-                          <span className="text-xs text-slate-400">Ver ›</span>
+                          {clickable && <span className="text-xs text-slate-400">{it.status === 'registered' ? 'Ver ›' : 'Revisar ›'}</span>}
                         </div>
                       </button>
                     </li>
@@ -203,18 +227,6 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
           )}
         </div>
       </div>
-
-      {/* Detalle de un ítem del lote: propuesta + imagen + aprobar/rechazar */}
-      {detailItem && batch && (
-        <BatchItemDetailModal
-          item={detailItem}
-          batchId={batch.id}
-          kind={batch.kind}
-          onClose={() => setDetailItem(null)}
-          onChanged={() => { void load() }}
-          onOpenRegistered={(invId) => { setDetailItem(null); setRegisteredId(invId) }}
-        />
-      )}
 
       {/* Factura ya registrada (reusa el detalle de "Facturas cargadas") */}
       {registeredId && batch && (

@@ -1017,16 +1017,3 @@ export async function acceptInvoiceBatch(tenantId: string, userId: string, id: s
   await prisma.quickInvoiceBatch.update({ where: { id }, data: { status: 'done' } })
   return { registered, skipped: batch.items.length - registered, errors }
 }
-
-/** HU — Aprobar UN ítem `ready` del lote (registrarlo) desde el detalle. */
-export async function acceptBatchItem(tenantId: string, userId: string, itemId: string) {
-  const it = await prisma.quickInvoiceBatchItem.findFirst({
-    where:  { id: itemId, tenantId },
-    select: { id: true, status: true, issuer: true, nit: true, invoiceNumber: true, total: true, proposal: true, batch: { select: { kind: true, branchId: true } } },
-  })
-  if (!it || !it.batch) throw { statusCode: 404, message: 'Ítem no encontrado', code: 'NOT_FOUND' }
-  if (it.status === 'registered') throw { statusCode: 409, message: 'La factura ya fue registrada.', code: 'ALREADY_REGISTERED' }
-  if (it.status !== 'ready' && it.status !== 'duplicate') throw { statusCode: 409, message: 'Solo se pueden aprobar facturas leídas correctamente.', code: 'NOT_APPROVABLE' }
-  await registerReadyItem(tenantId, userId, it.batch.kind as 'purchase' | 'sale', it.batch.branchId ?? null, it)
-  return { id: itemId, status: 'registered' }
-}
