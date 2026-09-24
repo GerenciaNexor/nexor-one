@@ -11,13 +11,14 @@ let worker: Worker<InvoiceOcrJob> | null = null
 let sweeper: NodeJS.Timeout | null = null
 
 /**
- * HU-213/214 — Concurrencia CONFIGURABLE (paralelo con control). Default 3: procesa varias facturas a
- * la vez, pero SIN disparar una tormenta de 429 (HU-214: con 5 simultáneas se saturaba el rate limit y
- * cada request entraba en un backoff de varios minutos que parecía un cuelgue). El tope de tiempo TOTAL
- * por llamada (OCR_TOTAL_TIMEOUT_MS, ver ocr/service) garantiza que el slot SIEMPRE se libera. Subir
- * `INVOICE_OCR_CONCURRENCY` solo si la cuenta de la API tiene un rate limit alto.
+ * HU-216 — Concurrencia CONFIGURABLE, por defecto 1 (SECUENCIAL). La carga individual (una imagen)
+ * nunca da timeout; el paralelismo (HU-213/214 con 3-5 simultáneas) saturaba el rate limit de la cuenta
+ * de API y las que entraban en backoff superaban el timeout y fallaban. Procesar de a UNA replica la
+ * carga individual: más lento (~N × el tiempo de una), pero TODAS se procesan sin timeouts. Se puede
+ * subir `INVOICE_OCR_CONCURRENCY` en el futuro si se aumenta el tier de la API. El tope por ítem y el
+ * barredor de HU-214 quedan como red de seguridad (con concurrencia 1 no deberían dispararse).
  */
-const CONCURRENCY = Math.min(20, Math.max(1, Number(process.env['INVOICE_OCR_CONCURRENCY'] ?? 3)))
+const CONCURRENCY = Math.min(20, Math.max(1, Number(process.env['INVOICE_OCR_CONCURRENCY'] ?? 1)))
 
 /**
  * HU-214 — Tope de tiempo de TODO el job (no solo del OCR). El abort de OCR_TOTAL_TIMEOUT_MS solo cubre
