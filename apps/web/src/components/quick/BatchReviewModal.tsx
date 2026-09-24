@@ -48,7 +48,8 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   const [accepting, setAcc] = useState(false)
   const [confirmAll, setConfirmAll] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
-  const [reviewing, setReviewing] = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
+  const [reviewing, setReviewing]   = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
+  const [reviewTotal, setReviewTotal] = useState(0)    // cuántas había al iniciar la revisión (para "X / N")
 
   const load = useCallback(async () => {
     try {
@@ -102,6 +103,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
         initialExtraction={extractionFor(reviewItem)}
         batchItemId={reviewItem.id}
         initialBranchId={batch.branchId ?? undefined}
+        batchProgress={{ current: Math.min(reviewTotal, reviewTotal - readyItems.length + 1), total: reviewTotal }}
         onClose={() => setReviewing(false)}
         onSuccess={() => { void load() }}  // recarga: el registrado sale de "ready"; el próximo pasa a [0]
       />
@@ -165,7 +167,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                 <p className="text-center text-sm text-slate-500">No hay facturas listas para registrar en este lote.</p>
               ) : !confirmAll ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                  <button onClick={() => setReviewing(true)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                  <button onClick={() => { setReviewTotal(readyItems.length); setReviewing(true) }} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                     Revisar una por una ({readyItems.length})
                   </button>
                   <button onClick={() => setConfirmAll(true)} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${accent}`}>
