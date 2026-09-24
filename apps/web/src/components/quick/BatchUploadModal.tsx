@@ -44,7 +44,11 @@ export function BatchUploadModal({ kind, onClose, onReady, onBackground }: {
   function addFiles(list: FileList | null) {
     if (!list) return
     const incoming = Array.from(list)
-    setFiles((prev) => [...prev, ...incoming].slice(0, MAX_BATCH))
+    // El selector del sistema devuelve los archivos en orden arbitrario; ordenamos por nombre (numérico)
+    // para que el lote respete el orden natural (1, 2, 3… y no 1, 3, 2, 10).
+    setFiles((prev) => [...prev, ...incoming]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+      .slice(0, MAX_BATCH))
     if (inputRef.current) inputRef.current.value = ''
   }
   const removeFile = (i: number) => setFiles((prev) => prev.filter((_, idx) => idx !== i))

@@ -771,8 +771,8 @@ export async function createInvoiceBatch(tenantId: string, userId: string, branc
       branchId: branchId ?? input.branchId ?? null,
       projectId: input.projectId ?? null,   // proyecto por defecto del lote (se aplica a cada factura)
       total: input.images.length, status: 'processing',
-      items: { create: input.images.map((img) => ({
-        tenantId, fileName: img.fileName || 'factura',
+      items: { create: input.images.map((img, i) => ({
+        tenantId, position: i, fileName: img.fileName || 'factura',
         imageData: Buffer.from(img.base64, 'base64'), imageMime: img.mime || 'image/jpeg',
       })) },
     },
@@ -904,7 +904,7 @@ export async function getInvoiceBatch(tenantId: string, id: string) {
     select: {
       id: true, kind: true, mode: true, status: true, total: true, processed: true, failed: true, branchId: true, projectId: true, createdAt: true,
       items: {
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
         select: { id: true, fileName: true, status: true, issuer: true, nit: true, invoiceNumber: true, invoiceDate: true, total: true, error: true, duplicateOf: true, registeredInvoiceId: true, imageMime: true, proposal: true },
       },
     },
