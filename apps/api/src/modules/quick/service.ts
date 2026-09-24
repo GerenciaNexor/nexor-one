@@ -756,9 +756,16 @@ type ProposalItem = { description?: string; quantity?: number | null; unitValue?
 const normCompactName = (s?: string | null) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const nitBase = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
 
-/** Crea el lote + sus ítems (imágenes comprimidas) y encola el OCR de cada uno (segundo plano). */
+/**
+ * Crea el lote + sus ítems (imágenes comprimidas) y encola el OCR de cada uno (segundo plano).
+ * HU-216-fix — Usa `directPrisma` (NO el `prisma` del request): la escritura DEBE quedar COMMITEADA
+ * antes de encolar los jobs. Con `prisma` (dentro de la transacción de tenant del request) los ítems
+ * no están commiteados cuando el worker —que lee con directPrisma, otra conexión— toma el job: no los
+ * ve, sale temprano y el lote se queda sin procesar hasta el barredor. Con directPrisma cada create
+ * hace autocommit inmediato → el worker siempre ve el ítem. tenantId explícito (bypasea RLS con filtro).
+ */
 export async function createInvoiceBatch(tenantId: string, userId: string, branchId: string | null, input: CreateBatchInput) {
-  const batch = await prisma.quickInvoiceBatch.create({
+  const batch = await directPrisma.quickInvoiceBatch.create({
     data: {
       tenantId, userId, kind: input.kind, mode: input.mode,
       branchId: branchId ?? input.branchId ?? null,
@@ -821,7 +828,10 @@ export async function processBatchItem(itemId: string): Promise<void> {
     where:  { id: itemId },
     select: { id: true, tenantId: true, fileName: true, imageData: true, imageMime: true, status: true, batchId: true, batch: { select: { kind: true } } },
   })
-  if (!item || !item.batch) return
+  // HU-216-fix — Si el ítem aún no se ve (p. ej. commit demorado), LANZAR para que BullMQ reintente en
+  // lugar de completar el job en silencio (lo que dejaba el ítem colgado hasta el barredor). Con el
+  // create por directPrisma esto no debería pasar, pero es la red de seguridad ante cualquier carrera.
+  if (!item || !item.batch) throw new Error(`Ítem de lote no encontrado aún (${itemId}) — reintentar`)
   if (BATCH_TERMINAL.includes(item.status)) { await refreshBatch(item.batchId); return }
   await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'processing' } })
 

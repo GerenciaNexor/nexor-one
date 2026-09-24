@@ -268,6 +268,9 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   app.post('/invoices/batch', {
     bodyLimit: 30 * 1024 * 1024,   // hasta 10 imágenes comprimidas en base64
     schema: { tags: ['Quick'], summary: `Cargar lote de facturas por foto (máx ${QUICK_BATCH_MAX})`, security: bearerAuth, body: z2j(CreateBatchSchema), response: { 201: objRes, ...stdErrors } },
+    // HU-216-fix — tenantTx:false: createInvoiceBatch usa directPrisma y debe COMMITEAR los ítems antes
+    // de encolar los jobs (si corriera en la transacción del request, el worker no vería los ítems).
+    config:     { tenantTx: false },
     preHandler: [requireRole('OPERATIVE')],
   }, async (request, reply) => {
     const parsed = CreateBatchSchema.safeParse(request.body)
