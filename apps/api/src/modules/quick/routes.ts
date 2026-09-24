@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { QuickPurchaseSchema, QuickSaleSchema, RegisterInvoiceSchema, UpdateInvoiceSchema, CreateBatchSchema, QUICK_BATCH_MAX } from './schema'
-import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice, createInvoiceBatch, getInvoiceBatch, listInvoiceBatches, acceptInvoiceBatch, getBatchItemImage } from './service'
+import { quickPurchase, quickSale, listQuickProducts, listQuickSuppliers, listQuickClients, listQuickBranches, listQuickRegisters, exportQuickRegisters, extractInvoice, registerInvoice, listInvoices, exportInvoices, getInvoice, getInvoiceImage, updateInvoice, deleteInvoice, createInvoiceBatch, getInvoiceBatch, listInvoiceBatches, acceptInvoiceBatch, getBatchItemImage, rejectBatchItem } from './service'
 import { registersToXlsx, invoicesToXlsx } from './export'
 import { requireRole } from '../../lib/guards'
 import { z2j, listRes, objRes, stdErrors, bearerAuth } from '../../lib/openapi'
@@ -312,6 +312,19 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     try {
       const data = await acceptInvoiceBatch(request.user.tenantId, request.user.userId, (request.params as { id: string }).id)
+      return reply.code(200).send({ success: true, data })
+    } catch (err) { return errReply(reply, err) }
+  })
+
+  /** POST /v1/quick/invoices/batch/:id/items/:itemId/reject — rechazar un ítem (no se registra). */
+  app.post('/invoices/batch/:id/items/:itemId/reject', {
+    schema: { tags: ['Quick'], summary: 'Rechazar un ítem del lote', security: bearerAuth,
+      params: { type: 'object', properties: { id: { type: 'string' }, itemId: { type: 'string' } }, required: ['id', 'itemId'] }, response: { 200: objRes, ...stdErrors } },
+    config:     { tenantTx: false },
+    preHandler: [requireRole('OPERATIVE')],
+  }, async (request, reply) => {
+    try {
+      const data = await rejectBatchItem(request.user.tenantId, (request.params as { itemId: string }).itemId)
       return reply.code(200).send({ success: true, data })
     } catch (err) { return errReply(reply, err) }
   })

@@ -751,7 +751,7 @@ export async function exportInvoices(tenantId: string, opts: {
 
 // ─── HU-212 — Carga masiva de facturas por OCR (lote) ──────────────────────────
 
-const BATCH_TERMINAL = ['ready', 'unreadable', 'duplicate', 'failed', 'registered']
+const BATCH_TERMINAL = ['ready', 'unreadable', 'duplicate', 'failed', 'registered', 'rejected']
 type ProposalItem = { description?: string; quantity?: number | null; unitValue?: number | null; productId?: string | null }
 const normCompactName = (s?: string | null) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const nitBase = (s?: string | null) => ((s ?? '').split('-')[0] ?? '').replace(/\D/g, '')
@@ -917,6 +917,16 @@ export async function getInvoiceBatch(tenantId: string, id: string) {
   }
 }
 
+/** HU — Rechazar un ítem "ready" del lote: no se registra, queda como 'rejected' (terminal). */
+export async function rejectBatchItem(tenantId: string, itemId: string) {
+  const it = await directPrisma.quickInvoiceBatchItem.findFirst({ where: { id: itemId, tenantId }, select: { id: true, batchId: true, status: true } })
+  if (!it) throw { statusCode: 404, message: 'Ítem no encontrado', code: 'NOT_FOUND' }
+  if (it.status === 'registered') throw { statusCode: 409, message: 'La factura ya fue registrada; no se puede rechazar.', code: 'ALREADY_REGISTERED' }
+  await directPrisma.quickInvoiceBatchItem.update({ where: { id: itemId }, data: { status: 'rejected' } })
+  await refreshBatch(it.batchId)
+  return { id: itemId, status: 'rejected' }
+}
+
 /** Imagen de un ítem del lote (trazabilidad / revisión). */
 export async function getBatchItemImage(tenantId: string, itemId: string) {
   const it = await prisma.quickInvoiceBatchItem.findFirst({ where: { id: itemId, tenantId }, select: { imageData: true, imageMime: true } })
@@ -954,6 +964,37 @@ async function matchCounterparty(tenantId: string, kind: 'purchase' | 'sale', ni
   return m?.id ?? null
 }
 
+type ReadyItem = { id: string; issuer: string | null; nit: string | null; invoiceNumber: string | null; total: Prisma.Decimal | null; proposal: Prisma.JsonValue }
+
+/** Registra UN ítem `ready` con su propuesta. Afecta stock solo si el OCR reconoció un producto y hay
+ *  sucursal; el resto queda como gasto/ingreso. Usado por "Aceptar todo" y por la aprobación individual. */
+async function registerReadyItem(tenantId: string, userId: string, kind: 'purchase' | 'sale', branchId: string | null, it: ReadyItem): Promise<void> {
+  const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
+  const raw = Array.isArray(proposal.items) ? proposal.items : []
+  const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
+  const payloadItems: InvoiceItemInput[] = raw.map((pi) => {
+    const qty  = Number(pi.quantity) > 0 ? Number(pi.quantity) : 1
+    const val  = Number(pi.unitValue) >= 0 ? Number(pi.unitValue) : 0
+    const desc = String(pi.description ?? 'Ítem')
+    return (pi.productId && branchId)
+      ? { description: desc, quantity: qty, unitValue: val, productId: pi.productId }
+      : { description: desc, quantity: qty, unitValue: val, addToInventory: false }
+  })
+  if (payloadItems.length === 0) {
+    payloadItems.push({ description: it.issuer ?? 'Factura', quantity: 1, unitValue: it.total != null ? Number(it.total) : 0, addToInventory: false })
+  }
+  await registerInvoice(tenantId, userId, branchId, {
+    kind,
+    ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
+    branchId: branchId ?? undefined,
+    issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
+    total: it.total != null ? Number(it.total) : null,
+    fullExtraction: proposal.fullExtraction ?? {},
+    items: payloadItems,
+    batchItemId: it.id,
+  })
+}
+
 /**
  * HU-212 — "Aceptar todo": registra los ítems `ready` con su propuesta. Afecta stock solo si el OCR
  * reconoció un producto y hay sucursal; el resto queda como gasto/ingreso (sin tocar inventario).
@@ -970,35 +1011,8 @@ export async function acceptInvoiceBatch(tenantId: string, userId: string, id: s
   let registered = 0
   const errors: { itemId: string; error: string }[] = []
   for (const it of batch.items) {
-    try {
-      const proposal = (it.proposal ?? {}) as { items?: ProposalItem[]; fullExtraction?: Record<string, unknown> }
-      const raw = Array.isArray(proposal.items) ? proposal.items : []
-      const cp = await matchCounterparty(tenantId, kind, it.nit, it.issuer)
-      const payloadItems: InvoiceItemInput[] = raw.map((pi) => {
-        const qty  = Number(pi.quantity) > 0 ? Number(pi.quantity) : 1
-        const val  = Number(pi.unitValue) >= 0 ? Number(pi.unitValue) : 0
-        const desc = String(pi.description ?? 'Ítem')
-        return (pi.productId && branchId)
-          ? { description: desc, quantity: qty, unitValue: val, productId: pi.productId }
-          : { description: desc, quantity: qty, unitValue: val, addToInventory: false }
-      })
-      if (payloadItems.length === 0) {
-        payloadItems.push({ description: it.issuer ?? 'Factura', quantity: 1, unitValue: it.total != null ? Number(it.total) : 0, addToInventory: false })
-      }
-      await registerInvoice(tenantId, userId, branchId, {
-        kind,
-        ...(kind === 'purchase' ? { supplierId: cp } : { clientId: cp }),
-        branchId: branchId ?? undefined,
-        issuer: it.issuer ?? null, nit: it.nit ?? null, invoiceNumber: it.invoiceNumber ?? null,
-        total: it.total != null ? Number(it.total) : null,
-        fullExtraction: proposal.fullExtraction ?? {},
-        items: payloadItems,
-        batchItemId: it.id,
-      })
-      registered++
-    } catch (e) {
-      errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) })
-    }
+    try { await registerReadyItem(tenantId, userId, kind, branchId, it); registered++ }
+    catch (e) { errors.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) }) }
   }
   await prisma.quickInvoiceBatch.update({ where: { id }, data: { status: 'done' } })
   return { registered, skipped: batch.items.length - registered, errors }

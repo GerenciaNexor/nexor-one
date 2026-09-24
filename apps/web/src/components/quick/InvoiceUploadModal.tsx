@@ -89,7 +89,7 @@ export async function processFile(file: File): Promise<{ blob: Blob; base64: str
   return { blob, base64: await blobToBase64(blob), mime: 'image/jpeg' }
 }
 
-export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, onClose, onSuccess }: {
+export function InvoiceUploadModal({ kind, startManual = false, initialExtraction, batchItemId, initialBranchId, batchProgress, onReject, onClose, onSuccess }: {
   kind: Kind
   /** Arranca en registro MANUAL (sin foto): misma interfaz de revisión, en blanco. */
   startManual?: boolean
@@ -97,6 +97,10 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
   initialExtraction?: ExtractResult
   batchItemId?: string
   initialBranchId?: string
+  /** HU — revisión 1×1 de un lote: posición actual/total para mostrar el progreso al usuario. */
+  batchProgress?: { current: number; total: number }
+  /** HU — revisión 1×1: rechazar esta factura (no se registra). Solo en modo lote. */
+  onReject?: () => void | Promise<void>
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -144,6 +148,7 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
   const [branches, setBranches] = useState<Opt[]>([])
   const [products, setProducts] = useState<Prod[]>([])
   const [saving, setSaving]     = useState(false)
+  const [rejecting, setRejecting] = useState(false)
 
   useEffect(() => {
     apiClient.get<{ data: Prod[] }>('/v1/quick/products').then((r) => setProducts(r.data)).catch(() => {})
@@ -293,16 +298,26 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
         <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-700">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              {manual ? `Registro rápido — ${isSale ? 'Venta' : 'Compra'}` : `Cargar factura por foto — ${isSale ? 'Venta' : 'Compra'} rápida`}
-            </h3>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                {manual ? `Registro rápido — ${isSale ? 'Venta' : 'Compra'}` : `Cargar factura por foto — ${isSale ? 'Venta' : 'Compra'} rápida`}
+              </h3>
+              {/* HU — progreso de la revisión 1×1 del lote */}
+              {batchProgress && (
+                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${isSale ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}`}>
+                  Imagen {batchProgress.current} / {batchProgress.total}
+                </span>
+              )}
+            </div>
             <button onClick={onClose} aria-label="Cerrar" className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           <p className="mt-0.5 text-xs text-slate-500">
-            {manual
-              ? `Una ${isSale ? 'venta' : 'compra'} que ya ocurrió. Agrega uno o varios ítems; se registra completada, sin aprobación.`
-              : 'La lectura te propone los datos; tú los revisas y corriges antes de guardar. Una imagen a la vez.'}
+            {batchProgress
+              ? `Revisa y corrige esta factura del lote, luego guárdala para pasar a la siguiente. Van ${batchProgress.current} de ${batchProgress.total}.`
+              : manual
+                ? `Una ${isSale ? 'venta' : 'compra'} que ya ocurrió. Agrega uno o varios ítems; se registra completada, sin aprobación.`
+                : 'La lectura te propone los datos; tú los revisas y corriges antes de guardar. Una imagen a la vez.'}
           </p>
 
           {/* ── Fase subir ── */}
@@ -461,10 +476,23 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
           )}
 
           {phase === 'review' && (
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={onClose} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
-              <button onClick={confirm} disabled={saving} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                {saving ? 'Registrando…' : `Confirmar y registrar ${isSale ? 'venta' : 'compra'}`}
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              {/* HU — Rechazar (solo en revisión de lote): no registra esta factura y pasa a la siguiente. */}
+              {onReject && (
+                <button
+                  onClick={async () => { setRejecting(true); try { await onReject() } finally { setRejecting(false) } }}
+                  disabled={saving || rejecting}
+                  className="mr-auto rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-900/20">
+                  {rejecting ? 'Rechazando…' : 'Rechazar'}
+                </button>
+              )}
+              <button onClick={onClose} disabled={saving || rejecting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
+              <button onClick={confirm} disabled={saving || rejecting} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                {saving
+                  ? (batchProgress ? `Guardando ${batchProgress.current} de ${batchProgress.total}…` : 'Registrando…')
+                  : (batchProgress
+                      ? (batchProgress.current >= batchProgress.total ? `Guardar y finalizar (${batchProgress.current}/${batchProgress.total})` : `Guardar ${batchProgress.current} de ${batchProgress.total} y continuar`)
+                      : `Confirmar y registrar ${isSale ? 'venta' : 'compra'}`)}
               </button>
             </div>
           )}
