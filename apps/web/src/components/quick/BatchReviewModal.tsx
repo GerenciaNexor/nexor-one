@@ -48,7 +48,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
   const [accepting, setAcc] = useState(false)
   const [confirmAll, setConfirmAll] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
-  const [reviewIdx, setReviewIdx] = useState<number | null>(null)  // ítem abierto para revisión 1×1
+  const [reviewing, setReviewing] = useState(false)  // revisión 1×1 activa (siempre el 1er ítem "ready")
 
   const load = useCallback(async () => {
     try {
@@ -89,25 +89,25 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
     }
   }
 
-  // Abrir un ítem "ready" concreto para revisión una-por-una.
-  const reviewItem = reviewIdx != null ? readyItems[reviewIdx] : null
+  // Revisión una-por-una: SIEMPRE el primer ítem "ready". Al registrar uno, sale de la lista y el
+  // siguiente pasa a ser [0]. `key` por ítem → cada factura re-monta el modal y vuelve a sembrar sus
+  // datos (sin key, React reusaba la instancia y el guard de siembra dejaba los datos del ítem anterior:
+  // parecía que "no guardaba ni avanzaba").
+  const reviewItem = reviewing ? readyItems[0] : null
   if (reviewItem && batch) {
     return (
       <InvoiceUploadModal
+        key={reviewItem.id}
         kind={batch.kind}
         initialExtraction={extractionFor(reviewItem)}
         batchItemId={reviewItem.id}
         initialBranchId={batch.branchId ?? undefined}
-        onClose={() => setReviewIdx(null)}
-        onSuccess={() => {
-          const next = reviewIdx! + 1
-          void load()
-          // Al terminar una, saltar a la siguiente pendiente de revisión; si no hay, cerrar la revisión.
-          if (next < readyItems.length) setReviewIdx(next); else setReviewIdx(null)
-        }}
+        onClose={() => setReviewing(false)}
+        onSuccess={() => { void load() }}  // recarga: el registrado sale de "ready"; el próximo pasa a [0]
       />
     )
   }
+  // Si `reviewing` sigue activo pero ya no quedan ítems "ready", reviewItem es null y cae al resumen.
 
   const accent = isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
 
@@ -165,7 +165,7 @@ export function BatchReviewModal({ batchId, onClose, onDone }: { batchId: string
                 <p className="text-center text-sm text-slate-500">No hay facturas listas para registrar en este lote.</p>
               ) : !confirmAll ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                  <button onClick={() => setReviewIdx(0)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                  <button onClick={() => setReviewing(true)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                     Revisar una por una ({readyItems.length})
                   </button>
                   <button onClick={() => setConfirmAll(true)} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${accent}`}>
