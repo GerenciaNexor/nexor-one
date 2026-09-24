@@ -397,7 +397,7 @@ export async function extractInvoice(params: {
       productName:  prod?.name ?? null,
       inInventory:  !!prod,
       suggestedSalePrice: prod ? numN(prod.salePrice) : null,
-      confidence:   it.description?.confidence ?? 'low',
+      confidence:   it.description?.confidence ?? 'high',  // HU-215 — omitido por el modelo = "high"
     }
   })
 
