@@ -179,7 +179,14 @@ export function InvoiceUploadModal({ kind, startManual = false, initialExtractio
         )
         return byId || byName
       })
-      if (match) { setCpId(match.id); if (match.documentType) setDocumentType(match.documentType) }
+      // Si se emparejó un proveedor existente, sus datos MANDAN sobre lo leído: el NIT/emisor/tipo se
+      // toman del proveedor registrado (el OCR pudo leer mal el NIT). Igual que la selección manual.
+      if (match) {
+        setCpId(match.id)
+        setIssuer(match.name)
+        if (match.taxId) setNit(cleanNit(match.taxId))
+        if (match.documentType) setDocumentType(match.documentType)
+      }
     }
     setItems((data.items ?? []).map((it) => ({
       description: it.description, quantity: it.quantity != null ? String(it.quantity) : '1',

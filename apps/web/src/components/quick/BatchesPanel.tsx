@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { BatchReviewModal } from './BatchReviewModal'
+import { Pagination } from '@/components/ui/Pagination'
 
 type Kind = 'purchase' | 'sale'
+const PAGE_SIZE = 15
 
 interface BatchRow {
   id: string
@@ -26,16 +28,18 @@ export function BatchesPanel({ kind }: { kind: Kind }) {
   const [rows, setRows]     = useState<BatchRow[]>([])
   const [loading, setLoad]  = useState(true)
   const [open, setOpen]     = useState<string | null>(null)
+  const [page, setPage]     = useState(1)
+  const [meta, setMeta]     = useState({ total: 0, totalPages: 1 })
 
-  const load = useCallback(async () => {
-    setLoad(true)
+  const load = useCallback(async (pg = 1) => {
+    setPage(pg); setLoad(true)
     try {
-      const r = await apiClient.get<{ data: BatchRow[] }>(`/v1/quick/invoices/batch?kind=${kind}`)
-      setRows(r.data)
+      const r = await apiClient.get<{ data: BatchRow[]; total: number; totalPages: number }>(`/v1/quick/invoices/batch?kind=${kind}&page=${pg}&limit=${PAGE_SIZE}`)
+      setRows(r.data); setMeta({ total: r.total ?? r.data.length, totalPages: r.totalPages ?? 1 })
     } catch { /* silencioso */ } finally { setLoad(false) }
   }, [kind])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load(1) }, [load])
 
   const fmtDate = (s: string) => new Date(s).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
@@ -81,11 +85,15 @@ export function BatchesPanel({ kind }: { kind: Kind }) {
         </ul>
       )}
 
+      {!loading && rows.length > 0 && (
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} limit={PAGE_SIZE} onPage={(p) => void load(p)} unit="lotes" />
+      )}
+
       {open && (
         <BatchReviewModal
           batchId={open}
-          onClose={() => { setOpen(null); void load() }}
-          onDone={() => { setOpen(null); void load() }}
+          onClose={() => { setOpen(null); void load(page) }}
+          onDone={() => { setOpen(null); void load(page) }}
         />
       )}
     </div>

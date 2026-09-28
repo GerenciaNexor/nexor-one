@@ -935,10 +935,12 @@ export async function getBatchItemImage(tenantId: string, itemId: string) {
   return { data: Buffer.from(it.imageData), mime: it.imageMime ?? 'image/jpeg' }
 }
 
-/** Lista de lotes recientes (para la pestaña "Lotes"), con conteos por estado. */
-export async function listInvoiceBatches(tenantId: string, kind: 'purchase' | 'sale') {
+/** Lista paginada de lotes (para la pestaña "Lotes"), con conteos por estado. */
+export async function listInvoiceBatches(tenantId: string, kind: 'purchase' | 'sale', page = 1, limit = 15) {
+  const total = await prisma.quickInvoiceBatch.count({ where: { tenantId, kind } })
   const rows = await prisma.quickInvoiceBatch.findMany({
-    where: { tenantId, kind }, orderBy: { createdAt: 'desc' }, take: 50,
+    where: { tenantId, kind }, orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * limit, take: limit,
     select: { id: true, status: true, total: true, processed: true, failed: true, createdAt: true, items: { select: { status: true } } },
   })
   return {
@@ -947,7 +949,7 @@ export async function listInvoiceBatches(tenantId: string, kind: 'purchase' | 's
       return { id: b.id, status: b.status, total: b.total, processed: b.processed, failed: b.failed, createdAt: b.createdAt,
         ready: c('ready'), duplicate: c('duplicate'), unreadable: c('unreadable'), failedItems: c('failed'), registered: c('registered') }
     }),
-    total: rows.length,
+    total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)),
   }
 }
 
