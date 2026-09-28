@@ -6,8 +6,10 @@ import { fmtDateTime } from '@/lib/format-date'
 import { downloadFile, toQuery } from '@/lib/download'
 import { RegisterDetailModal, type QuickRegister } from '@/components/quick/RegisterDetailModal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Pagination } from '@/components/ui/Pagination'
 
 type Kind = 'purchase' | 'sale'
+const PAGE_SIZE = 15
 const money = (n: number) => `$${n.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
 
 /**
@@ -24,15 +26,20 @@ export function QuickRegistersPanel({ kind, reloadSignal, onNew }: { kind: Kind;
   const [inventory, setInventory] = useState('')  // '' | 'yes' | 'service'
   const [origin, setOrigin]       = useState('')  // '' | 'invoice' | 'manual'
   const [exporting, setExporting] = useState(false)
+  const [page, setPage] = useState(1)
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 })
 
-  const load = useCallback(() => {
-    const qs = toQuery({ kind, q: q.trim(), from, to, inventory, origin, limit: 100 })
+  const load = useCallback((p = 1) => {
+    setPage(p)
+    const qs = toQuery({ kind, q: q.trim(), from, to, inventory, origin, page: p, limit: PAGE_SIZE })
     setRows(null)
-    apiClient.get<{ data: QuickRegister[] }>(`/v1/quick/registers${qs}`).then((r) => setRows(r.data)).catch(() => setRows([]))
+    apiClient.get<{ data: QuickRegister[]; total: number; totalPages: number }>(`/v1/quick/registers${qs}`)
+      .then((r) => { setRows(r.data); setMeta({ total: r.total ?? r.data.length, totalPages: r.totalPages ?? 1 }) })
+      .catch(() => { setRows([]); setMeta({ total: 0, totalPages: 1 }) })
   }, [kind, q, from, to, inventory, origin])
 
-  // Recarga al montar, al cambiar de tipo, y cuando el padre registra algo nuevo (reloadSignal).
-  useEffect(() => { load() }, [kind, reloadSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Recarga (desde la página 1) al montar, al cambiar de tipo, y cuando el padre registra algo (reloadSignal).
+  useEffect(() => { load(1) }, [kind, reloadSignal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function exportExcel() {
     setExporting(true)
@@ -49,7 +56,7 @@ export function QuickRegistersPanel({ kind, reloadSignal, onNew }: { kind: Kind;
     <div className="mt-4">
       {/* Filtros: búsqueda, rango de fecha, inventario, origen */}
       <div className="flex flex-wrap items-end gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder={`${isSale ? 'Cliente' : 'Proveedor'} o detalle…`} className={`${inp} min-w-[200px] flex-1`} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(1)} placeholder={`${isSale ? 'Cliente' : 'Proveedor'} o detalle…`} className={`${inp} min-w-[200px] flex-1`} />
         <label className="flex flex-col text-[11px] text-slate-500">Desde<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Hasta<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Inventario
@@ -66,9 +73,9 @@ export function QuickRegistersPanel({ kind, reloadSignal, onNew }: { kind: Kind;
             <option value="manual">Manual</option>
           </select>
         </label>
-        <button onClick={load} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Filtrar</button>
+        <button onClick={() => load(1)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Filtrar</button>
         {hasFilter && (
-          <button onClick={() => { setQ(''); setFrom(''); setTo(''); setInventory(''); setOrigin(''); setTimeout(load, 0) }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
+          <button onClick={() => { setQ(''); setFrom(''); setTo(''); setInventory(''); setOrigin(''); setTimeout(() => load(1), 0) }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
         )}
         <button onClick={exportExcel} disabled={exporting || rows === null || (rows?.length ?? 0) === 0}
           className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
@@ -133,6 +140,10 @@ export function QuickRegistersPanel({ kind, reloadSignal, onNew }: { kind: Kind;
           )}
         </div>
       </div>
+
+      {rows !== null && rows.length > 0 && (
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} limit={PAGE_SIZE} onPage={load} unit={isSale ? 'ventas' : 'compras'} />
+      )}
 
       {detail && <RegisterDetailModal reg={detail} onClose={() => setDetail(null)} />}
     </div>

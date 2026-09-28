@@ -7,7 +7,10 @@ import { Portal } from '@/components/ui/Portal'
 import { useAuthStore } from '@/store/auth'
 import { downloadFile, toQuery } from '@/lib/download'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { Pagination } from '@/components/ui/Pagination'
 import { DOCUMENT_TYPES } from '@nexor/shared'
+
+const PAGE_SIZE = 15
 
 // HU-210 — editar/eliminar facturas cargadas: solo administradores (mín. Jefe de área).
 const MANAGER_ROLES = ['AREA_MANAGER', 'BRANCH_ADMIN', 'TENANT_ADMIN', 'SUPER_ADMIN']
@@ -33,6 +36,8 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
   const [detailId, setDetailId] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting]   = useState(false)
+  const [page, setPage] = useState(1)
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 })
 
   async function runExport(opts: ExportOptions) {
     setExporting(true)
@@ -47,24 +52,27 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
     } catch { /* noop */ } finally { setExporting(false) }
   }
 
-  const load = useCallback(() => {
-    const p = new URLSearchParams({ kind })
+  const load = useCallback((pg = 1) => {
+    setPage(pg)
+    const p = new URLSearchParams({ kind, page: String(pg), limit: String(PAGE_SIZE) })
     if (q.trim())  p.set('q', q.trim())
     if (from)      p.set('from', from)
     if (to)        p.set('to', to)
     if (minTotal)  p.set('minTotal', minTotal)
     if (maxTotal)  p.set('maxTotal', maxTotal)
     setRows(null)
-    apiClient.get<{ data: InvoiceRow[] }>(`/v1/quick/invoices?${p.toString()}`).then((r) => setRows(r.data)).catch(() => setRows([]))
+    apiClient.get<{ data: InvoiceRow[]; total: number; totalPages: number }>(`/v1/quick/invoices?${p.toString()}`)
+      .then((r) => { setRows(r.data); setMeta({ total: r.total ?? r.data.length, totalPages: r.totalPages ?? 1 }) })
+      .catch(() => { setRows([]); setMeta({ total: 0, totalPages: 1 }) })
   }, [kind, q, from, to, minTotal, maxTotal])
 
-  useEffect(() => { load() }, [kind]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(1) }, [kind]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // HU-210 — búsqueda EN VIVO: al escribir en el buscador, recarga con un pequeño retraso (debounce).
+  // HU-210 — búsqueda EN VIVO: al escribir en el buscador, recarga (página 1) con un pequeño retraso.
   const mounted = useRef(false)
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return }  // el efecto de `kind` ya hizo la carga inicial
-    const t = setTimeout(() => load(), 350)
+    const t = setTimeout(() => load(1), 350)
     return () => clearTimeout(t)
   }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -77,12 +85,12 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
 
       {/* Búsqueda: número/emisor, rango de fecha, rango de total */}
       <div className="mt-3 flex flex-wrap items-end gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="N.º de factura, proveedor, emisor o NIT…" className={`${inp} min-w-[200px] flex-1`} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(1)} placeholder="N.º de factura, proveedor, emisor o NIT…" className={`${inp} min-w-[200px] flex-1`} />
         <label className="flex flex-col text-[11px] text-slate-500">Desde<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Hasta<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inp} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Total mín.<input type="number" value={minTotal} onChange={(e) => setMin(e.target.value)} className={`${inp} w-28`} /></label>
         <label className="flex flex-col text-[11px] text-slate-500">Total máx.<input type="number" value={maxTotal} onChange={(e) => setMax(e.target.value)} className={`${inp} w-28`} /></label>
-        <button onClick={load} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Buscar</button>
+        <button onClick={() => load(1)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Buscar</button>
         {(q || from || to || minTotal || maxTotal) && (
           <button onClick={() => { setQ(''); setFrom(''); setTo(''); setMin(''); setMax(''); setTimeout(load, 0) }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700">Limpiar</button>
         )}
@@ -129,7 +137,11 @@ export function InvoicesPanel({ kind, hideHeader = false }: { kind: Kind; hideHe
         </div>
       </div>
 
-      {detailId && <InvoiceDetailModal id={detailId} kind={kind} onClose={() => setDetailId(null)} onChanged={load} />}
+      {rows !== null && rows.length > 0 && (
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} limit={PAGE_SIZE} onPage={load} unit="facturas" />
+      )}
+
+      {detailId && <InvoiceDetailModal id={detailId} kind={kind} onClose={() => setDetailId(null)} onChanged={() => load(page)} />}
       {exportOpen && <ExportOptionsModal isSale={isSale} exporting={exporting} onClose={() => setExportOpen(false)} onConfirm={runExport} />}
     </div>
   )

@@ -285,13 +285,16 @@ export default async function quickModule(app: FastifyInstance): Promise<void> {
   /** GET /v1/quick/invoices/batch — lotes recientes (pestaña "Lotes"), por tipo. */
   app.get('/invoices/batch', {
     schema: { tags: ['Quick'], summary: 'Listar lotes de facturas', security: bearerAuth,
-      querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['purchase', 'sale'] } } },
+      querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['purchase', 'sale'] }, page: { type: 'string' }, limit: { type: 'string' } } },
       response: { 200: listRes, ...stdErrors } },
     preHandler: [requireRole('OPERATIVE')],
   }, async (request, reply) => {
-    const kind = (request.query as { kind?: string }).kind === 'sale' ? 'sale' : 'purchase'
+    const q = request.query as { kind?: string; page?: string; limit?: string }
+    const kind = q.kind === 'sale' ? 'sale' : 'purchase'
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1)
+    const limit = Math.min(50, Math.max(1, parseInt(q.limit ?? '15', 10) || 15))
     try {
-      return reply.code(200).send(await listInvoiceBatches(request.user.tenantId, kind))
+      return reply.code(200).send(await listInvoiceBatches(request.user.tenantId, kind, page, limit))
     } catch (err) { return errReply(reply, err) }
   })
 
