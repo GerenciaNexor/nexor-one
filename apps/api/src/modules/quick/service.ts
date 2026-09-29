@@ -442,17 +442,23 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
     // HU-210 — se guarda el tercero REGISTRADO (proveedor/cliente) en la factura, aparte del emisor leído.
     let resolvedSupplierId: string | null = null
     let resolvedClientId: string | null = null
+    // HU — Si la factura se liga a un tercero REGISTRADO (no genérico), el NIT guardado es SIEMPRE el
+    // del tercero, no el que leyó el OCR (que puede venir mal). Así un mismo proveedor nunca queda con
+    // NITs distintos entre facturas. Con el genérico ("Proveedor/Cliente ocasional") se conserva el leído.
+    let effectiveNit: string | null = input.nit ?? null
     if (input.kind === 'purchase') {
       resolvedSupplierId = input.supplierId ?? await ensureGenericSupplier(tx, tenantId)
-      const supplier = await tx.supplier.findFirst({ where: { id: resolvedSupplierId, tenantId }, select: { name: true } })
+      const supplier = await tx.supplier.findFirst({ where: { id: resolvedSupplierId, tenantId }, select: { name: true, taxId: true, isGeneric: true } })
       if (!supplier) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
       counterpartyName = supplier.name
+      if (!supplier.isGeneric && supplier.taxId) effectiveNit = supplier.taxId
       categoryId = await ensureCategory(tx, tenantId, 'Compras', 'expense')
     } else {
       resolvedClientId = input.clientId ?? await ensureGenericClient(tx, tenantId)
-      const client = await tx.client.findFirst({ where: { id: resolvedClientId, tenantId }, select: { name: true } })
+      const client = await tx.client.findFirst({ where: { id: resolvedClientId, tenantId }, select: { name: true, taxId: true, isGeneric: true } })
       if (!client) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
       counterpartyName = client.name
+      if (!client.isGeneric && client.taxId) effectiveNit = client.taxId
       categoryId = await ensureCategory(tx, tenantId, 'Ventas', 'income')
     }
 
@@ -469,7 +475,7 @@ export async function registerInvoice(tenantId: string, userId: string, branchId
       data: {
         tenantId, branchId: effectiveBranch, userId, kind: input.kind,
         supplierId: resolvedSupplierId, clientId: resolvedClientId,
-        issuer: input.issuer ?? null, nit: input.nit ?? null, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
+        issuer: input.issuer ?? null, nit: effectiveNit, documentType: input.documentType ?? null, invoiceNumber: input.invoiceNumber ?? null,
         invoiceDate: input.date ? new Date(input.date) : null, total: input.total ?? null,
         fullExtraction: (input.fullExtraction ?? {}) as Prisma.InputJsonValue,
         imageData: image, imageMime,
@@ -583,15 +589,18 @@ export async function updateInvoice(tenantId: string, id: string, input: UpdateI
   // HU-210 — proveedor/cliente registrado (metadato). Se valida que pertenezca al tenant.
   if (input.supplierId !== undefined) {
     if (input.supplierId) {
-      const s = await prisma.supplier.findFirst({ where: { id: input.supplierId, tenantId }, select: { id: true } })
+      const s = await prisma.supplier.findFirst({ where: { id: input.supplierId, tenantId }, select: { id: true, taxId: true, isGeneric: true } })
       if (!s) throw { statusCode: 400, message: 'Proveedor no encontrado en tu empresa', code: 'SUPPLIER_NOT_FOUND' }
+      // HU — con proveedor registrado, el NIT de la factura es el del proveedor (no el leído por OCR).
+      if (!s.isGeneric && s.taxId) data.nit = s.taxId
     }
     data.supplierId = input.supplierId
   }
   if (input.clientId !== undefined) {
     if (input.clientId) {
-      const c = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } })
+      const c = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true, taxId: true, isGeneric: true } })
       if (!c) throw { statusCode: 400, message: 'Cliente no encontrado en tu empresa', code: 'CLIENT_NOT_FOUND' }
+      if (!c.isGeneric && c.taxId) data.nit = c.taxId
     }
     data.clientId = input.clientId
   }
@@ -701,8 +710,10 @@ export async function listInvoices(tenantId: string, opts: {
     const cpMatch = opts.kind === 'purchase'
       ? Prisma.sql`OR supplier_id IN (SELECT id FROM suppliers WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
       : Prisma.sql`OR client_id IN (SELECT id FROM clients WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
-    // Número de factura: columna dedicada (HU-195) + full_extraction (facturas viejas/otros datos).
-    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like} ${cpMatch})`)
+    // Búsqueda SOLO por los 4 campos visibles: número de factura, emisor (leído), NIT y nombre del
+    // proveedor/cliente registrado. NO se busca dentro de full_extraction (traía falsos positivos
+    // porque el texto de la factura menciona otros NIT/números que no son los de esta factura).
+    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} ${cpMatch})`)
   }
   const where  = Prisma.join(conds, ' AND ')
   const offset = (opts.page - 1) * opts.limit
