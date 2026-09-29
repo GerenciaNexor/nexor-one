@@ -710,8 +710,10 @@ export async function listInvoices(tenantId: string, opts: {
     const cpMatch = opts.kind === 'purchase'
       ? Prisma.sql`OR supplier_id IN (SELECT id FROM suppliers WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
       : Prisma.sql`OR client_id IN (SELECT id FROM clients WHERE tenant_id = ${tenantId} AND name ILIKE ${like})`
-    // Número de factura: columna dedicada (HU-195) + full_extraction (facturas viejas/otros datos).
-    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} OR full_extraction::text ILIKE ${like} ${cpMatch})`)
+    // Búsqueda SOLO por los 4 campos visibles: número de factura, emisor (leído), NIT y nombre del
+    // proveedor/cliente registrado. NO se busca dentro de full_extraction (traía falsos positivos
+    // porque el texto de la factura menciona otros NIT/números que no son los de esta factura).
+    conds.push(Prisma.sql`(invoice_number ILIKE ${like} OR issuer ILIKE ${like} OR nit ILIKE ${like} ${cpMatch})`)
   }
   const where  = Prisma.join(conds, ' AND ')
   const offset = (opts.page - 1) * opts.limit
